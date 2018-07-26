@@ -1,0 +1,200 @@
+package hospelhornbg_svtools;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import hospelhornbg_bioinformatics.BreakendPair;
+import hospelhornbg_bioinformatics.SVType;
+import hospelhornbg_bioinformatics.StructuralVariant;
+import hospelhornbg_bioinformatics.VCF;
+import hospelhornbg_bioinformatics.Variant;
+import hospelhornbg_bioinformatics.VariantPool;
+import hospelhornbg_genomeBuild.GenomeBuild;
+import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+
+public class SplitMerge {
+	
+	public static final String OP_VCFIN = "-i"; 
+	public static final String OP_VCFOUT = "-o"; 
+	public static final String OP_SPLIT = "-s"; 
+	public static final String OP_MERGE = "-m";
+	
+	public static void printUsage()
+	{
+		System.out.println("--------------------------------------------------------------------------------");
+		System.out.println("BioisvTools || smsv");
+		System.out.println();
+		System.out.println("Purpose: Split structural variants in a vcf file into BND pairs or re-merge a split set.");
+		System.out.println();
+		System.out.println("Input Formats:");
+		System.out.println("\tInput callset must be in [vcf] format");
+		System.out.println();
+		System.out.println("Output Formats:");
+		System.out.println("\tVariant call format [vcf]");
+		System.out.println();
+		System.out.println("Flags:");
+		System.out.println("\t-i\tFILE\t[Required]\t\tInput vcf path.");
+		System.out.println("\t-o\tFILE\t[Required]\t\tOutput vcf path.");
+		System.out.println("\t-s\tFLAG\t[Optional]\t\tSplit structural variants into BND pairs.");
+		System.out.println("\t-m\tFLAG\t[Optional]\t\tMerge BND pairs previously split by this tool.");
+		System.out.println();
+		System.out.println("Sample Usage:");
+		System.out.println("java -jar bioisvtools.jar smsv -g grch37 -i NA12878_svset.vcf -o NA12878_svset_split.vcf -s");
+		System.out.println("java -jar bioisvtools.jar smsv -g hg38 -i NA12878_svset_split38.vcf -o NA12878_svset38.vcf -m");
+		System.out.println();
+		System.out.println("--------------------------------------------------------------------------------");
+	}
+	
+	public static void splitSVs(VariantPool sourcePool)
+	{
+		List<Variant> inlist = sourcePool.getVariants();
+		List<Variant> outlist = new ArrayList<Variant>(inlist.size());
+		
+		sourcePool.clearVariants();
+		
+		for (Variant v : inlist)
+		{
+			if (v instanceof StructuralVariant)
+			{
+				StructuralVariant sv = (StructuralVariant)v;
+				if (sv.getType() == SVType.BND) outlist.add(sv);
+				else outlist.add(sv.split());
+			}
+			else outlist.add(v);
+		}
+		
+		sourcePool.addVariants(outlist);
+		sourcePool.sortVariants();
+		sourcePool.addInfoField(StructuralVariant.INFODEF_INFO_TRUESVTYPE.getKey(), StructuralVariant.INFODEF_INFO_TRUESVTYPE);
+	}
+	
+	public static void remergeSVs(VariantPool sourcePool)
+	{
+		List<Variant> inlist = sourcePool.getVariants();
+		List<Variant> outlist = new ArrayList<Variant>(inlist.size());
+		
+		sourcePool.clearVariants();
+		
+		for (Variant v : inlist)
+		{
+			if (v instanceof BreakendPair)
+			{
+				BreakendPair bp = (BreakendPair)v;
+				StructuralVariant sv = null;
+				try
+				{
+					sv = new StructuralVariant(bp);
+					outlist.add(sv);
+				}
+				catch (IllegalArgumentException e)
+				{
+					outlist.add(v);
+				}
+			}
+			else outlist.add(v);
+		}
+		
+		sourcePool.addVariants(outlist);
+		sourcePool.sortVariants();	
+	}
+
+	public static void splitmerge(String[] args, GenomeBuild g)
+	{
+		String inFile = null;
+		String outFile = null;
+		boolean merge = false;
+		boolean split = false;
+		
+		for (int i = 0; i < args.length; i++)
+		{
+			String s = args[i];
+			if (s.equals(OP_VCFIN))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_VCFIN + " flag MUST be followed by input VCF path!");
+					printUsage();
+					System.exit(1);
+				}
+				inFile = args[i+1];
+			}
+			else if (s.equals(OP_VCFOUT))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_VCFOUT + " flag MUST be followed by output VCF path!");
+					printUsage();
+					System.exit(1);
+				}
+				outFile = args[i+1];
+			}
+			else if (s.equals(OP_SPLIT))
+			{
+				split = true;
+			}
+			else if (s.equals(OP_MERGE))
+			{
+				merge = true;
+			}
+		}
+		
+		boolean pass = true;
+		if (inFile == null || inFile.isEmpty())
+		{
+			System.err.println("ERROR: Input path is required!");
+			pass = false;
+		}
+		if (outFile == null || outFile.isEmpty())
+		{
+			System.err.println("ERROR: Output path is required!");
+			pass = false;
+		}
+		if (!merge && !split)
+		{
+			System.err.println("ERROR: Please specify whether to merge or split!");
+			pass = false;
+		}
+		if (merge && split)
+		{
+			System.err.println("ERROR: Please specify merge OR split!");
+			pass = false;
+		}
+		if (!pass)
+		{
+			printUsage();
+			System.exit(1);
+		}
+		
+		VariantPool pool = null;
+		try 
+		{
+			pool = VCF.readVCF(inFile, g, true);
+			//pool = VCF.readVCF(inFile, true);
+		} 
+		catch (IOException e) {
+			System.err.println("IO ERROR: Input file " + inFile + " could not be opened!");
+			e.printStackTrace();
+			System.exit(1);
+		} 
+		catch (UnsupportedFileTypeException e) {
+			System.err.println("PARSE ERROR: Input file " + inFile + " could not be read!");
+			e.printStackTrace();
+			System.exit(1);
+		}
+		
+		if (split) splitSVs(pool);
+		else if (merge) remergeSVs(pool);
+		
+		try 
+		{
+			VCF.writeVCF(pool, "bioisvtools", outFile);
+		} 
+		catch (IOException e) {
+			System.err.println("IO ERROR: Output file " + outFile + " could not be written!");
+			e.printStackTrace();
+		}
+		
+	}
+	
+}
