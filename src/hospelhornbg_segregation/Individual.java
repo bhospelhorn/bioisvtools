@@ -45,6 +45,11 @@ public class Individual {
 		return eAffected;
 	}
 	
+	public boolean isAffected()
+	{
+		return eAffected == AffectedStatus.AFFECTED || eAffected == AffectedStatus.PARTIALLY_AFFECTED;
+	}
+	
 	public Individual getParent1()
 	{
 		return iParent1;

@@ -46,14 +46,17 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 1.2.0 -> 1.2.1 | July 18, 2018
  * 		Added an inputstream constructor
  * 
+ * 1.2.1 -> 1.2.2 | July 29, 2018
+ * 		Added ability to look up gene by name
+ * 		Annotation methods also return list of genes for non-intergenic variants.
  */
 
 
 /**
  * A set of gene annotations for a genome build.
  * @author Blythe Hospelhorn
- * @version 1.2.1
- * @since April 19, 2018
+ * @version 1.2.2
+ * @since July 29, 2018
  *
  */
 public class GeneSet 
@@ -1210,7 +1213,7 @@ public class GeneSet
 		return coll;
 	}
 	
-	private AnnoRecord annotateRegion(Contig c, int st, int ed)
+	private AnnoRecord annotateRegion(Contig c, int st, int ed, List<Gene> genelist)
 	{
 		if (c == null) return null;
 		ChromSet cGenes = genemap.get(c);
@@ -1276,7 +1279,10 @@ public class GeneSet
 				//sv.addInfoField(eff.toString(), INFODEF_INFO_GFUNC);
 				int igSize = inGenes.size();
 				String[] genes = new String[igSize];
-				for (int i = 0; i < igSize; i++) genes[i] = inGenes.get(i).getName();
+				for (int i = 0; i < igSize; i++){
+					genelist.add(inGenes.get(i));
+					genes[i] = inGenes.get(i).getName();
+				}
 				//sv.addInfoField(genes, INFODEF_INFO_GENES);
 				
 				rec.effect = eff;
@@ -1375,6 +1381,7 @@ public class GeneSet
 		
 		//Add gene list and effect to the record...
 		rec.loadGeneList(inGenes);
+		genelist.addAll(inGenes);
 		rec.effect = eff;
 		
 		//Note any flanking if needed...
@@ -1392,7 +1399,7 @@ public class GeneSet
 		return rec;
 	}
 	
-	private AnnoRecord annotatePosition(Contig c, int pos)
+	private AnnoRecord annotatePosition(Contig c, int pos, List<Gene> genelist)
 	{
 		if (c == null) return null;
 		ChromSet cGenes = genemap.get(c);
@@ -1425,13 +1432,14 @@ public class GeneSet
 			{
 				for (Integer n : ogenes) myGenes.add(cGenes.getGene(n));
 			}
+			genelist.addAll(myGenes);
 			rec.loadGeneList(myGenes);
 		}
 		
 		return rec;
 	}
 	
-	private AnnoRecord annotatePointPair(Contig c1, int pos1, Contig c2, int pos2)
+	private AnnoRecord annotatePointPair(Contig c1, int pos1, Contig c2, int pos2, List<Gene> genelist)
 	{
 		if (c1 == null) return null;
 		if (c2 == null) return null;
@@ -1509,22 +1517,22 @@ public class GeneSet
 				//rec.loadGeneList(myGenes);
 			}	
 		}
-		
+		genelist.addAll(myGenes);
 		rec.loadGeneList(myGenes);
 		
 		return rec;
 	}
 	
-	private void annotateSV_CNV(StructuralVariant sv)
+	private void annotateSV_CNV(StructuralVariant sv, List<Gene> genelist)
 	{
 		//Assumed to be on the same chromosome!
 		
-		AnnoRecord rec = annotateRegion(sv.getChromosome(), sv.getCIPosition(false, false, false), sv.getCIPosition(true, false, true));
+		AnnoRecord rec = annotateRegion(sv.getChromosome(), sv.getCIPosition(false, false, false), sv.getCIPosition(true, false, true), genelist);
 		
 		annotateVariant(sv, rec);
 	}
 	
-	private void annotateSV_BND_Single(StructuralVariant sv)
+	private void annotateSV_BND_Single(StructuralVariant sv, List<Gene> genelist)
 	{
 		if (sv == null) return;
 		Contig c = sv.getChromosome();
@@ -1535,22 +1543,22 @@ public class GeneSet
 		AnnoRecord rec = null;
 		
 		int CIsz = ed - st;
-		if (CIsz == 0) rec = annotatePosition(c, pos);
-		else rec = annotateRegion(c, st, ed);
+		if (CIsz == 0) rec = annotatePosition(c, pos, genelist);
+		else rec = annotateRegion(c, st, ed, genelist);
 		
 		annotateVariant(sv, rec);
 	}
 	
-	private void annotateSV_BND_Pair(BreakendPair bp)
+	private void annotateSV_BND_Pair(BreakendPair bp, List<Gene> genelist)
 	{
 		StructuralVariant v1 = bp.getBNDVariant(false);
 		StructuralVariant v2 = bp.getBNDVariant(true);
 		
-		annotateSV_BND_Single(v1);
-		annotateSV_BND_Single(v2);
+		annotateSV_BND_Single(v1, genelist);
+		annotateSV_BND_Single(v2, genelist);
 	}
 	
-	private void annotateSV_INS(StructuralVariant sv)
+	private void annotateSV_INS(StructuralVariant sv, List<Gene> genelist)
 	{
 		if (sv == null) return;
 		Contig c = sv.getChromosome();
@@ -1561,13 +1569,13 @@ public class GeneSet
 		AnnoRecord rec = null;
 		
 		int CIsz = ed - st;
-		if (CIsz == 0) rec = annotatePosition(c, pos);
-		else rec = annotateRegion(c, st, ed);
+		if (CIsz == 0) rec = annotatePosition(c, pos, genelist);
+		else rec = annotateRegion(c, st, ed, genelist);
 		
 		annotateVariant(sv, rec);
 	}
 	
-	private void annotateSV_INV(StructuralVariant sv)
+	private void annotateSV_INV(StructuralVariant sv, List<Gene> genelist)
 	{
 		if (sv == null) return;
 		Contig c = sv.getChromosome();
@@ -1584,10 +1592,10 @@ public class GeneSet
 			
 			AnnoRecord rec1 = null;
 			AnnoRecord rec2 = null;
-			if (pEd != pSt) rec1 = annotateRegion(c, pSt, pEd);
-			else rec1 = annotatePosition(c, pos);
-			if (eEd != eSt) rec2 = annotateRegion(c, eSt, eEd);
-			else rec2 = annotatePosition(c, end);
+			if (pEd != pSt) rec1 = annotateRegion(c, pSt, pEd, genelist);
+			else rec1 = annotatePosition(c, pos, genelist);
+			if (eEd != eSt) rec2 = annotateRegion(c, eSt, eEd, genelist);
+			else rec2 = annotatePosition(c, end, genelist);
 			
 			rec = new AnnoRecord();
 			rec.effect = rec1.effect;
@@ -1628,13 +1636,13 @@ public class GeneSet
 		}
 		else
 		{
-			rec = annotatePointPair(c, pos, c, end);
+			rec = annotatePointPair(c, pos, c, end, genelist);
 		}
 		
 		annotateVariant(sv, rec);
 	}
 	
-	private void annotateSV_TRA(Translocation tra)
+	private void annotateSV_TRA(Translocation tra, List<Gene> genelist)
 	{
 		if (tra == null) return;
 		Contig c1 = tra.getChromosome1();
@@ -1652,10 +1660,10 @@ public class GeneSet
 			
 			AnnoRecord rec1 = null;
 			AnnoRecord rec2 = null;
-			if (pEd != pSt) rec1 = annotateRegion(c1, pSt, pEd);
-			else rec1 = annotatePosition(c1, pos);
-			if (eEd != eSt) rec2 = annotateRegion(c2, eSt, eEd);
-			else rec2 = annotatePosition(c2, end);
+			if (pEd != pSt) rec1 = annotateRegion(c1, pSt, pEd, genelist);
+			else rec1 = annotatePosition(c1, pos, genelist);
+			if (eEd != eSt) rec2 = annotateRegion(c2, eSt, eEd, genelist);
+			else rec2 = annotatePosition(c2, end, genelist);
 			
 			rec = new AnnoRecord();
 			rec.effect = rec1.effect;
@@ -1684,7 +1692,7 @@ public class GeneSet
 		}
 		else
 		{
-			rec = annotatePointPair(c1, pos, c2, end);
+			rec = annotatePointPair(c1, pos, c2, end, genelist);
 		}
 		
 		annotateVariant(tra, rec);
@@ -1715,18 +1723,26 @@ public class GeneSet
 	 * <br>Variant will remain un-annotated if lookup fails.
 	 * @param v Variant to annotate.
 	 */
-	public void annotateVariant(Variant v)
+	public List<Gene> annotateVariant(Variant v)
 	{
-		if (v == null) return;
+		if (v == null) return null;
+		if (v instanceof StructuralVariant)
+		{
+			StructuralVariant sv = (StructuralVariant)v;
+			return annotateStructuralVariant(sv, true);
+		}
+		List<Gene> genelist = new LinkedList<Gene>();
 		Contig c = v.getChromosome();
 		int pos = v.getPosition();
 		int len = v.getLargestAbsoluteLength();
 		
 		AnnoRecord rec = null;
-		if (len < 2) rec = annotatePosition(c, pos);
-		else rec = annotateRegion(c, pos, pos + (len - 1));
+		if (len < 2) rec = annotatePosition(c, pos, genelist);
+		else rec = annotateRegion(c, pos, pos + (len - 1), genelist);
 		
 		annotateVariant(v, rec);
+		Collections.sort(genelist);
+		return genelist;
 	}
 	
 	/**
@@ -1738,35 +1754,36 @@ public class GeneSet
 	 * @param inversionRegion If true, treat inversions as a region (ie. note all genes between breakends).
 	 * If false, treat inversions as a pair of breakends (ie. ignore all genes outside of breakend CIs).
 	 */
-	public void annotateStructuralVariant(StructuralVariant sv, boolean inversionRegion)
+	public List<Gene> annotateStructuralVariant(StructuralVariant sv, boolean inversionRegion)
 	{
-		if (sv == null) return;
+		if (sv == null) return null;
 		//System.err.println(Thread.currentThread().getName() + " || GeneSet.annotateStructuralVariant || Called - " + sv.getVarID() + " [" + sv.getChromosomeName() + ":" + sv.getPosition() + "-" + sv.getEndPosition() + "]");
+		List<Gene> genelist = new LinkedList<Gene>();
 		try {
 			switch(sv.getType())
 			{
-			case BED_REGION: annotateSV_CNV(sv); break;
+			case BED_REGION: annotateSV_CNV(sv, genelist); break;
 			case BND:
-				if (sv instanceof BreakendPair) annotateSV_BND_Pair((BreakendPair)sv);
-				else annotateSV_BND_Single(sv);
+				if (sv instanceof BreakendPair) annotateSV_BND_Pair((BreakendPair)sv, genelist);
+				else annotateSV_BND_Single(sv, genelist);
 				break;
-			case CNV: annotateSV_CNV(sv); break;
-			case DEL: annotateSV_CNV(sv); break;
-			case DELME: annotateSV_CNV(sv); break;
-			case DUP: annotateSV_CNV(sv); break;
-			case INS: annotateSV_INS(sv); break;
-			case INSME: annotateSV_INS(sv); break;
+			case CNV: annotateSV_CNV(sv, genelist); break;
+			case DEL: annotateSV_CNV(sv, genelist); break;
+			case DELME: annotateSV_CNV(sv, genelist); break;
+			case DUP: annotateSV_CNV(sv, genelist); break;
+			case INS: annotateSV_INS(sv, genelist); break;
+			case INSME: annotateSV_INS(sv, genelist); break;
 			case INV: 
-				if (inversionRegion) annotateSV_CNV(sv);
-				else annotateSV_INV(sv); 
+				if (inversionRegion) annotateSV_CNV(sv, genelist);
+				else annotateSV_INV(sv, genelist); 
 				break;
-			case OTHER: annotateSV_CNV(sv); break;
-			case TANDEM: annotateSV_CNV(sv); break;
+			case OTHER: annotateSV_CNV(sv, genelist); break;
+			case TANDEM: annotateSV_CNV(sv, genelist); break;
 			case TRA:
-				if (sv instanceof Translocation) annotateSV_TRA((Translocation)sv);
-				else annotateSV_BND_Single(sv);
+				if (sv instanceof Translocation) annotateSV_TRA((Translocation)sv, genelist);
+				else annotateSV_BND_Single(sv, genelist);
 				break;
-			default: return;
+			default: return null;
 			}	
 		}
 		catch (Exception e)
@@ -1775,6 +1792,8 @@ public class GeneSet
 			System.err.println(sv.getVarID() + " | " + sv.toString());
 			e.printStackTrace();
 		}
+		Collections.sort(genelist);
+		return genelist;
 	}
 	
 	/* --- Access --- */
@@ -1843,6 +1862,23 @@ public class GeneSet
 		List<Gene> genes = getAllGenes();
 		Collections.shuffle(genes);
 		return genes.get(0);
+	}
+	
+	/**
+	 * Get a list of all genes that have names matching the query (not case-sensitive).
+	 * @param gene_name Name of gene to query.
+	 * @return List of matching genes - empty list if none found.
+	 */
+	public List<Gene> getGeneByName(String gene_name)
+	{
+		List<Gene> allgenes = getAllGenes();
+		List<Gene> results = new LinkedList<Gene>();
+		for (Gene g : allgenes)
+		{
+			if (g.getName().equalsIgnoreCase(gene_name)) results.add(g);
+		}
+		Collections.sort(results);
+		return results;
 	}
 	
 	/* --- Load Standard --- */

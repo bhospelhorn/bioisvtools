@@ -45,6 +45,12 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 	The alt percent calculation now ignores the "." allele (-1). It doesn't count them towards the total at all.
  * 	Also added a genotypeUnknown function to determine if all alleles are "."
  * 
+ * 1.1.6 -> 1.1.7 | July 26, 2018
+ * 	Added fun little "isHomozygous" function for the segregation framework.
+ * 
+ * 1.1.7 -> 1.1.8 | August 1, 2018
+ * 	Added "hasAllele" function
+ * 
  */
 
 /*
@@ -56,8 +62,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * Class to contain information on a genotype - usually for a given 
  * sample and variant.
  * @author Blythe Hospelhorn (blythe.hospelhorn@nih.gov)
- * @version 1.1.6
- * @since July 10, 2018
+ * @version 1.1.8
+ * @since August 1, 2018
  */
 public class Genotype {
 	
@@ -2199,6 +2205,52 @@ public class Genotype {
 			if (i >= 0) return false;
 		}
 		return true;
+	}
+	
+	/**
+	 * Get whether the genotype is a homozygous genotype or not.
+	 * @return True if...
+	 * <br>1. The genotype is homozygous. OR...
+	 * <br>2. The genotype is unknown. OR...
+	 * <br>3. The genotype is CNV1.
+	 * <br>Otherwise, false.
+	 */
+	public boolean isHomozygous()
+	{
+		if (this.alleles == null || alleles.length < 1) return true; //I mean... it's not het?
+		if (isGenotypeUnknown()) return true; //Ehhhh...
+		int a = alleles[0];
+		int j = 1;
+		while (a < 0 && j < alleles.length)
+		{
+			a = alleles[j];
+			j++;
+		}
+		if (a < 0) return true; //Should be caught by geno unknown, BUT just in case...
+		for (int i : alleles)
+		{
+			if (i < 0) continue; //Ignore unknown alleles
+			if (i != a) return false;
+		}
+		return true;
+	}
+	
+	/**
+	 * Check whether this genotype has a particular allele (given an integer index >= 0)
+	 * @param allele Allele to check
+	 * @return True if this genotype has that allele, false if it does not or the provided
+	 * allele is negative.
+	 */
+	public boolean hasAllele(int allele)
+	{
+		if (allele < 0) return false;
+		if (alleles == null) return false;
+		if (alleles.length < 1) return false;
+		for (int i : alleles)
+		{
+			if (i == allele) return true;
+		}
+		return false;
 	}
 	
 	/* --- Definition Mapping --- */
