@@ -110,4 +110,55 @@ public class Individual {
 		iChildren.remove(child.getName());
 	}
 	
+	public String getENGString_sex()
+	{
+		switch(eSex)
+		{
+		case FEMALE:
+			return "F";
+		case MALE:
+			return "M";
+		case OTHER:
+			return "O";
+		case UNKNOWN:
+			return "U";
+		default:
+			return "U";
+		
+		}
+	}
+	
+	public String getENGString_affected()
+	{
+		switch(eAffected)
+		{
+		case AFFECTED:
+			return "AFF";
+		case PARTIALLY_AFFECTED:
+			return "PAF";
+		case POSSIBLY_AFFECTED:
+			return "MAF";
+		case UNAFFECTED:
+			return "UAF";
+		case UNKNOWN:
+			return "UNK";
+		default:
+			return "UNK";
+		}
+	}
+	
+	public Individual getMother()
+	{
+		if (iParent1 != null && iParent1.eSex == Sex.FEMALE) return iParent1;
+		if (iParent2 != null && iParent2.eSex == Sex.FEMALE) return iParent2;
+		return null;
+	}
+	
+	public Individual getFather()
+	{
+		if (iParent1 != null && iParent1.eSex == Sex.MALE) return iParent1;
+		if (iParent2 != null && iParent2.eSex == Sex.MALE) return iParent2;
+		return null;
+	}
+	
 }

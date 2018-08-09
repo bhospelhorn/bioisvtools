@@ -103,6 +103,20 @@ public class Pedigree {
 		
 	}
 
+	/* --- Getters --- */
+	
+	public String getFamilyName()
+	{
+		return familyName;
+	}
+	
+	public List<Individual> getAllMembers()
+	{
+		List<Individual> ilist = new LinkedList<Individual>();
+		ilist.addAll(indivMap.values());
+		return ilist;
+	}
+	
 	/* --- Setters --- */
 	
 	public void setProband(String pbID)

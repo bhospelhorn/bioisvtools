@@ -196,6 +196,11 @@ public class ViewManager {
 	{
 		return false;
 	}
+
+	public void loadPedigree(Pedigree ped)
+	{
+		
+	}
 	
 	public Pedigree getPedigree()
 	{
