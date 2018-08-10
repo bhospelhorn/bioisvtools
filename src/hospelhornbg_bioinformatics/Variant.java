@@ -11,6 +11,8 @@ import java.util.Set;
 
 import hospelhornbg_bioinformatics.VariantPool.InfoDefinition;
 import hospelhornbg_genomeBuild.Contig;
+import hospelhornbg_genomeBuild.GeneFunc;
+import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -53,6 +55,9 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 1.2.2 -> 1.2.3 | July 20, 2018
  * 	Added inRegion function
  * 
+ * 1.2.3 -> 1.3.0 | August 10, 2018
+ * 	Moved the GeneFunc instance variable from subclass StructuralVariant
+ * 
  */
 
 /*
@@ -68,8 +73,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * <br>Providing InfoDefinition instances allows for parsing of these INFO annotations into 
  * integers, floats, and flags. By default, they are all stored as either strings or flags.
  * @author Blythe Hospelhorn
- * @version 1.2.3
- * @since July 20, 2018
+ * @version 1.3.0
+ * @since August 10, 2018
  *
  */
 public class Variant implements Comparable<Variant>{
@@ -179,6 +184,11 @@ public class Variant implements Comparable<Variant>{
 	 * but not in this map are assumed to be ref/ref.
 	 */
 	private Map<String, Genotype> genotypes;
+	
+	/**
+	 * If noted, the coding effect the variant has.
+	 */
+	private GeneFunc function;
 	
 	/* --- Construction/Parsing --- */
 	
@@ -300,6 +310,14 @@ public class Variant implements Comparable<Variant>{
 			e.printStackTrace();
 			throw new UnsupportedFileTypeException();
 		}
+		
+		String key = GeneSet.INFODEF_INFO_GFUNC.getKey();
+		String func = getSingleStringInfoEntry(key);
+		if (func != null)
+		{
+			removeInfoField(key);
+			function = GeneFunc.getFunction(func);
+		}
 	
 		//System.err.println(Thread.currentThread().getName() + " || Variant.<init> || Genotype map size: " + genotypes.size());
 		
@@ -332,6 +350,7 @@ public class Variant implements Comparable<Variant>{
 		infoB = other.infoB;
 		genoFields = other.genoFields;
 		genotypes = other.genotypes;
+		function = other.function;
 	}
 	
 	/**
@@ -632,7 +651,13 @@ public class Variant implements Comparable<Variant>{
 	 */
 	public String[] getInfoEntry(String key)
 	{
-		return this.getInfoEntryDirect(key);
+		//return this.getInfoEntryDirect(key);
+		String[] vals = getInfoEntryDirect(key);
+		if (vals != null) return vals;
+		if(fieldMap == null) populateFieldMap();
+		Field f = fieldMap.get(key);
+		if (f == null) return null;
+		return f.getAll();
 	}
 	
 	/**
@@ -647,7 +672,13 @@ public class Variant implements Comparable<Variant>{
 	 */
 	public String getSingleInfoEntry(String key)
 	{
-		return getSingleInfoEntryDirect(key);
+		//return getSingleInfoEntryDirect(key);
+		String val = getSingleInfoEntryDirect(key);
+		if (val != null) return val;
+		if(fieldMap == null) populateFieldMap();
+		Field f = fieldMap.get(key);
+		if (f == null) return null;
+		return f.getFirst();
 	}
 	
 	/**
@@ -945,6 +976,32 @@ public class Variant implements Comparable<Variant>{
 	protected Set<String> getAllGenotypedSamples()
 	{
 		return genotypes.keySet();
+	}
+	
+	/**
+	 * Get the GFUNC field value directly from the INFO map. If it isn't in the INFO map,
+	 * this function will return null, even if the function is noted in the instance variable.
+	 * @return Gene function string (from bioisvtools, following refSeq guidelines?) or null
+	 * if field is not stored as an INFO entry.
+	 */
+	public String getGeneFuncINFO()
+	{
+		return getSingleInfoEntryDirect(GeneSet.INFODEF_INFO_GFUNC.getKey());
+	}
+	
+	/**
+	 * Get the location effect of the variant as a GeneFunc enum. First, the structural variant's
+	 * instance variable is checked, then if nothing is there, the INFO map is checked.
+	 * @return A GeneFunc enum if the variant location effect is noted, null otherwise.
+	 */
+	public GeneFunc getGeneFunction()
+	{
+		if (function != null) return function;
+		String f = getGeneFuncINFO();
+		if (f == null) return null;
+		removeInfoField(GeneSet.INFODEF_INFO_GFUNC.getKey());
+		function = GeneFunc.getFunction(f);
+		return function;
 	}
 	
 	/* --- Setters --- */
@@ -1339,6 +1396,16 @@ public class Variant implements Comparable<Variant>{
 		this.confirmed = false;
 	}
 	
+	/**
+	 * Set the location effect of the variant as a GeneFunc enum. First, the variant's
+	 * instance variable is set, then an INFO field is checked for and removed.
+	 */
+	public void setGeneFunction(GeneFunc eff)
+	{
+		function = eff;
+		removeInfoField(GeneSet.INFODEF_INFO_GFUNC.getKey());
+	}
+	
 	/* --- Comparing --- */
 	
 	/**
@@ -1589,6 +1656,55 @@ public class Variant implements Comparable<Variant>{
 		if (this.getPosition() < start) return false;
 		if (this.getPosition() > end) return false;
 		return true;
+	}
+	
+	/* --- Parsed Fields as INFO Access --- */
+	
+	private HashMap<String, Field> fieldMap;
+	
+	private interface Field
+	{
+		public String get();
+		public String[] getAll();
+		public String getFirst();
+		public void set(String value);
+		public boolean hasFlag();
+	}
+	
+	private void populateFieldMap()
+	{
+		fieldMap = new HashMap<String, Field>();
+		
+		fieldMap.put(GeneSet.INFODEF_INFO_GFUNC.getKey(), new Field(){
+			public String get()
+			{
+				GeneFunc f = getGeneFunction();
+				if (f == null) return null;
+				return f.toString();
+			}
+			public String[] getAll()
+			{
+				GeneFunc f = getGeneFunction();
+				if (f == null) return null;
+				String[] all = new String[1];
+				all[0] = f.toString();
+				return all;
+			}
+			public String getFirst()
+			{
+				return get();
+			}			
+			public void set(String value)
+			{
+				function = GeneFunc.getFunction(value);
+				//If function is non-null, then INFO text is ignored anyway
+				if (value == null) removeInfoField(GeneSet.INFODEF_INFO_GFUNC.getKey());
+			}
+			public boolean hasFlag()
+			{
+				return false;
+			}
+		});
 	}
 	
 	/* --- View --- */

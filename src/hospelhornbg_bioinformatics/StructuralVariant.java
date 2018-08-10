@@ -8,8 +8,6 @@ import java.util.Set;
 
 import hospelhornbg_bioinformatics.VariantPool.InfoDefinition;
 import hospelhornbg_genomeBuild.Contig;
-import hospelhornbg_genomeBuild.GeneFunc;
-import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -82,6 +80,9 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 
  * 1.4.5 -> 1.4.6 | July 20, 2018
  * 	Added inRegion method
+ * 
+ * 1.4.6 -> 1.5.0 | August 10, 2018
+ * 	Moved the GeneFunc variable to the superclass
  */
 
 /*
@@ -94,8 +95,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * Container object extending the standard Variant to include information and methods
  * for easier processing of Structural Variants.
  * @author Blythe Hospelhorn
- * @version 1.4.6
- * @since July 20, 2018
+ * @version 1.5.0
+ * @since August 10, 2018
  *
  */
 public class StructuralVariant extends Variant implements Comparable<Variant>{
@@ -415,8 +416,6 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	private double highestPRPOS;
 	private double highestPREND;
 	
-		//RefSeq x Bioisv gene function
-	private GeneFunc function;
 	
 	/* --- Construction --- */
 	
@@ -508,7 +507,8 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 		this.highestPRPOS = sv1.highestPRPOS;
 		this.prEnd = sv2.prPos;
 		this.highestPREND = sv2.highestPREND;
-		this.function = sv1.function;
+		this.setGeneFunction(sv1.getGeneFunction());
+		//this.function = sv1.function;
 		
 		//Info fields
 		Set<String> keys = getAllInfoKeys();
@@ -627,7 +627,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 		highestPRPOS = -1;
 		highestPREND = -1;
 		
-		function = null;
+		//function = null;
 	}
 	
 	/* --- Parsing --- */
@@ -741,13 +741,13 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 		event = super.getSingleStringInfoEntry(key);
 		super.removeInfoField(key);
 		
-		key = GeneSet.INFODEF_INFO_GFUNC.getKey();
+		/*key = GeneSet.INFODEF_INFO_GFUNC.getKey();
 		String func = super.getSingleStringInfoEntry(key);
 		if (func != null)
 		{
 			super.removeInfoField(key);
 			function = GeneFunc.getFunction(func);
-		}
+		}*/
 		
 	}
 	
@@ -1204,38 +1204,6 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 		return max;
 	}
 	
-	/**
-	 * Get the GFUNC field value directly from the INFO map. If it isn't in the INFO map,
-	 * this function will return null, even if the function is noted in the instance variable.
-	 * @return Gene function string (from bioisvtools, following refSeq guidelines?) or null
-	 * if field is not stored as an INFO entry.
-	 */
-	public String getGeneFuncINFO()
-	{
-		//MEGA problem!!
-			//This function downstream gets the SV overriden version called... which refers
-			//back to this function when it can't find a GeneFunc object.
-			//Instead of the INFO map in the parent.
-			//This causes an infinite recursive method loop.
-			//Shiiiiiiiiiiiiiiit
-		return super.getSingleInfoEntryDirect(GeneSet.INFODEF_INFO_GFUNC.getKey());
-	}
-	
-	/**
-	 * Get the location effect of the variant as a GeneFunc enum. First, the structural variant's
-	 * instance variable is checked, then if nothing is there, the INFO map is checked.
-	 * @return A GeneFunc enum if the variant location effect is noted, null otherwise.
-	 */
-	public GeneFunc getGeneFunction()
-	{
-		if (function != null) return function;
-		String f = getGeneFuncINFO();
-		if (f == null) return null;
-		super.removeInfoField(GeneSet.INFODEF_INFO_GFUNC.getKey());
-		function = GeneFunc.getFunction(f);
-		return function;
-	}
-	
 	/* --- Setters --- */
 	
 	/**
@@ -1465,16 +1433,6 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	{
 		super.clearAltAlleles();
 		for (int i = 0; i < SVlen.length; i++) SVlen[i] = 0;
-	}
-	
-	/**
-	 * Set the location effect of the variant as a GeneFunc enum. First, the structural variant's
-	 * instance variable is set, then an INFO field is checked for and removed.
-	 */
-	public void setGeneFunction(GeneFunc eff)
-	{
-		function = eff;
-		super.removeInfoField(GeneSet.INFODEF_INFO_GFUNC.getKey());
 	}
 	
 	/* --- Comparing --- */
@@ -2433,36 +2391,6 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 			}
 		});
 
-		fieldMap.put(GeneSet.INFODEF_INFO_GFUNC.getKey(), new Field(){
-			public String get()
-			{
-				GeneFunc f = getGeneFunction();
-				if (f == null) return null;
-				return f.toString();
-			}
-			public String[] getAll()
-			{
-				GeneFunc f = getGeneFunction();
-				if (f == null) return null;
-				String[] all = new String[1];
-				all[0] = f.toString();
-				return all;
-			}
-			public String getFirst()
-			{
-				return get();
-			}			
-			public void set(String value)
-			{
-				function = GeneFunc.getFunction(value);
-				//If function is non-null, then INFO text is ignored anyway
-				if (value == null) removeInfoField(GeneSet.INFODEF_INFO_GFUNC.getKey());
-			}
-			public boolean hasFlag()
-			{
-				return false;
-			}
-		});
 	}
 
 	public String[] getInfoEntry(String key)
@@ -2695,8 +2623,8 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 		v1.highestPRPOS = this.highestPRPOS;
 		v2.prPos = this.prEnd;
 		v2.highestPRPOS = this.highestPREND;
-		v1.function = this.function;
-		v2.function = this.function;
+		//v1.function = this.function;
+		//v2.function = this.function;
 		
 		//Info fields
 		Set<String> keys = getAllInfoKeys();

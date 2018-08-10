@@ -19,6 +19,12 @@ import hospelhornbg_bioinformatics.VariantFilter;
 import hospelhornbg_bioinformatics.VariantPool;
 import hospelhornbg_bioinformatics.VariantPool.InfoDefinition;
 import hospelhornbg_genomeBuild.Contig;
+import hospelhornbg_genomeBuild.GeneFunc;
+import hospelhornbg_genomeBuild.GeneSet;
+import hospelhornbg_genomeBuild.GenomeBuild;
+import hospelhornbg_segregation.Candidate;
+import hospelhornbg_segregation.Inheritance;
+import hospelhornbg_segregation.Inheritor;
 import hospelhornbg_segregation.Pedigree;
 
 public class ViewManager {
@@ -29,6 +35,15 @@ public class ViewManager {
 	
 	private VariantPool mainpool;
 	private VariantPool truthset;
+	
+	private Pedigree family;
+	
+	private List<Candidate> candidateList;
+	
+		// Genome Build
+	
+	private GenomeBuild build;
+	private GeneSet genes;
 	
 		// Basic filters
 	
@@ -51,6 +66,12 @@ public class ViewManager {
 	private boolean harshBND; // BND chromsome inclusion mode
 	
 	private Set<VariantFilter> infoFilters;
+	
+		// Advanced filters
+	
+	private Set<GeneFunc> passedEffects;
+	private Set<Inheritance> passedInheritance;
+	private boolean passUnpairedHalfHets;
 	
 		// Columns
 	
@@ -112,7 +133,7 @@ public class ViewManager {
 	
 	/* --- Construction --- */
 	
-	public ViewManager()
+	public ViewManager(String genomebuild)
 	{
 		mainpool = null;
 		truthset = null;
@@ -133,6 +154,46 @@ public class ViewManager {
 		filterNoQual = false;
 		minimumQual = -2.0;
 		harshBND = false;
+		family = null;
+		candidateList = null;
+		
+		build = GenomeBuild.loadStandardBuild(genomebuild);
+		if (build == null)
+		{
+			throw new IllegalArgumentException();
+		}
+		genes = GeneSet.loadRefGene(build);
+	}
+	
+	/* --- Build --- */
+	
+	public void setGenome(String buildname)
+	{
+		try
+		{
+			GenomeBuild gb = GenomeBuild.loadStandardBuild(buildname);
+			if (gb != null)
+			{
+				build = gb;
+				genes = GeneSet.loadRefGene(build);
+			}
+			else
+			{
+				System.err.println("ViewManager.setGenome || ERROR: Build " + buildname + " could not be found!");
+				throw new IllegalArgumentException();
+			}
+		}
+		catch (Exception e)
+		{
+			System.err.println("ViewManager.setGenome || ERROR: Build " + buildname + " could not be found!");
+			throw new IllegalArgumentException();
+		}
+		
+		//Refresh if needed - unload variant pool if loaded
+		mainpool = null;
+		truthset = null;
+		candidateList = null;
+		readAllChromosomes();
 	}
 	
 	/* --- Pools --- */
@@ -155,6 +216,13 @@ public class ViewManager {
 			minimumSize = 0;
 			maximumSize = Integer.MAX_VALUE;
 		}
+		
+		//See if ped is loaded. If so, convert to candidates...
+		if (family != null)
+		{
+			candidateList = Inheritor.getCandidates(mainpool, family, genes);	
+		}
+		
 	}
 	
 	public void loadTruthSet(VariantPool truth, boolean stringent_bothEnds, boolean stringent_CI, boolean stringent_overlap)
@@ -175,7 +243,8 @@ public class ViewManager {
 	private void readAllChromosomes()
 	{
 		if (mainpool == null) return;
-		allChromosomes.addAll(mainpool.getAllChromosomes());
+		//allChromosomes.addAll(mainpool.getAllChromosomes());
+		allChromosomes = build.getChromosomes();
 		Collections.sort(allChromosomes);
 		includedChromosomes.addAll(allChromosomes);
 	}
@@ -194,17 +263,21 @@ public class ViewManager {
 	
 	public boolean pedigreeLoaded()
 	{
-		return false;
+		return (family != null);
 	}
 
 	public void loadPedigree(Pedigree ped)
 	{
-		
+		family = ped;
+		if (family != null)
+		{
+			candidateList = Inheritor.getCandidates(mainpool, family, genes);	
+		}
 	}
 	
 	public Pedigree getPedigree()
 	{
-		return null;
+		return family;
 	}
 	
 	/* --- Columns --- */
@@ -568,6 +641,7 @@ public class ViewManager {
 		return true;
 	}
 	
+	//TODO: Write candidate version
 	public List<Variant> getFilteredSet()
 	{
 		List<Variant> sourceset = mainpool.getVariants();
@@ -694,6 +768,7 @@ public class ViewManager {
 	
 	/* --- Variant View --- */
 	
+	//TODO: Update
 	public String[][] getTable()
 	{
 		List<Variant> filtered = getFilteredSet();

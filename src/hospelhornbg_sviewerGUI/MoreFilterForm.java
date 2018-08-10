@@ -102,9 +102,9 @@ public class MoreFilterForm extends JDialog{
 		chckbxDominant.setBounds(20, 174, 71, 23);
 		getContentPane().add(chckbxDominant);
 		
-		JCheckBox chckbxHalfhet = new JCheckBox("Half-Het");
+		JCheckBox chckbxHalfhet = new JCheckBox("Half-Het (Paired)");
 		chckbxHalfhet.setFont(new Font("Tahoma", Font.PLAIN, 11));
-		chckbxHalfhet.setBounds(20, 200, 71, 23);
+		chckbxHalfhet.setBounds(20, 200, 117, 23);
 		getContentPane().add(chckbxHalfhet);
 		
 		JCheckBox chckbxMendelianViolation = new JCheckBox("Mendelian Violation");
@@ -130,6 +130,11 @@ public class MoreFilterForm extends JDialog{
 		lblMinMap.setFont(new Font("Tahoma", Font.PLAIN, 11));
 		lblMinMap.setBounds(127, 306, 46, 14);
 		getContentPane().add(lblMinMap);
+		
+		JCheckBox chckbxHalfhetunpaired = new JCheckBox("Half-Het (Unpaired)");
+		chckbxHalfhetunpaired.setFont(new Font("Tahoma", Font.PLAIN, 11));
+		chckbxHalfhetunpaired.setBounds(185, 200, 135, 23);
+		getContentPane().add(chckbxHalfhetunpaired);
 		
 	}
 }

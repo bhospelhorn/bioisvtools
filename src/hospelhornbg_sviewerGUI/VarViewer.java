@@ -32,6 +32,7 @@ import javax.swing.SwingWorker;
 import javax.swing.JPanel;
 import javax.swing.JLabel;
 import java.awt.Dimension;
+import javax.swing.JRadioButtonMenuItem;
 
 public class VarViewer extends JFrame{
 
@@ -59,11 +60,14 @@ public class VarViewer extends JFrame{
 	
 	private JLabel lblVarCount;
 	
+	private JRadioButtonMenuItem rbmHG19;
+	private JRadioButtonMenuItem rbmHG38;
+	
 	/* --- Construction/Parsing --- */
 	
 	public VarViewer()
 	{
-		manager = new ViewManager();
+		manager = new ViewManager("hg19");
 		lastVCF = "";
 		lastBED = "";
 		lastExport = "";
@@ -244,6 +248,42 @@ public class VarViewer extends JFrame{
 			
 		});
 		
+		JMenu mnGenome = new JMenu("Genome");
+		menuBar.add(mnGenome);
+		group_always.addComponent("mnGenome", mnGenome);
+		
+		rbmHG19 = new JRadioButtonMenuItem("GRCh37");
+		mnGenome.add(rbmHG19);
+		group_always.addComponent("rbmHG19", rbmHG19);
+		rbmHG19.setSelected(true);
+		rbmHG19.addActionListener(new ActionListener() {
+
+			public void actionPerformed(ActionEvent e) 
+			{
+				if (rbmHG19.isSelected()) return;
+				rbmHG19.setSelected(true);
+				rbmHG38.setSelected(false);
+				setGenome("hg19");
+			}
+			
+		});
+		
+		rbmHG38 = new JRadioButtonMenuItem("GRCh38");
+		mnGenome.add(rbmHG38);
+		group_always.addComponent("rbmHG38", rbmHG38);
+		rbmHG38.setSelected(false);
+		rbmHG38.addActionListener(new ActionListener() {
+
+			public void actionPerformed(ActionEvent e) 
+			{
+				if (rbmHG38.isSelected()) return;
+				rbmHG19.setSelected(false);
+				rbmHG38.setSelected(true);
+				setGenome("hg38");
+			}
+			
+		});
+		
 		GridBagLayout gridBagLayout = new GridBagLayout();
 		gridBagLayout.columnWidths = new int[]{0, 0};
 		gridBagLayout.rowHeights = new int[]{167, 18, 0};
@@ -364,6 +404,36 @@ public class VarViewer extends JFrame{
 	}
 	
 	/* --- Action --- */
+	
+	public void setGenome(String gname)
+	{
+		SwingWorker<Void, Void> task = new SwingWorker<Void, Void>(){
+
+			protected Void doInBackground() throws Exception 
+			{
+				setWait();
+				try
+				{
+					manager.setGenome(gname);
+					updateForm();
+				}
+				catch (IllegalArgumentException e)
+				{
+					e.printStackTrace();
+					showError("Unknown Error - Build (" + gname + ") could not be loaded.");
+				}
+				return null;
+			}
+			
+			public void done()
+			{
+				unsetWait();
+			}
+			
+		};
+		task.execute();
+
+	}
 	
 	public void loadVCF()
 	{
@@ -684,5 +754,4 @@ public class VarViewer extends JFrame{
 	{
 		JOptionPane.showMessageDialog(this, message, "Error", JOptionPane.ERROR_MESSAGE);
 	}
-
 }

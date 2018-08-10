@@ -11,8 +11,6 @@ import javax.swing.border.BevelBorder;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.table.DefaultTableModel;
 
-import hospelhornbg_bioinformatics.VCF;
-import hospelhornbg_bioinformatics.VariantPool;
 import hospelhornbg_segregation.Individual;
 import hospelhornbg_segregation.Pedigree;
 import waffleoRai_GUITools.ComponentGroup;
@@ -23,6 +21,8 @@ import javax.swing.JOptionPane;
 
 import java.awt.Font;
 import java.awt.Frame;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
@@ -72,16 +72,40 @@ public class PedigreeForm extends JDialog {
 		btnLoad.setBounds(335, 42, 89, 23);
 		getContentPane().add(btnLoad);
 		disable_group.addComponent("btnLoad", btnLoad);
+		btnLoad.addActionListener(new ActionListener() {
+
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				loadPed();
+			}
+			
+		});
 		
 		JButton btnBrowse = new JButton("Browse...");
 		btnBrowse.setBounds(241, 42, 89, 23);
 		getContentPane().add(btnBrowse);
 		disable_group.addComponent("btnBrowse", btnBrowse);
+		btnLoad.addActionListener(new ActionListener() {
+
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				browseForPed();
+			}
+			
+		});
 		
 		JButton btnDone = new JButton("Done");
 		btnDone.setBounds(335, 277, 89, 23);
 		getContentPane().add(btnDone);
 		disable_group.addComponent("btnDone", btnDone);
+		btnLoad.addActionListener(new ActionListener() {
+
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				closeme();
+			}
+			
+		});
 		
 		JScrollPane scrollPane = new JScrollPane();
 		scrollPane.setViewportBorder(new BevelBorder(BevelBorder.LOWERED, null, null, null, null));
@@ -231,6 +255,11 @@ public class PedigreeForm extends JDialog {
 	public void loadPed()
 	{
 		String p = this.txtPedPath.getText();
+		if (p == null || p.isEmpty())
+		{
+			showError("Please provide path to a pedigree (PED) file!");
+			return;
+		}
 		
 		SwingWorker<Void, Void> task = new SwingWorker<Void, Void>(){
 
@@ -273,6 +302,12 @@ public class PedigreeForm extends JDialog {
 	public void loadPedigreeIntoManager()
 	{
 		manager.loadPedigree(loadedFam);
+	}
+	
+	public void closeme()
+	{
+		loadPedigreeIntoManager();
+		this.setVisible(false);
 	}
 	
 	/* ---- Save Paths ---- */
