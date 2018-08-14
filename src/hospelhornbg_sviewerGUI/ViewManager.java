@@ -282,6 +282,58 @@ public class ViewManager {
 	
 	/* --- Columns --- */
 	
+	public Set<GeneFunc> getPassedCodingEffects()
+	{
+		Set<GeneFunc> copy = new HashSet<GeneFunc>();
+		copy.addAll(this.passedEffects);
+		return copy;
+	}
+	
+	public void addCodingEffect(GeneFunc eff)
+	{
+		passedEffects.add(eff);
+	}
+	
+	public void addAllCodingEffects()
+	{
+		GeneFunc[] alleff = GeneFunc.values();
+		for (GeneFunc e: alleff)
+		{
+			passedEffects.add(e);
+		}
+	}
+	
+	public Set<Inheritance> getPassedInheritancePatterns()
+	{
+		Set<Inheritance> copy = new HashSet<Inheritance>();
+		copy.addAll(this.passedInheritance);
+		return copy;
+	}
+	
+	public void addInheritancePattern(Inheritance ip)
+	{
+		passedInheritance.add(ip);
+	}
+	
+	public void addAllInheritancePatterns()
+	{
+		Inheritance[] allip = Inheritance.values();
+		for (Inheritance i: allip)
+		{
+			passedInheritance.add(i);
+		}
+	}
+	
+	public boolean includeUnpairedHalfHets()
+	{
+		return this.passUnpairedHalfHets;
+	}
+	
+	public void setIncludeUnpairedHalfHets(boolean b)
+	{
+		passUnpairedHalfHets = b;
+	}
+
 	public String[] getColumnHeader()
 	{
 		String[] columns = new String[getNumberColumns()];
@@ -641,55 +693,125 @@ public class ViewManager {
 		return true;
 	}
 	
-	//TODO: Write candidate version
-	public List<Variant> getFilteredSet()
+	public boolean passesAllFilters(Variant v)
 	{
-		List<Variant> sourceset = mainpool.getVariants();
+		if (confirmedOnly && !v.isConfirmed()) return false;
+		if (filterQual && (v.getQuality() < minimumQual)) {
+			if (filterNoQual) return false;
+			else if (v.getQuality() >= 0) return false;
+		}
+		if (!variantChromosomeIncluded(v)) return false;
+		if (!includeSV && (v instanceof StructuralVariant)) return false;
+		if (!includeNonSV && !(v instanceof StructuralVariant)) return false;
+		if ((v instanceof StructuralVariant))
+		{
+			StructuralVariant sv = (StructuralVariant)v;
+			if (!SVTypeIncluded(sv.getType())) return false;
+			if (sv.getType() != SVType.BND)
+			{
+				if (sv.getAbsoluteSVLength() < minimumSize) return false;
+				if (sv.getAbsoluteSVLength() > maximumSize) return false;	
+			}
+			if (harshBND && sv instanceof BreakendPair)
+			{
+				Collection<Contig> chroms = sv.getAllChromosomes();
+				boolean badchrom = false;
+				for (Contig c : chroms)
+				{
+					if (!this.chromosomeIncluded(c)) {
+						badchrom = true;
+						break;
+					}
+				}
+				if (badchrom) return false;
+			}
+		}
+		else
+		{
+			if (v.getLargestAbsoluteLength() < minimumSize) return false;
+			if (v.getSmallestAbsoluteLength() > maximumSize) return false;
+		}
+		if (!passesAllCustomFilters(v)) return false;
+		
+		return true;
+	}
+	
+	public List<Variant> getFilteredSet(Collection<Variant> sourceset)
+	{
 		List<Variant> filtered = new LinkedList<Variant>();
 		
 		for (Variant v : sourceset)
 		{
-			if (confirmedOnly && !v.isConfirmed()) continue;
-			if (filterQual && (v.getQuality() < minimumQual)) {
-				if (filterNoQual) continue;
-				else if (v.getQuality() >= 0) continue;
-			}
-			if (!variantChromosomeIncluded(v)) continue;
-			if (!includeSV && (v instanceof StructuralVariant)) continue;
-			if (!includeNonSV && !(v instanceof StructuralVariant)) continue;
-			if ((v instanceof StructuralVariant))
-			{
-				StructuralVariant sv = (StructuralVariant)v;
-				if (!SVTypeIncluded(sv.getType())) continue;
-				if (sv.getType() != SVType.BND)
-				{
-					if (sv.getAbsoluteSVLength() < minimumSize) continue;
-					if (sv.getAbsoluteSVLength() > maximumSize) continue;	
-				}
-				if (harshBND && sv instanceof BreakendPair)
-				{
-					Collection<Contig> chroms = sv.getAllChromosomes();
-					boolean badchrom = false;
-					for (Contig c : chroms)
-					{
-						if (!this.chromosomeIncluded(c)) {
-							badchrom = true;
-							break;
-						}
-					}
-					if (badchrom) continue;
-				}
-			}
-			else
-			{
-				if (v.getLargestAbsoluteLength() < minimumSize) continue;
-				if (v.getSmallestAbsoluteLength() > maximumSize) continue;
-			}
-			if (!passesAllCustomFilters(v)) continue;
-			filtered.add(v);
+			boolean passes = passesAllFilters(v);
+			if (passes) filtered.add(v);
 		}
 		
 		return filtered;
+	}
+	
+	public List<Variant> getFilteredSet()
+	{
+		List<Variant> sourceset = mainpool.getVariants();
+		return getFilteredSet(sourceset);
+	}
+	
+	public boolean candidatePassesFilters(Candidate c)
+	{
+		if (c == null) return false;
+		//See if internal variant passes
+		Variant v = c.getVariant();
+		if (!passesAllFilters(v)) return false;
+		//See if variant effect passes
+		boolean epass = false;
+		for (GeneFunc eff : passedEffects)
+		{
+			if (v.getGeneFunction() == eff)
+			{
+				epass = true;
+				break;
+			}
+		}
+		if (!epass) return false;
+		//See if segregation passes
+		Inheritance ip = c.getInheritancePattern();
+		boolean spass = false;
+		for (Inheritance i : passedInheritance)
+		{
+			if (ip == i)
+			{
+				spass = true;
+				break;
+			}
+		}
+		if (!spass) return false;
+		//See if unpaired halfhet
+		if(!passUnpairedHalfHets)
+		{
+			if (ip == Inheritance.HALF_HET || ip == Inheritance.HALF_HET_SV)
+			{
+				List<Candidate> partners = c.getAllPartners();
+				if (partners == null) return false;
+				if (partners.isEmpty()) return false;
+			}
+		}
+		return true;
+	}
+	
+	public List<Candidate> getFilteredCandidateSet()
+	{
+		List<Candidate> passed = new LinkedList<Candidate>();
+		if (candidateList == null) return passed;
+		
+		//List<Candidate> rescuecand = new LinkedList<Candidate>();
+		
+		for (Candidate c : candidateList)
+		{
+			boolean cpassed = candidatePassesFilters(c);
+			if (cpassed) passed.add(c);
+			//else rescuecand.add(c);
+		}
+		
+		return passed;
 	}
 
 	public boolean filterByQuality()

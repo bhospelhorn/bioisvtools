@@ -110,6 +110,11 @@ public class Pedigree {
 		return familyName;
 	}
 	
+	public Individual getProband()
+	{
+		return proband;
+	}
+	
 	public List<Individual> getAllMembers()
 	{
 		List<Individual> ilist = new LinkedList<Individual>();
@@ -420,4 +425,20 @@ public class Pedigree {
 		return false;
 	}
 
+	/* --- Relationship --- */
+	
+	public String getRelationshipString_ENG(Individual i)
+	{
+		if (i == null) return "";
+		if (proband == null) return "Unrelated";
+		Individual current = proband;
+		if (current.equals(i)) return "Proband";
+		
+		//Check parents (go up)
+		
+		//Check back down
+		
+		return null;
+	}
+	
 }
