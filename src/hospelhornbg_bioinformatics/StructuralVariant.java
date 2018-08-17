@@ -83,6 +83,9 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 
  * 1.4.6 -> 1.5.0 | August 10, 2018
  * 	Moved the GeneFunc variable to the superclass
+ * 
+ * 1.5.0 -> 1.5.1 | August 17, 2018
+ * 	Added getEndChromosome function
  */
 
 /*
@@ -95,8 +98,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * Container object extending the standard Variant to include information and methods
  * for easier processing of Structural Variants.
  * @author Blythe Hospelhorn
- * @version 1.5.0
- * @since August 10, 2018
+ * @version 1.5.1
+ * @since August 17, 2018
  *
  */
 public class StructuralVariant extends Variant implements Comparable<Variant>{
@@ -798,6 +801,16 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	}
 	
 	/* --- Getters --- */
+	
+	/**
+	 * Get the contig the "end" breakpoint lies on. For standard SVs, this is the same
+	 * contig as the main one. For translocations and BND pairs, this may be a different chromosome.
+	 * @return Contig of end breakpoint.
+	 */
+	public Contig getEndChromosome()
+	{
+		return this.getChromosome();
+	}
 	
 	/**
 	 * Get the end position of the structural variant.

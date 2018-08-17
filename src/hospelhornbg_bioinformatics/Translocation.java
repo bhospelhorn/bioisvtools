@@ -12,6 +12,9 @@ import hospelhornbg_genomeBuild.GenomeBuild;
  * 1.0.0 -> 1.0.1 | July 20, 2018
  * 	Added inRegion method
  * 
+ * 1.0.1 -> 1.0.2 | August 17, 2018
+ * 	Added getEndChromosome method
+ * 
  */
 
 
@@ -21,8 +24,8 @@ import hospelhornbg_genomeBuild.GenomeBuild;
  * This is not the same as a BreakendPair.
  * This SV class is represented in VCF form using the "TRA" type.
  * @author Blythe Hospelhorn
- * @version 1.0.1
- * @since July 20, 2018
+ * @version 1.0.2
+ * @since August 17, 2018
  *
  */
 public class Translocation extends StructuralVariant{
@@ -217,6 +220,11 @@ public class Translocation extends StructuralVariant{
 		boolean e = c2 && this.getEndPosition() >= start && this.getEndPosition() <= end;
 		if (anyend) return s || e;
 		else return s && e;
+	}
+	
+	public Contig getEndChromosome()
+	{
+		return chrom2;
 	}
 	
 }

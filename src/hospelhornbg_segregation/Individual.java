@@ -2,13 +2,15 @@ package hospelhornbg_segregation;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import hospelhornbg_bioinformatics.AffectedStatus;
 import hospelhornbg_bioinformatics.Sex;
 
-public class Individual {
+public class Individual implements Comparable<Individual>{
 
 	private Individual iParent1;
 	private Individual iParent2;
@@ -18,6 +20,8 @@ public class Individual {
 	private String sName;
 	private Sex eSex;
 	private AffectedStatus eAffected;
+	
+	private Map<Individual, Integer> iAncestors;
 	
 	public Individual(String name)
 	{
@@ -159,6 +163,136 @@ public class Individual {
 		if (iParent1 != null && iParent1.eSex == Sex.MALE) return iParent1;
 		if (iParent2 != null && iParent2.eSex == Sex.MALE) return iParent2;
 		return null;
+	}
+	
+	private void addParentsToAncestorTree(Individual i, int level)
+	{
+		Individual p1 = i.getParent1();
+		Individual p2 = i.getParent2();
+		if (p1 != null)
+		{
+			addParentsToAncestorTree(p1, level+1);
+			iAncestors.put(p1, level);
+		}
+		if (p2 != null)
+		{
+			addParentsToAncestorTree(p2, level+1);
+			iAncestors.put(p2, level);
+		}
+	}
+	
+	public Map<Individual, Integer> getAncestorTree()
+	{
+		if (iAncestors != null) return iAncestors;
+		iAncestors = new HashMap<Individual, Integer>();
+		iAncestors.put(this, 0);
+		addParentsToAncestorTree(this, 1); //Recursive
+		return iAncestors;
+	}
+	
+	public void disposeOfAncestorTree()
+	{
+		iAncestors = null;
+	}
+	
+	private void checkAncestor(List<Individual> list, Individual i, Map<Individual, Integer> othertree)
+	{
+		if (othertree.containsKey(i))
+		{
+			list.add(i);
+			return;
+		}
+		
+		Individual p1 = i.getParent1();
+		Individual p2 = i.getParent2();
+		
+		if (p1 != null) checkAncestor(list, p1, othertree);
+		if (p2 != null) checkAncestor(list, p2, othertree);
+	}
+	
+	public List<Individual> getRootCommonAncestors(Individual other)
+	{
+		List<Individual> alist = new LinkedList<Individual>();
+		if (other == null) return alist;
+		
+		Map<Individual, Integer> othertree = other.getAncestorTree();
+		
+		checkAncestor(alist, this, othertree);
+		
+		return alist;
+	}
+
+	public int getGenerationDifference(Individual ancestor)
+	{
+		Map<Individual, Integer> mytree = getAncestorTree();
+		return mytree.get(ancestor);
+	}
+	
+	public Relationship getRelationship(Individual other)
+	{
+		if (other == null) return null;
+		if (other == this) return new SelfRelationship(this);
+		List<Individual> alist = getRootCommonAncestors(other);
+		if (alist == null) return null;
+		if (alist.isEmpty()) return null;
+		
+		//See if this or other are in alist (direct descendant/ancestor)
+		if (alist.contains(this))
+		{
+			//this is an ancestor of other
+			int g = other.getGenerationDifference(this) * -1;
+			return new DescendantRelationship(this, other, g);
+		}
+		else if (alist.contains(other))
+		{
+			//other is an ancestor of this
+			int g = this.getGenerationDifference(other);
+			return new DescendantRelationship(this, other, g);
+		}
+		
+		//Otherwise, see if share one or two ancestors with the same gen offsets
+		//Use ancestor(s) with smallest offsets
+		Individual a1 = null;
+		Individual a2 = null;
+		int gmin = Integer.MAX_VALUE;
+		for (Individual a : alist)
+		{
+			int gdiff = getGenerationDifference(a);
+			if (gdiff < gmin)
+			{
+				a1 = a;
+				a2 = null;
+			}
+			else if (gdiff == gmin)
+			{
+				if (a2 == null) a2 = a;
+				else System.err.println("Individual.getRelationship || Warning: More than 2 common ancestors of same generational distance found...");
+			}
+		}
+		
+		if (a1 == null) return null;
+		if (a2 != null)
+		{
+			return new PairRelationship(this, other, a1, a2);
+		}
+		else
+		{
+			return new SingleRelationship(this, other, a1);
+		}
+		
+	}
+	
+	public boolean equals(Object o)
+	{
+		return (this == o);
+	}
+
+	@Override
+	public int compareTo(Individual o) 
+	{
+		if (o == null) return 1;
+		if (o == this) return 0;
+		return this.sName.compareTo(o.sName);
 	}
 	
 }

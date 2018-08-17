@@ -42,6 +42,9 @@ import hospelhornbg_genomeBuild.GeneFunc;
  * 1.2.3 -> 1.2.4 | July 20, 2018
  * 	Added inRegion method
  * 
+ * 1.2.4 -> 1.2.5 | August 17, 2018
+ * 	Added getEndChromosome method
+ * 
  * /
 
 /*
@@ -54,8 +57,8 @@ import hospelhornbg_genomeBuild.GeneFunc;
  * contiguous, such as the breakends in a translocation.
  * Usually, this class is used to hold two BND type SVs.
  * @author Blythe Hospelhorn
- * @version 1.2.4
- * @since July 20, 2018
+ * @version 1.2.5
+ * @since August 17, 2018
  *
  */
 public class BreakendPair extends StructuralVariant{
@@ -496,6 +499,11 @@ public class BreakendPair extends StructuralVariant{
 		boolean e = c2 && this.getEndPosition() >= start && this.getEndPosition() <= end;
 		if (anyend) return s || e;
 		else return s && e;
+	}
+	
+	public Contig getEndChromosome()
+	{
+		return var2.getChromosome();
 	}
 	
 }

@@ -169,6 +169,11 @@ public class Candidate implements Comparable<Candidate>{
 		iPartners.remove(partner);
 	}
 	
+	public boolean hasPartners()
+	{
+		return !iPartners.isEmpty();
+	}
+	
 	public boolean equals(Object o)
 	{
 		if (o == null) return false;
