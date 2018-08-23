@@ -285,12 +285,13 @@ public class PedigreeForm extends JDialog {
 					e.printStackTrace();
 					showError("Unknown Error - File (" + p + ") could not be read.");
 				}
+				
+				updateForm();
 				return null;
 			}
 			
 			public void done()
 			{
-				updateForm();
 				unsetWait();
 			}
 			
@@ -306,7 +307,7 @@ public class PedigreeForm extends JDialog {
 	
 	public void closeme()
 	{
-		loadPedigreeIntoManager();
+		if (this.loadedFam != null) loadPedigreeIntoManager();
 		this.setVisible(false);
 	}
 	

@@ -18,12 +18,18 @@ import javax.swing.table.DefaultTableModel;
 import hospelhornbg_bioinformatics.UCSCGVBED;
 import hospelhornbg_bioinformatics.VCF;
 import hospelhornbg_bioinformatics.VariantPool;
+import hospelhornbg_segregation.Candidate;
+import hospelhornbg_segregation.Pedigree;
 import waffleoRai_GUITools.ComponentGroup;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
 
@@ -57,6 +63,7 @@ public class VarViewer extends JFrame{
 	private String lastExport;
 	private String lastTruthset;
 	private String lastTable;
+	private String lastPedigree;
 	
 	private JLabel lblVarCount;
 	
@@ -306,6 +313,31 @@ public class VarViewer extends JFrame{
 		table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 		table.setFillsViewportHeight(true);
 		scrollPane.setViewportView(table);
+		table.addMouseListener(new MouseAdapter(){
+			
+			private int lastr = -1;
+			private int lastl = -1;
+			
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				
+				if (!manager.pedigreeLoaded()) return;
+				
+				int r = table.getSelectedRow();
+				int l = table.getSelectedColumn();
+				if (lastr == r && lastl == l)
+				{
+					lastr = -1;
+					lastl = -1;
+					openCandidateInfo(r);
+				}
+				else
+				{
+					lastr = r;
+					lastl = l;
+				}
+			}
+		});
 		
 		JPanel panel = new JPanel();
 		panel.setMaximumSize(new Dimension(32767, 50));
@@ -437,6 +469,7 @@ public class VarViewer extends JFrame{
 	
 	public void loadVCF()
 	{
+		//TODO: Update for candidate compatibility
 		JFileChooser fc = new JFileChooser(this.lastVCF);
 		fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
 		fc.addChoosableFileFilter(new FileFilter()
@@ -686,14 +719,87 @@ public class VarViewer extends JFrame{
 		}
 	}
 	
+	public void openCandidateInfo(int i)
+	{
+		if (!manager.pedigreeLoaded()) return;
+		
+		//Get candidate and pedigree
+		Candidate c = manager.getLinkedCandidate(i);
+		Pedigree fam = manager.getPedigree();
+		if (c == null) return;
+		if (fam == null) return;
+		
+		CandidateInfoForm dialog = new CandidateInfoForm(c, fam);
+		dialog.setLocationRelativeTo(this);
+		SwingWorker<Void, Void> task = new SwingWorker<Void, Void>(){
+
+			protected Void doInBackground() throws Exception 
+			{
+				dialog.render();
+				return null;
+			}
+		
+			
+		};
+		task.execute();
+
+	}
+	
 	public void openPedigreeForm()
 	{
-		
+		if (manager == null)
+		{
+			showError("Fatal Error: No view manager present!");
+			System.exit(1);
+		}
+		if (!manager.poolLoaded())
+		{
+			showError("Please load a VCF or BED file!");
+			return;
+		}
+		PedigreeForm dialog = new PedigreeForm(this, manager);
+		dialog.setLocationRelativeTo(this);
+		dialog.setLastPath(lastPedigree);
+		dialog.addWindowListener(new WindowAdapter(){
+			
+			public void windowClosing(WindowEvent e)
+			{
+				lastPedigree = dialog.getLastPath();
+				dialog.dispose();
+			}
+		});
+		dialog.render();
 	}
 	
 	public void editAdvancedFilters()
 	{
+		if (manager == null)
+		{
+			showError("Fatal Error: No view manager present!");
+			System.exit(1);
+		}
+		if (!manager.poolLoaded())
+		{
+			showError("Please load a VCF or BED file!");
+			return;
+		}
+		if (!manager.pedigreeLoaded())
+		{
+			showError("Please load pedigree to edit advanced filters!");
+			return;
+		}
 		
+		MoreFilterForm dialog = new MoreFilterForm(this, manager);
+		dialog.setLocationRelativeTo(this);
+		dialog.addWindowListener(new WindowAdapter(){
+			
+			public void windowClosing(WindowEvent e)
+			{
+				dialog.dispose();
+			}
+		});
+		dialog.pack();
+		dialog.setVisible(true);
 	}
 	
 	/* --- Path Bookmarking --- */

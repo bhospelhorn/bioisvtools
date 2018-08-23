@@ -3,9 +3,11 @@ package hospelhornbg_sviewerGUI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import javax.swing.DefaultListModel;
@@ -19,6 +21,7 @@ import hospelhornbg_bioinformatics.VariantFilter;
 import hospelhornbg_bioinformatics.VariantPool;
 import hospelhornbg_bioinformatics.VariantPool.InfoDefinition;
 import hospelhornbg_genomeBuild.Contig;
+import hospelhornbg_genomeBuild.Gene;
 import hospelhornbg_genomeBuild.GeneFunc;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
@@ -39,6 +42,7 @@ public class ViewManager {
 	private Pedigree family;
 	
 	private List<Candidate> candidateList;
+	private Map<Integer, Candidate> visibleCandidateLinks;
 	
 		// Genome Build
 	
@@ -97,7 +101,10 @@ public class ViewManager {
 		SVCI("SV Confidence Intervals"),
 		SVCI95("SV Confidence Intervals (95%)"),
 		OTHERINFO("Info Field [GENERAL]"), //Lumpy stuff will just have to go here.
-		SAMPLEGENO("Sample Genotype [GENERAL]");
+		SAMPLEGENO("Sample Genotype [GENERAL]"),
+		SEGREGATION("Inheritance Pattern"),
+		POSITION_EFF("Position Effect"),
+		GENE("Gene");
 		
 		private String label;
 		
@@ -156,6 +163,7 @@ public class ViewManager {
 		harshBND = false;
 		family = null;
 		candidateList = null;
+		visibleCandidateLinks = new HashMap<Integer, Candidate>();
 		
 		build = GenomeBuild.loadStandardBuild(genomebuild);
 		if (build == null)
@@ -163,6 +171,10 @@ public class ViewManager {
 			throw new IllegalArgumentException();
 		}
 		genes = GeneSet.loadRefGene(build);
+		
+		passedEffects = new HashSet<GeneFunc>();
+		passedInheritance = new HashSet<Inheritance>();
+		passUnpairedHalfHets = true;
 	}
 	
 	/* --- Build --- */
@@ -272,6 +284,9 @@ public class ViewManager {
 		if (family != null)
 		{
 			candidateList = Inheritor.getCandidates(mainpool, family, genes);	
+			if(!includedColumns.contains(ViewColumn.SEGREGATION)) includedColumns.add(ViewColumn.SEGREGATION);
+			if(!includedColumns.contains(ViewColumn.GENE))includedColumns.add(ViewColumn.GENE);
+			if(!includedColumns.contains(ViewColumn.POSITION_EFF))includedColumns.add(ViewColumn.POSITION_EFF);
 		}
 	}
 	
@@ -301,6 +316,11 @@ public class ViewManager {
 		{
 			passedEffects.add(e);
 		}
+	}
+	
+	public void clearCodingEffects()
+	{
+		passedEffects.clear();
 	}
 	
 	public Set<Inheritance> getPassedInheritancePatterns()
@@ -334,6 +354,12 @@ public class ViewManager {
 		passUnpairedHalfHets = b;
 	}
 
+	public void clearInheritancePatterns()
+	{
+		passedInheritance.clear();
+		passUnpairedHalfHets = false;
+	}
+	
 	public String[] getColumnHeader()
 	{
 		String[] columns = new String[getNumberColumns()];
@@ -751,6 +777,14 @@ public class ViewManager {
 	
 	public List<Variant> getFilteredSet()
 	{
+		if (pedigreeLoaded())
+		{
+			List<Candidate> cset = getFilteredCandidateSet();
+			int sz = cset.size();
+			List<Variant> vset = new ArrayList<Variant>(sz + 1);
+			for (Candidate c : cset) vset.add(c.getVariant());
+			return vset;
+		}
 		List<Variant> sourceset = mainpool.getVariants();
 		return getFilteredSet(sourceset);
 	}
@@ -890,8 +924,7 @@ public class ViewManager {
 	
 	/* --- Variant View --- */
 	
-	//TODO: Update
-	public String[][] getTable()
+	private String[][] getTable_var()
 	{
 		List<Variant> filtered = getFilteredSet();
 		int cols = getNumberColumns();
@@ -931,6 +964,65 @@ public class ViewManager {
 		}
 		
 		return data;
+	}
+	
+	private String[][] getTable_cand()
+	{
+		if (candidateList == null) return null;
+		visibleCandidateLinks.clear();
+		List<Candidate> filtered = getFilteredCandidateSet();
+		int cols = getNumberColumns();
+		int sCols = includedColumns.size();
+		String[][] data = new String[filtered.size()][cols];
+		
+		int i = 0;
+		for (Candidate n : filtered)
+		{
+			Variant v = n.getVariant();
+			int l = 0;
+			for (int j = 0; j < sCols; j++)
+			{
+				ViewColumn c = includedColumns.get(j);
+				if (c == ViewColumn.OTHERINFO)
+				{
+					for (String k : infoColumns)
+					{
+						data[i][l] = getInfoString(k, v);
+						l++;
+					}
+				}
+				else if (c == ViewColumn.SAMPLEGENO)
+				{
+					for (String s : sampleColumns)
+					{
+						data[i][l] = getSampleGenoString(s, v);
+						l++;
+					}
+				}
+				else 
+				{
+					data[i][l] = getPropertyString(c, n);
+					l++;
+				}
+			}
+			i++;
+			visibleCandidateLinks.put(i, n);
+		}
+		
+		return data;
+	}
+	
+	public String[][] getTable()
+	{
+		if (candidateList == null) return getTable_var();
+		return getTable_cand();
+	}
+	
+	public Candidate getLinkedCandidate(int tblIndex)
+	{
+		if (candidateList == null) return null;
+		if (tblIndex < 0) return null;
+		return this.visibleCandidateLinks.get(tblIndex);
 	}
 	
 	public String getPropertyString(ViewColumn c, Variant v)
@@ -1030,10 +1122,135 @@ public class ViewManager {
 			else return "";
 		case VARIANTID:
 			return v.getVarID();
+		case GENE:
+			return ""; //Candidate only
+		case POSITION_EFF:
+			return ""; //Candidate only
+		case SEGREGATION:
+			return ""; //Candidate only
+		default:
+			break;
 		}
 		return "";
 	}
 
+	public String getPropertyString(ViewColumn c, Candidate n)
+	{
+		if (n == null) return "";
+		Variant v = n.getVariant();
+		if (v == null) return "";
+		switch(c)
+		{
+		case ALTALLELES:
+			int nAlts = v.countAltAlleles();
+			if (nAlts < 1) return "";
+			if (nAlts == 1)
+			{
+				return v.getAltAllele(0);
+			}
+			String[] alts = v.getAllAltAlleles();
+			if (alts != null && alts.length > 0)
+			{
+				String s = "";
+				for (String a : alts)
+				{
+					s += a + "\n";
+				}
+				s = s.substring(0, s.length() - 1);
+				return s;
+			}
+			else return "";
+		case CHROM: return v.getChromosome().getUDPName();
+		case CONFIRMED:
+			if (v.isConfirmed()) return "#";
+			else return "";
+		case FILTERS:
+			if (v.passedAllFilters()) return "PASS";
+			String[] filters = v.getFiltersFailed();
+			if (filters != null && filters.length > 0)
+			{
+				String s = "";
+				for (String f : filters)
+				{
+					s += f + "\n";
+				}
+				s = s.substring(0, s.length() - 1);
+				return s;
+			}
+			else return "";
+		case OTHERINFO:
+			return ""; //This should be accessed another way.
+		case POSITION:
+			return formatInteger(v.getPosition());
+		case QUALITY:
+			return Double.toString(v.getQuality());
+		case REFALLELE:
+			return v.getRefAllele();
+		case SAMPLEGENO:
+			return ""; //This should be accessed another way.
+		case SVCI:
+			if (v instanceof StructuralVariant)
+			{
+				StructuralVariant sv = (StructuralVariant)v;
+				int sl = sv.getCIDiff(false, false, false);
+				int sh = sv.getCIDiff(false, false, true);
+				int el = sv.getCIDiff(true, false, false);
+				int eh = sv.getCIDiff(true, false, true);
+				return sl + " : " + sh + " || " + el + " : " + eh;
+			}
+			else return "";
+		case SVCI95:
+			if (v instanceof StructuralVariant)
+			{
+				StructuralVariant sv = (StructuralVariant)v;
+				int sl = sv.getCIDiff(false, true, false);
+				int sh = sv.getCIDiff(false, true, true);
+				int el = sv.getCIDiff(true, true, false);
+				int eh = sv.getCIDiff(true, true, true);
+				return sl + " : " + sh + " || " + el + " : " + eh;
+			}
+			else return "";
+		case SVEND:
+			if (v instanceof StructuralVariant)
+			{
+				StructuralVariant sv = (StructuralVariant)v;
+				return formatInteger(sv.getEndPosition());
+			}
+			else return "";
+		case SVLEN:
+			if (v instanceof StructuralVariant)
+			{
+				StructuralVariant sv = (StructuralVariant)v;
+				return formatInteger(sv.getSVLength());
+			}
+			else return "";
+		case SVTYPE:
+			if (v instanceof StructuralVariant)
+			{
+				StructuralVariant sv = (StructuralVariant)v;
+				return sv.getType().toString();
+			}
+			else return "";
+		case VARIANTID:
+			return v.getVarID();
+		case GENE:
+			Gene g = n.getGene();
+			if (g == null) return "[None]";
+			return g.getName();
+		case POSITION_EFF:
+			GeneFunc e = v.getGeneFunction();
+			if (e == null) return "[Unknown]";
+			return e.toString();
+		case SEGREGATION:
+			Inheritance ip = n.getInheritancePattern();
+			if (ip == null) return "[Unknown]";
+			return ip.toString();
+		default:
+			break;
+		}
+		return "";
+	}
+	
 	public String getInfoString(String fieldKey, Variant v)
 	{
 		if (v == null) return "";
