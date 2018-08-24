@@ -49,14 +49,17 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 1.2.1 -> 1.2.2 | July 29, 2018
  * 		Added ability to look up gene by name
  * 		Annotation methods also return list of genes for non-intergenic variants.
+ * 
+ * 1.2.2 -> 1.2.3 | August 23, 2018
+ * 		Bug fix - one of the package resources loaders was still trying to use the package path directly
  */
 
 
 /**
  * A set of gene annotations for a genome build.
  * @author Blythe Hospelhorn
- * @version 1.2.2
- * @since July 29, 2018
+ * @version 1.2.3
+ * @since August 23, 2018
  *
  */
 public class GeneSet 
@@ -1985,9 +1988,11 @@ public class GeneSet
 		String packPath = packPathMap.get(buildname);
 		if (packPath == null) throw new IllegalArgumentException();
 		GeneSet gs = null;
+		InputStream is = GenomeBuild.class.getResourceAsStream(packPath);
 		try 
 		{
-			gs = new GeneSet(packPath, gb, true);
+			gs = new GeneSet(is, gb, true);
+			is.close();
 		} 
 		catch (UnsupportedFileTypeException e) 
 		{

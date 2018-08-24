@@ -341,6 +341,9 @@ public class Pedigree {
 		if (fam == null || fam.isEmpty()) return;
 		Variant v = c.getVariant();
 		if (v == null) return;
+		Genotype pbgeno = v.getSampleGenotype(proband.getName());
+		int[] alleles = pbgeno.getAlleles();
+		if (alleles != null && alleles.length >= 1) c.addAllele(alleles[0]);
 		for (Individual i : fam)
 		{
 			Genotype g = v.getSampleGenotype(i.getName());
@@ -348,7 +351,7 @@ public class Pedigree {
 			genomap.put(i, g);
 		}
 		
-		Inheritor.checkHeterozygousCandidate(genomap, c);
+		Inheritor.checkHomozygousCandidate(genomap, c);
 		//Now, check against local pedigree...
 		adjustInheritance(proband, c);
 		
@@ -369,7 +372,7 @@ public class Pedigree {
 			genomap.put(i, g);
 		}
 		
-		Inheritor.checkHomozygousCandidate(genomap, c);
+		Inheritor.checkHeterozygousCandidate(genomap, c);
 		//Now, check against local pedigree...
 		adjustInheritance(proband, c);
 	}
@@ -434,11 +437,9 @@ public class Pedigree {
 		Individual current = proband;
 		if (current.equals(i)) return "Proband";
 		
-		//Check parents (go up)
+		Relationship r = proband.getRelationship(i);
 		
-		//Check back down
-		
-		return null;
+		return r.toString_English();
 	}
 	
 }

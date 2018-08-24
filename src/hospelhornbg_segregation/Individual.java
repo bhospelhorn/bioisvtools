@@ -197,11 +197,14 @@ public class Individual implements Comparable<Individual>{
 	
 	private void checkAncestor(List<Individual> list, Individual i, Map<Individual, Integer> othertree)
 	{
+		//System.err.println("DEBUG Individual.checkAncestor | Checking if " + i.getName() + " is an ancestor of other...");
 		if (othertree.containsKey(i))
 		{
+			//System.err.println("DEBUG Individual.checkAncestor | Yes! " + i.getName() + " is an ancestor of other!");
 			list.add(i);
 			return;
 		}
+		//System.err.println("DEBUG Individual.checkAncestor | " + i.getName() + " is not a direct ancestor of other. Checking parents of " + i.getName());
 		
 		Individual p1 = i.getParent1();
 		Individual p2 = i.getParent2();
@@ -216,9 +219,15 @@ public class Individual implements Comparable<Individual>{
 		if (other == null) return alist;
 		
 		Map<Individual, Integer> othertree = other.getAncestorTree();
+		//System.err.println("DEBUG Individual.getRootCommonAncestors | Other Indiv Ancestor list: ");
+		//Set<Individual> keyset = othertree.keySet();
+		//for (Individual oa : keyset) System.err.println("\t" + oa.getName() + "\t" + othertree.get(oa));
 		
+		//System.err.println("DEBUG Individual.getRootCommonAncestors | Comparing ancestors with \"other\" " + other.getName());
 		checkAncestor(alist, this, othertree);
 		
+		//System.err.println("DEBUG Individual.getRootCommonAncestors | Common Ancestor(s) of " + this.getName() + " and " + other.getName() + ": ");
+		//for (Individual a : alist) System.err.println("\t" + a.getName());
 		return alist;
 	}
 
@@ -241,12 +250,14 @@ public class Individual implements Comparable<Individual>{
 		{
 			//this is an ancestor of other
 			int g = other.getGenerationDifference(this) * -1;
+			//System.err.println("DEBUG Individual.getRelationship | " + this.getName() + " is an ancestor of " + other.getName());
 			return new DescendantRelationship(this, other, g);
 		}
 		else if (alist.contains(other))
 		{
 			//other is an ancestor of this
 			int g = this.getGenerationDifference(other);
+			//System.err.println("DEBUG Individual.getRelationship | " + other.getName() + " is an ancestor of " + this.getName());
 			return new DescendantRelationship(this, other, g);
 		}
 		
@@ -262,6 +273,7 @@ public class Individual implements Comparable<Individual>{
 			{
 				a1 = a;
 				a2 = null;
+				gmin = gdiff;
 			}
 			else if (gdiff == gmin)
 			{
@@ -273,10 +285,12 @@ public class Individual implements Comparable<Individual>{
 		if (a1 == null) return null;
 		if (a2 != null)
 		{
+			//System.err.println("DEBUG Individual.getRelationship | " + this.getName() + " and " + other.getName() + " share a pair of ancestors at a generational offset of " + gmin);
 			return new PairRelationship(this, other, a1, a2);
 		}
 		else
 		{
+			//System.err.println("DEBUG Individual.getRelationship | " + this.getName() + " and " + other.getName() + " share a single ancestor at a generation offset of " + gmin);
 			return new SingleRelationship(this, other, a1);
 		}
 		
