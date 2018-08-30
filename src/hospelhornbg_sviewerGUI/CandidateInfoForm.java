@@ -39,6 +39,7 @@ public class CandidateInfoForm extends JDialog{
 	private Candidate iCandidate;
 	private Pedigree iFamily;
 	private Map<Integer, Candidate> iPartnerLink;
+	private Individual iProband;
 	
 	private JScrollPane spPartners;
 	private JScrollPane spGeno;
@@ -64,9 +65,10 @@ public class CandidateInfoForm extends JDialog{
 		updateGenotypeTable();
 	}
 	
-	public CandidateInfoForm(Candidate c, Pedigree f, Frame parent) 
+	public CandidateInfoForm(Candidate c, Pedigree f, Frame parent, Individual proband) 
 	{
 		super(parent, true);
+		iProband = proband;
 		//iDescendants = new LinkedList<CandidateInfoForm>();
 		setPreferredSize(new Dimension(420, 455));
 		setMinimumSize(new Dimension(420, 455));
@@ -273,7 +275,7 @@ public class CandidateInfoForm extends JDialog{
 		lblEffect.setBounds(305, 50, 98, 14);
 		getContentPane().add(lblEffect);
 		
-		Inheritance ip = iCandidate.getInheritancePattern();
+		Inheritance ip = iCandidate.getInheritancePattern(iProband);
 		JLabel lblIP = new JLabel("[ip]");
 		if (ip != null)
 		{
@@ -336,7 +338,7 @@ public class CandidateInfoForm extends JDialog{
 	private String[][] generateAndLinkPartnerTable()
 	{
 		iPartnerLink.clear();
-		List<Candidate> plist = iCandidate.getAllPartners();
+		List<Candidate> plist = iCandidate.getAllPartners(iProband);
 		if (plist == null) return null;
 		if (plist.isEmpty()) return null;
 		int sz = plist.size();
@@ -356,7 +358,7 @@ public class CandidateInfoForm extends JDialog{
 				tbl[i][3] = sv.getChromosome().getUDPName();
 				tbl[i][4] = Integer.toString(sv.getPosition());
 				tbl[i][5] = Integer.toString(sv.getEndPosition());
-				tbl[i][6] = p.getInheritancePattern().toString();
+				tbl[i][6] = p.getInheritancePattern(iProband).toString();
 			}
 			else
 			{
@@ -364,7 +366,7 @@ public class CandidateInfoForm extends JDialog{
 				tbl[i][3] = v.getChromosome().getUDPName();
 				tbl[i][4] = Integer.toString(v.getPosition());
 				tbl[i][5] = "";
-				tbl[i][6] = p.getInheritancePattern().toString();
+				tbl[i][6] = p.getInheritancePattern(iProband).toString();
 			}
 			i++;
 		}
@@ -386,7 +388,7 @@ public class CandidateInfoForm extends JDialog{
 	public void updatePartnerTable()
 	{
 		if (iCandidate == null) return;
-		if (!iCandidate.hasPartners())
+		if (!iCandidate.hasPartners(iProband))
 		{
 			tblPartners.setModel(new DefaultTableModel());
 			tblPartners.setEnabled(false);

@@ -26,10 +26,14 @@ import hospelhornbg_genomeBuild.GeneFunc;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_segregation.Candidate;
+import hospelhornbg_segregation.Individual;
 import hospelhornbg_segregation.Inheritance;
 import hospelhornbg_segregation.Inheritor;
 import hospelhornbg_segregation.Pedigree;
 
+
+//TODO: Important!! Did a quick patch to get rid of compiler errors! 
+//Need to make the Inheritance pattern columns their own object so can take Individual param!
 public class ViewManager {
 	
 	/* --- Constants --- */
@@ -806,28 +810,46 @@ public class ViewManager {
 			}
 		}
 		if (!epass) return false;
-		//See if segregation passes
-		Inheritance ip = c.getInheritancePattern();
+		//See if segregation passes - only needs to pass for one aff
+		List<Individual> affected = family.getAllAffected();
 		boolean spass = false;
-		for (Inheritance i : passedInheritance)
+		for (Individual aff : affected)
 		{
-			if (ip == i)
+			Inheritance ip = c.getInheritancePattern(aff);
+			for (Inheritance i : passedInheritance)
 			{
-				spass = true;
-				break;
+				if (ip == i)
+				{
+					spass = true;
+					break;
+				}
+			}	
+			if (spass) break;
+		}
+		
+		if (!spass) return false;
+		//See if unpaired halfhet - only fails if its ONLY ip is unpaired halfhet
+		if(!passUnpairedHalfHets)
+		{
+			spass = false;
+			for (Individual aff : affected)
+			{
+				Inheritance ip = c.getInheritancePattern(aff);
+				if (ip == Inheritance.HALF_HET || ip == Inheritance.HALF_HET_SV)
+				{
+					if (c.hasPartners(aff))
+					{
+						spass = true;
+						break;
+					}
+				}	
+				else{
+					spass = true;
+					break;
+				}
 			}
 		}
 		if (!spass) return false;
-		//See if unpaired halfhet
-		if(!passUnpairedHalfHets)
-		{
-			if (ip == Inheritance.HALF_HET || ip == Inheritance.HALF_HET_SV)
-			{
-				List<Candidate> partners = c.getAllPartners();
-				if (partners == null) return false;
-				if (partners.isEmpty()) return false;
-			}
-		}
 		return true;
 	}
 	
@@ -1001,7 +1023,7 @@ public class ViewManager {
 				}
 				else 
 				{
-					data[i][l] = getPropertyString(c, n);
+					data[i][l] = getPropertyString(c, n, family.getProband());
 					l++;
 				}
 			}
@@ -1134,7 +1156,7 @@ public class ViewManager {
 		return "";
 	}
 
-	public String getPropertyString(ViewColumn c, Candidate n)
+	public String getPropertyString(ViewColumn c, Candidate n, Individual pb)
 	{
 		if (n == null) return "";
 		Variant v = n.getVariant();
@@ -1242,7 +1264,7 @@ public class ViewManager {
 			if (e == null) return "[Unknown]";
 			return e.toString();
 		case SEGREGATION:
-			Inheritance ip = n.getInheritancePattern();
+			Inheritance ip = n.getInheritancePattern(pb);
 			if (ip == null) return "[Unknown]";
 			return ip.toString();
 		default:

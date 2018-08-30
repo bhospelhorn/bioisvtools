@@ -20,10 +20,9 @@ public class FamTest {
 
 	public static void main(String[] args) 
 	{
-		if (args.length < 3)
+		if (args.length < 4)
 		{
-			System.err.println("ERROR: Insufficient arguments detected... ");
-			System.err.println("args.length = " + args.length);
+			System.err.println("ERROR: Insufficient arguments detected...");
 			System.exit(1);
 		}
 		//Parse args
@@ -33,9 +32,9 @@ public class FamTest {
 		
 		System.err.println("Reading arguments...");
 		
-		String pedpath = args[0];
-		String vcfpath = args[1];
-		String gbuild = args[2];
+		String pedpath = args[1];
+		String vcfpath = args[2];
+		String gbuild = args[3];
 		
 		if (pedpath == null || pedpath.isEmpty())
 		{
@@ -110,7 +109,7 @@ public class FamTest {
 		//Load geneset
 		System.err.println("Loading gene information...");
 		GeneSet gs = GeneSet.loadRefGene(gb);
-		if (gs == null)
+		if (gb == null)
 		{
 			System.err.println("ERROR: Gene set for build by name\"" + gbuild + "\" could not be opened!");
 			System.exit(1);
@@ -146,20 +145,32 @@ public class FamTest {
 		
 		//Table
 		//[Normal]
-		//VarID	Chr:Pos-End	Type	Size	PosEff	Gene(s)	Transcript(s)	Allele	SegPattern	Partners	Genotypes...
+		//VarID	Chr:Pos-End	Type	Size	PosEff	Gene(s)	Transcript(s)	Allele	[SegPattern	Partners]...	Genotypes...
 		//[BND/TRA]
-		//VarID	Chr:Pos|Chr2:Pos2	Type	Size	PosEff	Gene(s)	Transcript(s)	Allele	SegPattern	Partners	Genotypes...
+		//VarID	Chr:Pos|Chr2:Pos2	Type	Size	PosEff	Gene(s)	Transcript(s)	Allele	[SegPattern	Partners]...	Genotypes...
 		int ncand = clist.size();
 		System.out.println("-----------------------------");
 		System.out.println("##Candidates found: " + ncand);
-		String header = "VARID\tPOS\tTYPE\tSIZE\tPOSEFF\tGENE\tTID\tNCRNA\tALLELES\tSEG\tSEGPARTNER";
+		String header = "VARID\tPOS\tTYPE\tSIZE\tPOSEFF\tGENE\tTID\tALLELE";
+		List<Individual> affected = fam.getAllAffected();
+		for (Individual aff : affected){
+			header += "\t" + "SEG_" + aff.getName();
+			header += "\t" + "SEGPARTNERS" + aff.getName();
+		}
 		for (Individual i : famlist) header += "\t" + i.getName();
 		System.out.println("##" + header);
+		
 		for (Candidate c : clist)
 		{
 			Variant v = c.getVariant();
 			String rec = "";
+			
+			//VARID
 			rec += v.getVarID() + "\t";
+			
+			//CHROM/POS
+			//TYPE
+			//SIZE
 			//This field depends upon what v is...
 			if (v instanceof StructuralVariant)
 			{
@@ -173,8 +184,7 @@ public class FamTest {
 				}
 				else if (sv instanceof Translocation)
 				{
-					Translocation tl = (Translocation) sv;
-					rec += tl.getChromosome1().getUDPName() + ":";
+					rec += sv.getChromosome().getUDPName() + ":";
 					rec += sv.getPosition() + "|";
 					rec += sv.getEndChromosome().getUDPName() + ":";
 					rec += sv.getEndPosition() + "\t";
@@ -194,68 +204,50 @@ public class FamTest {
 				rec += "1bp\t";
 			}
 			
+			//POSEFF
 			rec += v.getGeneFuncINFO() + "\t";
+			
+			//GENE, TID
 			Gene g = c.getGene();
-			if (g != null)
+			rec += g.getName() + "\t";
+			rec += g.getID() + "\t";
+			
+			//ALLELE
+			rec += c.getAllele() + "\t";
+			
+			//SEG & SEGPARTNERS
+			for (Individual aff : affected)
 			{
-				rec += g.getName() + "\t";
-				rec += g.getID() + "\t";	
-				rec += g.is_ncRNA() + "\t";
-			}
-			else
-			{
-				rec += "[N/A]\t";
-				rec += "[N/A]\t";
-				rec += "[N/A]\t";
-			}
-			List<Integer> alleles = c.getAlleles();
-			boolean first = true;
-			if (alleles != null)
-			{
-				for (Integer a : alleles)
-				{
-					if(!first) rec += ",";
-					rec += a;
-					first = false;
-				}
-			}
-			else
-			{
-				rec += "[No alleles]";
-			}
-			rec += "\t";
-			rec += c.getInheritancePattern().toString() + "\t";
-			//Partners
-			List<Candidate> plist = c.getAllPartners();
-			if (plist != null && !plist.isEmpty())
-			{
-				first = true;
+				rec += c.getInheritancePattern(aff).toString() + "\t";
+				
+				List<Candidate> plist = c.getAllPartners(aff);
+				boolean first = true;
 				for (Candidate p : plist)
 				{
-					if(!first) rec += ",";
-					rec += p.getVariant().getVarID();
+					if(!first) rec += ";";
+					rec += p.getVariant().getVarID() + "," + c.getAllele();
 					first = false;
-				}	
-			}
-			else
-			{
-				rec += "[None]";
+				}
+				rec += "\t";
 			}
 			
-			//rec += "\t";
-			//Genotypes
+			//GENOTYPES
+			boolean first = true;
 			for (Individual i : famlist)
 			{
 				Genotype gt = v.getSampleGenotype(i.getName());
+				if (!first) rec += "\t";
 				if (gt == null)
 				{
-					rec += "\tnull";
+					rec += "null";
 				}
 				else
 				{
-					rec += "\t" + gt.getField(Genotype.INFODEF_GT.getKey());
+					rec += gt.getField(Genotype.INFODEF_GT.getKey());
 				}
+				first = false;
 			}
+			
 			//Print
 			System.out.println(rec);
 		}

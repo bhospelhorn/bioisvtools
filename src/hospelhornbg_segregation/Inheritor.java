@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import hospelhornbg_bioinformatics.AffectedStatus;
 import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_bioinformatics.VariantPool;
@@ -172,283 +173,177 @@ public class Inheritor {
 		return (p1Has || p2Has);
 	}
 
-	public static Inheritance checkHomozygousCandidate(Individual target, Genotype tgeno, Individual other, Genotype ogeno, int allele)
-	{
-		//NULL means inconclusive
-		if (target == null) return null;
-		if (other == null) return null;
-		if (!target.isAffected()) return null;
-		if (tgeno.isGenotypeUnknown()) return null;
-		if (ogeno.isGenotypeUnknown()) return null;
-		
-		int[] t_all = tgeno.getAlleles();
-		if (t_all == null || t_all.length < 1) return null;
-		//int tallele = tgeno.getAlleles()[0];
-		if (!arrayContains(t_all, allele)) return null;
-		
-		int[] o_all = ogeno.getAlleles();
-		if (o_all == null || o_all.length < 1) return null;
-		//if (!arrayContains(o_all, tallele)) return null;
-		if (!arrayContains(o_all, allele)) return null;
-		
-		//Now for the actual analysis
-		if (other.isAffected()) return Inheritance.DOMINANT;
-		else
-		{
-			if(ogeno.isHomozygous())
-			{
-				//Check for unusual CN
-				int tcnv = t_all.length;
-				int ocnv = o_all.length;
-				if (tcnv != 2 && tcnv != ocnv) return Inheritance.HALF_HET_SV;
-			}
-			else return Inheritance.HOM_REC;
-		}
-		
-		return Inheritance.UNRESOLVED; //DNS
-	}
-
-	public static void checkHeterozygousCandidate(Map<Individual, Genotype> genomap, Candidate c)
+	public static void checkHeterozygousCandidate(Map<Individual, Genotype> genomap, Individual proband, Candidate c)
 	{
 		if (genomap == null || genomap.isEmpty()) return;
+		if (c == null) return;
+		int allele = c.getAllele();
 		Set<Individual> allindivs = genomap.keySet();
 		List<Individual> unaffected = new LinkedList<Individual>();
-		List<Individual> affected = new LinkedList<Individual>();
-		Set<Integer> allelePool = new HashSet<Integer>();
+		//List<Individual> affected = new LinkedList<Individual>();
+		
+		//Load lists
 		for (Individual indiv : allindivs)
 		{
-			if (indiv.isAffected()) affected.add(indiv);
-			else unaffected.add(indiv);
-			int[] alleles = genomap.get(indiv).getAlleles();
-			if (alleles != null && alleles.length > 0)
-			{
-				for (int a : alleles) allelePool.add(a);
-			}
+			if (indiv.getAffectedStatus() == AffectedStatus.UNAFFECTED) unaffected.add(indiv);
+			//else if (indiv.getAffectedStatus() == AffectedStatus.AFFECTED) affected.add(indiv);
 		}
 		
-		//Eliminate all alleles that are seen homozygous in unaffected indivs
+		//1. Are any unaffected hom for this allele?
 		for (Individual indiv : unaffected)
 		{
 			Genotype g = genomap.get(indiv);
 			if (g == null) continue;
-			if (g.isGenotypeUnknown()) continue;
 			if (g.isHomozygous())
 			{
-				//Get the allele
-				int[] i_all = g.getAlleles();
-				if (i_all != null && i_all.length > 0)
+				if (g.hasAllele(allele))
 				{
-					allelePool.remove(i_all[0]);
+					if (cnvhh_rescue(genomap, proband)) c.setInheritancePattern(proband, Inheritance.HALF_HET_SV);
+					else c.setInheritancePattern(proband, Inheritance.UNRESOLVED);
+					return;
 				}
 			}
 		}
-		if(allelePool.isEmpty()){
-			c.setInheritancePattern(Inheritance.UNRESOLVED);
-			return;
-		}
-		
-		//More than 1 affected?
-		if (affected.size() < 2){
-			c.setInheritancePattern(Inheritance.HALF_HET);
-			//Get the allele(s) in question...
-			for (int a : allelePool) c.addAllele(a);
-			return;
-		}
-		
-		//Are there any alleles that are only in unaffected individuals?
-		//If so, remove
-		Set<Integer> removelist = new HashSet<Integer>();
-		for (int a : allelePool)
+
+		//2. Do any unaffected have that allele at all?
+		for (Individual indiv : unaffected)
 		{
-			for (Individual indiv : unaffected)
+			Genotype g = genomap.get(indiv);
+			if (g == null) continue;
+			if (g.hasAllele(allele))
 			{
-				Genotype g = genomap.get(indiv);
-				if (g == null) continue;
-				if (g.isGenotypeUnknown()) continue;
-				int[] i_all = g.getAlleles();
-				if (arrayContains(i_all, a)) removelist.add(a);
+				c.setInheritancePattern(proband, Inheritance.HALF_HET);
+				return;
 			}
 		}
-		allelePool.removeAll(removelist);
 		
-		//Any left?
-		if (allelePool.isEmpty()){
-			c.setInheritancePattern(Inheritance.HALF_HET);
-			//Get the allele(s) in question...
-			for (int a : allelePool) c.addAllele(a);
-			return;
-		}
-		
-		//Is there a remaining allele that's in all affecteds?
-		removelist.clear();
-		for (int a : allelePool)
-		{
-			for (Individual indiv : affected)
-			{
-				Genotype g = genomap.get(indiv);
-				if (g == null) continue;
-				if (g.isGenotypeUnknown()) continue;
-				int[] i_all = g.getAlleles();
-				if (!arrayContains(i_all, a)) removelist.add(a);
-			}
-		}
-		allelePool.removeAll(removelist);
-		
-		if (allelePool.isEmpty()){
-			//Nothing left in allele pool, so need to retrieve potential halfhets
-			c.setInheritancePattern(Inheritance.HALF_HET);
-			for (int a : removelist) c.addAllele(a);
-			return;
-		}
-		
-		c.setInheritancePattern(Inheritance.DOMINANT);
-		//Get the allele(s) in question...
-		for (int a : allelePool) c.addAllele(a);
+
+		//3. Any other affected have allele? Any het?
+		c.setInheritancePattern(proband, Inheritance.DOMINANT);
 	}
 
-	public static void checkHomozygousCandidate(Map<Individual, Genotype> genomap, Candidate c)
+	public static void checkHomozygousCandidate(Map<Individual, Genotype> genomap, Individual proband, Candidate c)
 	{
 		if (genomap == null || genomap.isEmpty()) return;
 		if (c == null) return;
-		List<Integer> alist = c.getAlleles();
-		if (alist.isEmpty()) return;
-		int allele = alist.get(0);
+		int allele = c.getAllele();
 		Set<Individual> allindivs = genomap.keySet();
 		List<Individual> unaffected = new LinkedList<Individual>();
-		List<Individual> affected = new LinkedList<Individual>();
+		//List<Individual> affected = new LinkedList<Individual>();
+		
+		//Load lists
+		for (Individual indiv : allindivs)
+		{
+			if (indiv.getAffectedStatus() == AffectedStatus.UNAFFECTED) unaffected.add(indiv);
+			//else if (indiv.getAffectedStatus() == AffectedStatus.AFFECTED) affected.add(indiv);
+		}
+		
+		//1. Are any unaffected hom for this allele?
+		for (Individual indiv : unaffected)
+		{
+			Genotype g = genomap.get(indiv);
+			if (g == null) continue;
+			if (g.isHomozygous())
+			{
+				if (g.hasAllele(allele))
+				{
+					if (cnvhh_rescue(genomap, proband)) c.setInheritancePattern(proband, Inheritance.HALF_HET_SV);
+					else c.setInheritancePattern(proband, Inheritance.UNRESOLVED);
+					return;
+				}
+			}
+		}
+		
+		//2. Do any unaffected have that allele at all?
+		for (Individual indiv : unaffected)
+		{
+			Genotype g = genomap.get(indiv);
+			if (g == null) continue;
+			if (g.hasAllele(allele))
+			{
+				c.setInheritancePattern(proband, Inheritance.HOM_REC);
+				return;
+			}
+		}
+		
+		//3. Any other affected have allele? Any het?
+		c.setInheritancePattern(proband, Inheritance.DOMINANT);
+		
+	}
+	
+	private static boolean cnvhh_rescue(Map<Individual, Genotype> genomap, Individual proband)
+	{
+		Set<Individual> allindivs = genomap.keySet();
+		List<Individual> unaffected = new LinkedList<Individual>();
 		
 		for (Individual indiv : allindivs)
 		{
-			if (indiv.isAffected()) affected.add(indiv);
-			else unaffected.add(indiv);
+			if (indiv.getAffectedStatus() == AffectedStatus.UNAFFECTED) unaffected.add(indiv);
+			//else if (indiv.getAffectedStatus() == AffectedStatus.AFFECTED) affected.add(indiv);
 		}
 		
-		int a_ind = 0;
-		Inheritance ih = null;
-		int naff = affected.size();
-		for (Individual aff : affected)
+		int pbcnv = genomap.get(proband).getCopyNumber();
+		
+		for (Individual indiv : unaffected)
 		{
-			a_ind++;
-			Genotype a_geno = genomap.get(aff);
-			Inheritance ih_aff = null;
-			for (Individual unaff : unaffected)
-			{
-				Genotype u_geno = genomap.get(unaff);
-				Inheritance ih_comp = checkHomozygousCandidate(aff, a_geno, unaff, u_geno, allele);
-				if (ih_comp == Inheritance.UNRESOLVED){
-					c.setInheritancePattern(Inheritance.UNRESOLVED);
-					return;
-				}
-				if (ih_comp == null) continue;
-				//comphetSV > dom > rec
-				if (ih_comp == Inheritance.HALF_HET_SV) ih_aff =  Inheritance.HALF_HET_SV;
-				else if (ih_comp == Inheritance.DOMINANT)
-				{
-					if (ih_aff == Inheritance.HOM_REC || ih_aff == null) ih_aff = Inheritance.DOMINANT;
-				}
-				else if (ih_comp == Inheritance.HOM_REC)
-				{
-					if (ih_aff == null) ih_aff = Inheritance.HOM_REC;
-				}
-			}
-			if (a_ind < naff)
-			{
-				for (int i = a_ind; i < naff; i++)
-				{
-					Individual oaff = affected.get(a_ind);
-					Genotype o_geno = genomap.get(oaff);
-					Inheritance ih_comp = checkHomozygousCandidate(aff, a_geno, oaff, o_geno, allele);
-					if (ih_comp == Inheritance.UNRESOLVED){
-						c.setInheritancePattern(Inheritance.UNRESOLVED);
-						return;
-					}
-					if (ih_comp == null) continue;
-					//comphetSV > dom > rec
-					if (ih_comp == Inheritance.HALF_HET_SV) ih_aff =  Inheritance.HALF_HET_SV;
-					else if (ih_comp == Inheritance.DOMINANT)
-					{
-						if (ih_aff == Inheritance.HOM_REC || ih_aff == null) ih_aff = Inheritance.DOMINANT;
-					}
-					else if (ih_comp == Inheritance.HOM_REC)
-					{
-						if (ih_aff == null) ih_aff = Inheritance.HOM_REC;
-					}
-				}
-			}
-			if (ih_aff == Inheritance.UNRESOLVED){
-				c.setInheritancePattern(Inheritance.UNRESOLVED);
-				return;
-			}
-			if (ih_aff == null) continue;
-			//comphetSV > dom > rec
-			if (ih_aff == Inheritance.HALF_HET_SV) ih =  Inheritance.HALF_HET_SV;
-			else if (ih_aff == Inheritance.DOMINANT)
-			{
-				if (ih == Inheritance.HOM_REC || ih == null) ih = Inheritance.DOMINANT;
-			}
-			else if (ih_aff == Inheritance.HOM_REC)
-			{
-				if (ih == null) ih = Inheritance.HOM_REC;
-			}
-			
+			Genotype g = genomap.get(indiv);
+			int cnv = g.getCopyNumber();
+			if (pbcnv == cnv) return false;
 		}
 		
-		if (ih == Inheritance.HALF_HET_SV){
-			//Get CNs of all affecteds, compare to CNs of all unaffecteds...
-			//Note suspicious CNs
-			//Check for deletions...
-			boolean delpass = true;
-			for (Individual a : affected)
-			{
-				Genotype ag = genomap.get(a);
-				if (ag == null) continue;
-				if (ag.getCopyNumber() >= 2){
-					delpass = false;
-					break;
-				}
-			}
-			if (delpass)
-			{
-				for (Individual u : unaffected)
-				{
-					Genotype ug = genomap.get(u);
-					if (ug == null) continue;
-					if (ug.getCopyNumber() < 2)
-					{
-						delpass = false;
-						break;
-					}
-				}
-			}
-			if (delpass) c.flagDEL_candidate(true);
-			//Check for duplications...
-			boolean duppass = true;
-			for (Individual a : affected)
-			{
-				Genotype ag = genomap.get(a);
-				if (ag == null) continue;
-				if (ag.getCopyNumber() <= 2){
-					duppass = false;
-					break;
-				}
-			}
-			if (duppass)
-			{
-				for (Individual u : unaffected)
-				{
-					Genotype ug = genomap.get(u);
-					if (ug == null) continue;
-					if (ug.getCopyNumber() > 2)
-					{
-						duppass = false;
-						break;
-					}
-				}
-			}
-			if (duppass) c.flagDUP_candidate(true);
-		}
+		return true;
+	}
+	
+	public static boolean isDenovo(Map<Individual, Genotype> genomap, Individual proband, int allele)
+	{
+		if (proband == null) return false;
+		Individual p1 = proband.getParent1();
+		Individual p2 = proband.getParent2();
 		
-		c.setInheritancePattern(ih);
+		//Does parent1 have the allele?
+		if (p1 != null)
+		{
+			Genotype g1 = genomap.get(p1);
+			if (g1.hasAllele(allele)) return false;
+		}
+
+		//Does parent2 have the allele?
+		if (p2 != null)
+		{
+			Genotype g2 = genomap.get(p2);
+			if (g2.hasAllele(allele)) return false;
+		}
+	
+		return true;
+	}
+	
+	public static void adjustInheritance(Map<Individual, Genotype> genomap, Individual proband, Candidate c)
+	{
+		if (genomap == null) return;
+		if (proband == null) return;
+		if (c == null) return;
+		
+		boolean dn = isDenovo(genomap, proband, c.getAllele());
+		if(!dn) return;
+		
+		Inheritance ip = c.getInheritancePattern(proband);
+		switch(ip)
+		{
+		case DOMINANT:
+			c.setInheritancePattern(proband, Inheritance.DENOVO_DOM);
+			break;
+		case HALF_HET:
+			c.setInheritancePattern(proband, Inheritance.DENOVO_HET);
+			break;
+		case HALF_HET_SV:
+			c.setInheritancePattern(proband, Inheritance.DENOVO_HET_SV);
+			break;
+		case HOM_REC:
+			c.setInheritancePattern(proband, Inheritance.DENOVO_REC);
+			break;
+		default:
+			break;
+		}
 	}
 	
 	/* --- Segregation --- */
@@ -495,6 +390,7 @@ public class Inheritor {
 		}
 		return false;
 	}
+
 	
 	public static List<Candidate> getCandidates(VariantPool varpool, Pedigree family, GeneSet genes)
 	{
@@ -511,73 +407,74 @@ public class Inheritor {
 		//Mark initial inheritance, gene annotate, generate initial candidate set
 		for (Variant v : variants)
 		{
-			Candidate cinit = family.getCandidate(v);
+			List<Candidate> cinitl = family.toCandidates(v);
 			//Match to genes...
 			List<Gene> glist = getVariantGenes(v, genes);
-			List<Candidate> split_cand = cinit.addGenes(glist);
-			if (split_cand == null || split_cand.isEmpty()) intergenics.add(cinit);
-			else
+			for (Candidate cinit : cinitl)
 			{
-				for (Candidate c : split_cand)
+				List<Candidate> split_cand = cinit.addGenes(glist);
+				if (split_cand == null || split_cand.isEmpty()) intergenics.add(cinit);
+				else
 				{
-					Gene cgene = c.getGene();
-					List<Candidate> clist = genemap.get(cgene);
-					if (clist == null)
+					for (Candidate c : split_cand)
 					{
-						clist = new LinkedList<Candidate>();
-						clist.add(c);
-						genemap.put(cgene, clist);
+						Gene cgene = c.getGene();
+						List<Candidate> clist = genemap.get(cgene);
+						if (clist == null)
+						{
+							clist = new LinkedList<Candidate>();
+							clist.add(c);
+							genemap.put(cgene, clist);
+						}
+						else clist.add(c);
 					}
-					else clist.add(c);
-				}
+				}	
 			}
 		}
 		
+		//Get affected indiv list
+		List<Individual> affected = family.getAllAffected();
+		
 		//Attempt to pair half-hets
+		//Have to have both candidates in an individual
 		Set<Gene> allgenes = genemap.keySet();
 		for (Gene g : allgenes)
 		{
-			List<Candidate> clist = genemap.get(g);
-			if (clist == null) continue;
+			List<Candidate> llist = genemap.get(g);
+			if (llist == null) continue;
+			List<Candidate> clist = new ArrayList<Candidate>(llist.size() + 1);
+			clist.addAll(llist);
 			if (clist.isEmpty()) continue;
 			int num = clist.size();
 			if (num < 2) continue;
-			//Scan for comphets and unroll...
-			List<Candidate> newlist = new ArrayList<Candidate>(num*2);
-			for (Candidate c : clist)
-			{
-				if (isInheritancePairable(c.getInheritancePattern()))
-				{
-					List<Candidate> unrolled = c.unroll();
-					if (unrolled != null) newlist.addAll(unrolled);
-					else newlist.add(c);
-				}
-				else newlist.add(c);
-			}
-			num = newlist.size();
-			genemap.put(g, newlist);
-			//List<Candidate> finallist = new LinkedList<Candidate>();
 			
+			//newlist is obsolete now - no unrolling needed
 			for (int i = 0; i < num - 1; i++)
 			{
-				Candidate c1 = newlist.get(i);
-				if (isInheritancePairable(c1.getInheritancePattern()))
+				Candidate c1 = clist.get(i);
+				for (Individual aff : affected)
 				{
-					for (int j = i+1; j < num; j++)
+					Inheritance ip = c1.getInheritancePattern(aff);
+					if (ip == null) continue;
+					if (isInheritancePairable(ip))
 					{
-						Candidate c2 = newlist.get(j);
-						if (isInheritancePairable(c2.getInheritancePattern()))
+						for (int j = i+1; j < num; j++)
 						{
-							//Try to pair!
-							boolean pairs = family.passCompHetPair(c1, c2);
-							if (pairs)
+							Candidate c2 = clist.get(j);
+							if (isInheritancePairable(c2.getInheritancePattern(aff)))
 							{
-								c1.addPartner(c2, c2.getAlleles());
-								c2.addPartner(c1, c1.getAlleles());
+								//Try to pair!
+								boolean pairs = family.checkPair(c1, c2);
+								if (pairs)
+								{
+									c1.addPartner(aff, c2);
+									c2.addPartner(aff, c1);
+								}
 							}
-						}
+						}	
 					}	
 				}
+				
 			}
 		}
 		

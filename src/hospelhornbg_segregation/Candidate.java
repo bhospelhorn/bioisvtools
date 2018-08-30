@@ -14,63 +14,49 @@ import hospelhornbg_genomeBuild.Gene;
 
 public class Candidate implements Comparable<Candidate>{
 	
-	private Inheritance eIPattern;
-	//private int iHalfHetPhase;
-	//private int iAllele; //Index number for indexed, CN for CNVs, -1 for unknown
-	private Set<Integer> iAlleles;
+	//private Inheritance eIPattern;
+	private Map<Individual, Inheritance> iIPatternMap;
+
+	//private Set<Integer> iAlleles;
+	//private Map<Individual, Integer> iAlleleMap;
+	private int iAllele;
 	private boolean bDEL;
 	private boolean bDUP;
 	
-	//private boolean bMultiVar;
 	private Variant iVariant;
-	private Map<Candidate, Set<Integer>> iPartners;
-	//private List<Variant> iVariants;
+	//private Map<Candidate, Set<Integer>> iPartners;
+	private Map<Individual, Set<Candidate>> iPartners;
 	
 	private Gene iGene;
 	
-	public Candidate(Variant variant)
+	public Candidate(Variant variant, int allele)
 	{
 		iVariant = variant;
 		//iVariants = null;
 		//bMultiVar = false;
-		eIPattern = null;
+		//eIPattern = null;
+		iIPatternMap = new HashMap<Individual, Inheritance>();
 		iGene = null;
 		//iHalfHetPhase = Inheritance.HALFHET_PHASE_NONE;
-		//iAllele = -1;
+		iAllele = -1;
 		//iAlleles = new LinkedList<Integer>();
-		iAlleles = new HashSet<Integer>();
+		//iAlleles = new HashSet<Integer>();
+		//iAlleleMap = new HashMap<Individual, Integer>();
 		bDEL = false;
 		bDUP = false;
-		iPartners = new HashMap<Candidate, Set<Integer>>();
+		//iPartners = new HashMap<Candidate, Set<Integer>>();
+		iPartners = new HashMap<Individual, Set<Candidate>>();
+		iAllele = allele;
 	}
 
-	public Inheritance getInheritancePattern()
+	public Inheritance getInheritancePattern(Individual indiv)
 	{
-		return eIPattern;
+		return iIPatternMap.get(indiv);
 	}
 	
 	public int getAllele()
 	{
-		if (iAlleles == null) return -1;
-		if (iAlleles.isEmpty()) return -1;
-		for (int i : iAlleles) return i;
-		return -1;
-	}
-	
-	public List<Integer> getAlleles()
-	{
-		//return iAllele;
-		if (iAlleles.isEmpty()) return null;
-		List<Integer> copy = new ArrayList<Integer>(iAlleles.size());
-		copy.addAll(iAlleles);
-		return copy;
-	}
-	
-	public boolean isMonoallelic()
-	{
-		if (iAlleles == null) return false;
-		if (iAlleles.size() == 1) return true;
-		return false;
+		return iAllele;
 	}
 	
 	public boolean isDEL_candidate()
@@ -93,39 +79,23 @@ public class Candidate implements Comparable<Candidate>{
 		return iVariant;
 	}
 	
-	public List<Candidate> getAllPartners()
+	public List<Candidate> getAllPartners(Individual indiv)
 	{
-		if (iPartners.isEmpty()) return null;
-		List<Candidate> plist = new ArrayList<Candidate>(iPartners.size());
-		plist.addAll(iPartners.keySet());
+		Set<Candidate> pset = iPartners.get(indiv);
+		List<Candidate> plist = new ArrayList<Candidate>(pset.size());
+		if (pset != null) plist.addAll(pset);
 		Collections.sort(plist);
 		return plist;
 	}
-
-	public Collection<Integer> getPartnerCompatibleAlleles(Candidate partner)
-	{
-		if (partner == null) return null;
-		Set<Integer> pall = iPartners.get(partner);
-		if (pall == null) return null;
-		if (pall.isEmpty()) return null;
-		Set<Integer> copy = new HashSet<Integer>();
-		copy.addAll(pall);
-		return copy;
-	}
 	
-	public void setInheritancePattern(Inheritance ip)
+	public void setInheritancePattern(Individual indiv, Inheritance ip)
 	{
-		eIPattern = ip;
+		iIPatternMap.put(indiv, ip);
 	}
 
 	public void addAllele(int allele)
 	{
-		iAlleles.add(allele);
-	}
-
-	public void clearAlleles()
-	{
-		iAlleles.clear();
+		iAllele = allele;
 	}
 	
 	public void flagDEL_candidate(boolean flag)
@@ -143,35 +113,30 @@ public class Candidate implements Comparable<Candidate>{
 		iGene = gene;
 	}
 	
-	public void addPartner(Candidate partner, Collection<Integer> goodalleles)
+	public void addPartner(Individual indiv, Candidate partner)
 	{
-		Set<Integer> alleles = new HashSet<Integer>();
-		if (goodalleles != null) alleles.addAll(goodalleles);
-		iPartners.put(partner, alleles);
-	}
-	
-	public void addCompatibleAlleleToPartner(Candidate partner, int allele)
-	{
-		if (partner == null) return;
-		Set<Integer> alleles = iPartners.get(partner);
-		if (alleles == null)
+		if (indiv == null) return;
+		Set<Candidate> pset = iPartners.get(indiv);
+		if (pset == null)
 		{
-			alleles = new HashSet<Integer>();
-			alleles.add(allele);
-			iPartners.put(partner, alleles);
-			return;
+			pset = new HashSet<Candidate>();
+			pset.add(partner);
+			iPartners.put(indiv, pset);
 		}
-		alleles.add(allele);
+		else pset.add(partner);
 	}
 	
-	public void removePartner(Candidate partner)
+	public void removePartner(Individual indiv, Candidate partner)
 	{
-		iPartners.remove(partner);
+		Set<Candidate> pset = iPartners.get(indiv);
+		if (pset != null) pset.remove(partner);
 	}
 	
-	public boolean hasPartners()
+	public boolean hasPartners(Individual indiv)
 	{
-		return !iPartners.isEmpty();
+		Set<Candidate> pset = iPartners.get(indiv);
+		if (pset != null) return pset.isEmpty();
+		return false;
 	}
 	
 	public boolean equals(Object o)
@@ -180,7 +145,7 @@ public class Candidate implements Comparable<Candidate>{
 		if (o == this) return true;
 		if (!(o instanceof Candidate)) return false;
 		Candidate c = (Candidate)o;
-		if (this.getInheritancePattern() != c.getInheritancePattern()) return false;
+		//if (this.getInheritancePattern() != c.getInheritancePattern()) return false;
 		//if (this.isMultiVariant() != c.isMultiVariant()) return false;
 		if (!(this.getGene().equals(c.getGene()))) return false;
 		/*List<Variant> tvar = this.getVariants();
@@ -228,6 +193,32 @@ public class Candidate implements Comparable<Candidate>{
 		return tv.compareTo(ov);
 	}
 	
+	private Map<Individual, Inheritance> copyIPMap()
+	{
+		Map<Individual, Inheritance> copy = new HashMap<Individual, Inheritance>();
+		Set<Individual> keyset = iIPatternMap.keySet();
+		for (Individual indiv : keyset)
+		{
+			copy.put(indiv, iIPatternMap.get(indiv));
+		}
+		return copy;
+	}
+	
+	private Map<Individual, Set<Candidate>> copyPartnerMap()
+	{
+		Map<Individual, Set<Candidate>> copy = new HashMap<Individual, Set<Candidate>>();
+		Set<Individual> keyset = iPartners.keySet();
+		for (Individual indiv : keyset)
+		{
+			Set<Candidate> pset = iPartners.get(indiv);
+			if (pset == null) continue;
+			Set<Candidate> copyset = new HashSet<Candidate>();
+			copyset.addAll(pset);
+			copy.put(indiv, copyset);
+		}
+		return copy;
+	}
+	
 	/**
 	 * Get a list of new candidates otherwise identical to this candidate each
 	 * linked to a provided gene.
@@ -242,51 +233,21 @@ public class Candidate implements Comparable<Candidate>{
 		List<Candidate> copies = new ArrayList<Candidate>(genes.size());
 		for (Gene g : genes)
 		{
-			Candidate c = new Candidate(this.iVariant);
+			Candidate c = new Candidate(this.iVariant, this.iAllele);
 			/*if (this.isMultiVariant()) c = new Candidate(this.iVariants);
 			else c = new Candidate(this.iVariant);*/
-			c.setInheritancePattern(eIPattern);
+			c.iIPatternMap = this.copyIPMap();
 			c.setGene(g);
 			c.flagDEL_candidate(bDEL);
 			c.flagDUP_candidate(bDUP);
-			c.iAlleles.addAll(iAlleles);
-			Set<Candidate> pset = iPartners.keySet();
-			for (Candidate p : pset)
-			{
-				c.addPartner(p, iPartners.get(p));
-			}
+			//c.iAlleles.addAll(iAlleles);
+			//c.iAllele = this.iAllele;
+			c.iPartners = this.copyPartnerMap();
 			copies.add(c);
 		}
 		Collections.sort(copies);
 		return copies;
 	}
-	
-	/**
-	 * Split a multiallelic candidate into a series of monoallelic candidates.
-	 * This is required for certain operations.
-	 * <br>WARNING: Because unrolling should occur before comp het partnering, any partners
-	 * this candidate has will NOT be carried over to its copies!
-	 * @return A list of new monoallelic candidates derived from this candidate, if
-	 * possible. Null if this candidate is already monoallelic (or somehow has no alleles...).
-	 */
-	public List<Candidate> unroll()
-	{
-		int nalleles = 0;
-		if (iAlleles == null) return null;
-		nalleles = iAlleles.size();
-		if (nalleles == 1) return null;
-		List<Candidate> clist = new ArrayList<Candidate>(nalleles);
-		for (int i : iAlleles)
-		{
-			Candidate mac = new Candidate(this.getVariant());
-			mac.setGene(iGene);
-			mac.setInheritancePattern(eIPattern);
-			mac.flagDEL_candidate(bDEL);
-			mac.flagDUP_candidate(bDUP);
-			mac.iAlleles.add(i);
-			clist.add(mac);
-		}
-		return clist;
-	}
+
 	
 }
