@@ -469,7 +469,10 @@ public class Inheritor {
 			for (Candidate cinit : cinitl)
 			{
 				List<Candidate> split_cand = cinit.addGenes(glist);
-				if (split_cand == null || split_cand.isEmpty()) intergenics.add(cinit);
+				if (split_cand == null || split_cand.isEmpty()) {
+					intergenics.add(cinit);
+					cinit.setIntergenic();
+				}
 				else
 				{
 					for (Candidate c : split_cand)

@@ -17,13 +17,16 @@ import waffleoRai_Utils.FileBuffer;
  *
  * 1.0.1 -> 1.1.0 | April 19, 2018
  * 		Debugging
+ * 
+ * 1.1.0 -> 1.2.0 | August 31, 2018
+ * 		Added methods to get position effect of region
  */
 
 /**
  * A container for basic gene information - location and exons.
  * @author Blythe Hospelhorn
- * @version 1.1.0
- * @since April 19, 2018
+ * @version 1.2.0
+ * @since August 31, 2018
  *
  */
 public class Gene implements Comparable<Gene>{
@@ -766,6 +769,55 @@ public class Gene implements Comparable<Gene>{
 	}
 
 	/**
+	 * Determine whether a position (assuming it is on the same Contig as
+	 * this gene) falls in an intergenic area that might be considered upstream of this gene.
+	 * <br>This function takes strand into account.
+	 * @param position Position to query.
+	 * @return True - If position would fall within a certain distance upstream of gene if it is on the same
+	 * Contig.
+	 * <br>False - If position would fall outside of this gene's "upstream" region regardless of Contig.
+	 */
+	public boolean positionIsUpstream(int position)
+	{
+		int dist = getTranscriptStart() - position;
+		if (dist > 0 && dist <= GeneSet.NEARGENE_DIST)
+		{
+			if (this.getStrand()) return true;
+		}
+		dist = position - getTranscriptEnd();
+		if (dist >= 0 && dist <= GeneSet.NEARGENE_DIST)
+		{
+			if (!this.getStrand()) return true;
+		}
+		
+		return false;
+	}
+	
+	/**
+	 * Determine whether a position (assuming it is on the same Contig as
+	 * this gene) falls in an intergenic area that might be considered downstream of this gene.
+	 * <br>This function takes strand into account.
+	 * @param position Position to query.
+	 * @return True - If position would fall within a certain distance downstream of gene if it is on the same
+	 * Contig.
+	 * <br>False - If position would fall outside of this gene's "downstream" region regardless of Contig.
+	 */
+	public boolean positionIsDownstream(int position)
+	{
+		int dist = getTranscriptStart() - position;
+		if (dist > 0 && dist <= GeneSet.NEARGENE_DIST)
+		{
+			if (!this.getStrand()) return true;
+		}
+		dist = position - getTranscriptEnd();
+		if (dist >= 0 && dist <= GeneSet.NEARGENE_DIST)
+		{
+			if (this.getStrand()) return true;
+		}
+		return false;
+	}
+	
+	/**
 	 * Determine whether another gene overlaps this gene.
 	 * @param o Other gene to compare.
 	 * @return True - If gene o overlaps this gene.
@@ -861,6 +913,101 @@ public class Gene implements Comparable<Gene>{
 			if (exons.get(i).isBefore(position)) return i;
 		}
 		return -1;
+	}
+	
+	/**
+	 * Get the location effect of a region specified by two positions (assumed to be on the
+	 * same contig as the gene) as a GeneFunc enum.
+	 * @param stpos Start position (lower coordinate - inclusive) of region.
+	 * @param edpos End position (higher coordinate - exclusive) of region.
+	 * @return GeneFunc enum describing part of the gene the position falls in.
+	 */
+	public synchronized GeneFunc getRelativeRegionLocationEffect(int stpos, int edpos)
+	{
+		//Make sure stpos is lower value
+		if (stpos > edpos)
+		{
+			int temp = stpos;
+			stpos = edpos;
+			edpos = temp;
+		}
+		//See if any exons fall between the points
+		boolean exonCaught = false;
+		for (Exon e : exons)
+		{
+			//Is start in or before exon?
+			if (stpos < e.stPos)
+			{
+				//Start is before exon start
+				//Check end
+				if (edpos <= e.stPos)
+				{
+					//End is before exon
+					continue;
+				}
+				else
+				{
+					//End is inside or after exon
+					exonCaught = true;
+					break;
+				}
+			}
+			else if (stpos >= e.stPos && stpos < e.edPos)
+			{
+				//Start is inside exon
+				exonCaught = true;
+				break;
+			}
+			else
+			{
+				//Start is after exon end
+				continue;
+			}
+		}
+		
+		if (exonCaught)
+		{
+			//Determine if ncRNA
+			if (this.is_ncRNA()) return GeneFunc.NCRNA;
+			else return GeneFunc.EXONIC;
+		}
+		
+		//Assume no exons were caught
+		if (stpos >= this.edPos && edpos > this.edPos)
+		{
+			//Region falls after gene
+			//See if start is in upstream/downstream region
+			int dist = stpos - getTranscriptEnd();
+			if (dist >= 0 && dist <= GeneSet.NEARGENE_DIST)
+			{
+				if (this.getStrand()) return GeneFunc.DOWNSTREAM;
+				else return GeneFunc.UPSTREAM;
+			}
+			return GeneFunc.INTERGENIC;
+		}
+		else if (stpos< this.stPos && edpos <= this.stPos)
+		{
+			//Region falls before gene
+			int dist = getTranscriptStart() - edpos;
+			if (dist > 0 && dist <= GeneSet.NEARGENE_DIST)
+			{
+				if (this.getStrand()) return GeneFunc.UPSTREAM;
+				else return GeneFunc.DOWNSTREAM;
+			}
+			return GeneFunc.INTERGENIC;
+		}
+		else 
+		{
+			if (this.is_ncRNA()) return GeneFunc.NCRNA;
+			//Check for splicing/UTR. Otherwise intronic
+			if (positionSplicing(stpos) >= 0) return GeneFunc.SPLICING;
+			if (positionSplicing(edpos) >= 0) return GeneFunc.SPLICING;
+			if (positionInUTR5(stpos) || positionInUTR5(edpos-1)) return GeneFunc.UTR5;
+			if (positionInUTR3(stpos) || positionInUTR3(edpos-1)) return GeneFunc.UTR3;
+			return GeneFunc.INTRONIC;
+		}
+
+		
 	}
 	
 	/* --- View --- */

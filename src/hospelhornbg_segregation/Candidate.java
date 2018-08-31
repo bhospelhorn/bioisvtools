@@ -9,8 +9,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import hospelhornbg_bioinformatics.BreakendPair;
+import hospelhornbg_bioinformatics.SVType;
+import hospelhornbg_bioinformatics.StructuralVariant;
+import hospelhornbg_bioinformatics.Translocation;
 import hospelhornbg_bioinformatics.Variant;
+import hospelhornbg_genomeBuild.Contig;
 import hospelhornbg_genomeBuild.Gene;
+import hospelhornbg_genomeBuild.GeneFunc;
 
 public class Candidate implements Comparable<Candidate>{
 	
@@ -28,6 +34,7 @@ public class Candidate implements Comparable<Candidate>{
 	private Map<Individual, Set<Candidate>> iPartners;
 	
 	private Gene iGene;
+	private GeneFunc iEffect;
 	
 	public Candidate(Variant variant, int allele)
 	{
@@ -47,6 +54,7 @@ public class Candidate implements Comparable<Candidate>{
 		//iPartners = new HashMap<Candidate, Set<Integer>>();
 		iPartners = new HashMap<Individual, Set<Candidate>>();
 		iAllele = allele;
+		iEffect = null;
 	}
 
 	public Inheritance getInheritancePattern(Individual indiv)
@@ -72,6 +80,11 @@ public class Candidate implements Comparable<Candidate>{
 	public Gene getGene()
 	{
 		return iGene;
+	}
+	
+	public GeneFunc getPositionEffect()
+	{
+		return iEffect;
 	}
 	
 	public Variant getVariant()
@@ -113,6 +126,74 @@ public class Candidate implements Comparable<Candidate>{
 	public void setGene(Gene gene)
 	{
 		iGene = gene;
+		//Determine position effect
+		if (iGene == null)
+		{
+			iEffect = GeneFunc.INTERGENIC;
+			return;
+		}
+		if (iVariant instanceof StructuralVariant)
+		{
+			if (iVariant instanceof BreakendPair)
+			{
+				BreakendPair bp = (BreakendPair)iVariant;
+				StructuralVariant v1 = bp.getBNDVariant(false);
+				StructuralVariant v2 = bp.getBNDVariant(true);
+				Contig c1 = v1.getChromosome();
+				Contig c2 = v2.getChromosome();
+				Contig gc = iGene.getChromosome();
+				GeneFunc e1 = GeneFunc.INTERGENIC;
+				GeneFunc e2 = GeneFunc.INTERGENIC;
+				if (c1.equals(gc))
+				{
+					e1 = iGene.getRelativeRegionLocationEffect(bp.getCIPosition(false, false, false), bp.getCIPosition(false, false, true));
+				}
+				if (c2.equals(gc))
+				{
+					e2 = iGene.getRelativeRegionLocationEffect(bp.getCIPosition(true, false, false), bp.getCIPosition(true, false, true));
+				}
+				if (e1.getPriority() > e2.getPriority()) iEffect = e2;
+				else iEffect = e1;
+			}
+			else if (iVariant instanceof Translocation)
+			{
+				Translocation tra = (Translocation)iVariant;
+				Contig c1 = tra.getChromosome1();
+				Contig c2 = tra.getChromosome2();
+				Contig gc = iGene.getChromosome();
+				GeneFunc e1 = GeneFunc.INTERGENIC;
+				GeneFunc e2 = GeneFunc.INTERGENIC;
+				if (c1.equals(gc))
+				{
+					e1 = iGene.getRelativeRegionLocationEffect(tra.getCIPosition(false, false, false), tra.getCIPosition(false, false, true));
+				}
+				if (c2.equals(gc))
+				{
+					e2 = iGene.getRelativeRegionLocationEffect(tra.getCIPosition(true, false, false), tra.getCIPosition(true, false, true));
+				}
+				if (e1.getPriority() > e2.getPriority()) iEffect = e2;
+				else iEffect = e1;
+			}
+			else
+			{
+				StructuralVariant sv = (StructuralVariant)iVariant;
+				if(sv.getType() != SVType.INV) iEffect = iGene.getRelativeRegionLocationEffect(sv.getCIPosition(false, false, false), sv.getCIPosition(true, false, true));
+				else
+				{
+					GeneFunc e1 = iGene.getRelativeRegionLocationEffect(sv.getCIPosition(false, false, false), sv.getCIPosition(false, false, true));
+					GeneFunc e2 = iGene.getRelativeRegionLocationEffect(sv.getCIPosition(true, false, false), sv.getCIPosition(true, false, true));
+					if (e1.getPriority() > e2.getPriority()) iEffect = e2;
+					else iEffect = e1;
+				}
+			}
+		}
+		else iEffect = iGene.getRelativeLocationEffect(iVariant.getPosition());
+	}
+	
+	public void setIntergenic()
+	{
+		iGene = null;
+		iEffect = GeneFunc.INTERGENIC;
 	}
 	
 	public void addPartner(Individual indiv, Candidate partner)

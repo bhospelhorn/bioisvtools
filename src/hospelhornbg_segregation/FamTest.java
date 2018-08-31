@@ -12,6 +12,7 @@ import hospelhornbg_bioinformatics.VCF;
 import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_bioinformatics.VariantPool;
 import hospelhornbg_genomeBuild.Gene;
+import hospelhornbg_genomeBuild.GeneFunc;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -205,7 +206,9 @@ public class FamTest {
 			}
 			
 			//POSEFF
-			rec += v.getGeneFuncINFO() + "\t";
+			GeneFunc eff = c.getPositionEffect();
+			if (eff == null) rec += "[UNKNOWN]\t";
+			else rec += eff.toString() + "\t";
 			
 			//GENE, TID
 			Gene g = c.getGene();

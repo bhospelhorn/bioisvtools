@@ -86,6 +86,10 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 
  * 1.5.0 -> 1.5.1 | August 17, 2018
  * 	Added getEndChromosome function
+ * 
+ * 1.5.0 -> 1.5.1 | August 17, 2018
+ *  Setting end to value lower than start flips a flag
+ * 
  */
 
 /*
@@ -98,8 +102,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * Container object extending the standard Variant to include information and methods
  * for easier processing of Structural Variants.
  * @author Blythe Hospelhorn
- * @version 1.5.1
- * @since August 17, 2018
+ * @version 1.5.2
+ * @since August 31, 2018
  *
  */
 public class StructuralVariant extends Variant implements Comparable<Variant>{
@@ -383,6 +387,8 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	
 	/* --- Instance Variables --- */
 	
+	private boolean endLow;
+	
 	private int end;
 	
 	private SVType type;
@@ -600,6 +606,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	
 	private void setDefaults()
 	{
+		endLow = false;
 		end = -1;
 		type = SVType.OTHER;
 		SVlen = new int[1];
@@ -803,6 +810,17 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	/* --- Getters --- */
 	
 	/**
+	 * If this is true, then that means that internally, the end position value is less than the position value.
+	 * This may be important to parsers as setters will work with the internal order, whereas getters for the positions
+	 * and CIs will treat pos as the lower coordinate and end as the higher coordinate regardless of how they were entered.
+	 * @return True if the end position is less than the start position.
+	 */
+	public boolean isFlipped()
+	{
+		return endLow;
+	}
+	
+	/**
 	 * Get the contig the "end" breakpoint lies on. For standard SVs, this is the same
 	 * contig as the main one. For translocations and BND pairs, this may be a different chromosome.
 	 * @return Contig of end breakpoint.
@@ -812,12 +830,19 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 		return this.getChromosome();
 	}
 	
+	public int getPosition()
+	{
+		if (!isFlipped()) return super.getPosition();
+		return end;
+	}
+	
 	/**
 	 * Get the end position of the structural variant.
 	 * @return End position of structural variant in one-based coordinates.
 	 */
 	public int getEndPosition()
 	{
+		if (isFlipped()) return super.getPosition();
 		return end;
 	}
 	
@@ -891,6 +916,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	 */
 	public int getCIPosition(boolean variantEnd, boolean narrow, boolean top)
 	{
+		if(isFlipped()) variantEnd = !variantEnd; 
 		if (variantEnd)
 		{
 			if (narrow)
@@ -930,6 +956,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	 */
 	public int getCIDiff(boolean variantEnd, boolean narrow, boolean top)
 	{
+		if(isFlipped()) variantEnd = !variantEnd; 
 		if (variantEnd)
 		{
 			if (narrow)
@@ -1121,6 +1148,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	 */
 	public double[] getProbabilityCurve(boolean variantEnd)
 	{
+		if(isFlipped()) variantEnd = !variantEnd; 
 		double[] acopy;
 		if (!variantEnd)
 		{
@@ -1145,6 +1173,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	 */
 	public double getPrPosPeak()
 	{
+		if (isFlipped()) return highestPREND;
 		return highestPRPOS;
 	}
 	
@@ -1156,6 +1185,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	 */
 	public double getPrEndPeak()
 	{
+		if (isFlipped()) return highestPRPOS;
 		return highestPREND;
 	}
 	
@@ -1219,6 +1249,13 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	
 	/* --- Setters --- */
 	
+	public void setPosition(int pos)
+	{
+		super.setPosition(pos);
+		if (end < super.getPosition()) endLow = true;
+		else endLow = false;
+	}
+	
 	/**
 	 * Set the END position, in one-based coordinates, for this variant.
 	 * This method also updates SVLEN.
@@ -1227,9 +1264,12 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	public void setEndPosition(int pos)
 	{
 		end = pos;
+		if (end < super.getPosition()) endLow = true;
+		else endLow = false;
 		if (SVlen == null) SVlen = new int[1];
 		SVlen[0] = end - this.getPosition();
 		if (type == SVType.DEL) SVlen[0] *= -1;
+		if (type != SVType.DEL && endLow) SVlen[0] *= -1;
 	}
 
 	/**
