@@ -82,7 +82,9 @@ public class Candidate implements Comparable<Candidate>{
 	public List<Candidate> getAllPartners(Individual indiv)
 	{
 		Set<Candidate> pset = iPartners.get(indiv);
-		List<Candidate> plist = new ArrayList<Candidate>(pset.size());
+		int sz = 1;
+		if (pset != null) sz += pset.size();
+		List<Candidate> plist = new ArrayList<Candidate>(sz);
 		if (pset != null) plist.addAll(pset);
 		Collections.sort(plist);
 		return plist;

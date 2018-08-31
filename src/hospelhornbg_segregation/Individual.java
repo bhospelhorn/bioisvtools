@@ -262,6 +262,7 @@ public class Individual implements Comparable<Individual>{
 			{
 				a1 = a;
 				a2 = null;
+				gmin = gdiff;
 			}
 			else if (gdiff == gmin)
 			{

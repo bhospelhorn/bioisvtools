@@ -212,7 +212,13 @@ public class Inheritor {
 			if (g == null) continue;
 			if (g.hasAllele(allele))
 			{
-				c.setInheritancePattern(proband, Inheritance.HALF_HET);
+				if (halfHetCheck(c, proband))
+				{
+					c.setInheritancePattern(proband, Inheritance.HALF_HET);
+					return;
+				}
+				if (cnvhh_rescue(genomap, proband)) c.setInheritancePattern(proband, Inheritance.HALF_HET_SV);
+				else c.setInheritancePattern(proband, Inheritance.UNRESOLVED);
 				return;
 			}
 		}
@@ -294,27 +300,52 @@ public class Inheritor {
 		return true;
 	}
 	
-	public static boolean isDenovo(Map<Individual, Genotype> genomap, Individual proband, int allele)
+	public static boolean isDenovo(Map<Individual, Genotype> genomap, Individual proband, int allele, boolean hom)
 	{
 		if (proband == null) return false;
 		Individual p1 = proband.getParent1();
 		Individual p2 = proband.getParent2();
 		
-		//Does parent1 have the allele?
-		if (p1 != null)
+		if (hom)
 		{
-			Genotype g1 = genomap.get(p1);
-			if (g1.hasAllele(allele)) return false;
-		}
+			boolean p1has = true;
+			boolean p2has = true;
+			
+			//Does parent1 have the allele?
+			if (p1 != null)
+			{
+				Genotype g1 = genomap.get(p1);
+				if (!g1.hasAllele(allele)) p1has = false;
+			}
 
-		//Does parent2 have the allele?
-		if (p2 != null)
-		{
-			Genotype g2 = genomap.get(p2);
-			if (g2.hasAllele(allele)) return false;
+			//Does parent2 have the allele?
+			if (p2 != null)
+			{
+				Genotype g2 = genomap.get(p2);
+				if (!g2.hasAllele(allele)) p2has = false;
+			}
+		
+			return !(p1has && p2has);
 		}
-	
-		return true;
+		else
+		{
+			//Does parent1 have the allele?
+			if (p1 != null)
+			{
+				Genotype g1 = genomap.get(p1);
+				if (g1.hasAllele(allele)) return false;
+			}
+
+			//Does parent2 have the allele?
+			if (p2 != null)
+			{
+				Genotype g2 = genomap.get(p2);
+				if (g2.hasAllele(allele)) return false;
+			}
+		
+			return true;
+		}
+		
 	}
 	
 	public static void adjustInheritance(Map<Individual, Genotype> genomap, Individual proband, Candidate c)
@@ -323,27 +354,52 @@ public class Inheritor {
 		if (proband == null) return;
 		if (c == null) return;
 		
-		boolean dn = isDenovo(genomap, proband, c.getAllele());
-		if(!dn) return;
-		
 		Inheritance ip = c.getInheritancePattern(proband);
 		switch(ip)
 		{
 		case DOMINANT:
+			boolean dn1 = isDenovo(genomap, proband, c.getAllele(), false);
+			if(!dn1) return;
 			c.setInheritancePattern(proband, Inheritance.DENOVO_DOM);
 			break;
 		case HALF_HET:
+			boolean dn2 = isDenovo(genomap, proband, c.getAllele(), false);
+			if(!dn2) return;
 			c.setInheritancePattern(proband, Inheritance.DENOVO_HET);
 			break;
 		case HALF_HET_SV:
+			boolean dn3 = isDenovo(genomap, proband, c.getAllele(), false);
+			if(!dn3) return;
 			c.setInheritancePattern(proband, Inheritance.DENOVO_HET_SV);
 			break;
 		case HOM_REC:
+			boolean dn4 = isDenovo(genomap, proband, c.getAllele(), true);
+			if(!dn4) return;
 			c.setInheritancePattern(proband, Inheritance.DENOVO_REC);
 			break;
 		default:
 			break;
 		}
+	}
+	
+	public static boolean halfHetCheck(Candidate c, Individual affected)
+	{
+		if (affected == null) return false;
+		Individual p1 = affected.getParent1();
+		Individual p2 = affected.getParent2();
+		
+		if (p1 == null) return true;
+		if (p2 == null) return true;
+		
+		Variant v = c.getVariant();
+		Genotype g1 = v.getSampleGenotype(p1.getName());
+		Genotype g2 = v.getSampleGenotype(p2.getName());
+		
+		int a = c.getAllele();
+		
+		if (g1.hasAllele(a) && g2.hasAllele(a)) return false;
+		
+		return true;
 	}
 	
 	/* --- Segregation --- */
@@ -356,6 +412,7 @@ public class Inheritor {
 	
 	private static boolean isInheritancePairable(Inheritance ip)
 	{
+		if (ip == null) return false;
 		switch(ip)
 		{
 		case COMP_HET:
@@ -391,7 +448,6 @@ public class Inheritor {
 		return false;
 	}
 
-	
 	public static List<Candidate> getCandidates(VariantPool varpool, Pedigree family, GeneSet genes)
 	{
 		//Checks

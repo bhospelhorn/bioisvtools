@@ -20,7 +20,7 @@ public class FamTest {
 
 	public static void main(String[] args) 
 	{
-		if (args.length < 4)
+		if (args.length < 3)
 		{
 			System.err.println("ERROR: Insufficient arguments detected...");
 			System.exit(1);
@@ -32,9 +32,9 @@ public class FamTest {
 		
 		System.err.println("Reading arguments...");
 		
-		String pedpath = args[1];
-		String vcfpath = args[2];
-		String gbuild = args[3];
+		String pedpath = args[0];
+		String vcfpath = args[1];
+		String gbuild = args[2];
 		
 		if (pedpath == null || pedpath.isEmpty())
 		{
@@ -155,7 +155,7 @@ public class FamTest {
 		List<Individual> affected = fam.getAllAffected();
 		for (Individual aff : affected){
 			header += "\t" + "SEG_" + aff.getName();
-			header += "\t" + "SEGPARTNERS" + aff.getName();
+			header += "\t" + "SEGPARTNERS_" + aff.getName();
 		}
 		for (Individual i : famlist) header += "\t" + i.getName();
 		System.out.println("##" + header);
@@ -184,7 +184,7 @@ public class FamTest {
 				}
 				else if (sv instanceof Translocation)
 				{
-					rec += sv.getChromosome().getUDPName() + ":";
+					rec += ((Translocation) sv).getChromosome1().getUDPName() + ":";
 					rec += sv.getPosition() + "|";
 					rec += sv.getEndChromosome().getUDPName() + ":";
 					rec += sv.getEndPosition() + "\t";
@@ -209,8 +209,16 @@ public class FamTest {
 			
 			//GENE, TID
 			Gene g = c.getGene();
-			rec += g.getName() + "\t";
-			rec += g.getID() + "\t";
+			if (g != null)
+			{
+				rec += g.getName() + "\t";
+				rec += g.getID() + "\t";
+			}
+			else
+			{
+				rec += "[N/A]\t";
+				rec += "[N/A]\t";	
+			}
 			
 			//ALLELE
 			rec += c.getAllele() + "\t";
@@ -218,16 +226,22 @@ public class FamTest {
 			//SEG & SEGPARTNERS
 			for (Individual aff : affected)
 			{
-				rec += c.getInheritancePattern(aff).toString() + "\t";
+				Inheritance ip = c.getInheritancePattern(aff);
+				if (ip != null) rec += ip.toString() + "\t";
+				else rec += "[N/A]\t";
 				
 				List<Candidate> plist = c.getAllPartners(aff);
-				boolean first = true;
-				for (Candidate p : plist)
+				if (plist != null && !plist.isEmpty())
 				{
-					if(!first) rec += ";";
-					rec += p.getVariant().getVarID() + "," + c.getAllele();
-					first = false;
+					boolean first = true;
+					for (Candidate p : plist)
+					{
+						if(!first) rec += ";";
+						rec += p.getVariant().getVarID() + "," + c.getAllele();
+						first = false;
+					}	
 				}
+				else rec += "[None]";
 				rec += "\t";
 			}
 			

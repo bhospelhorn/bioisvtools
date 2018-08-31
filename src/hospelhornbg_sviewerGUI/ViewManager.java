@@ -835,6 +835,7 @@ public class ViewManager {
 			for (Individual aff : affected)
 			{
 				Inheritance ip = c.getInheritancePattern(aff);
+				if (ip == null) continue;
 				if (ip == Inheritance.HALF_HET || ip == Inheritance.HALF_HET_SV)
 				{
 					if (c.hasPartners(aff))
