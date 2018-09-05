@@ -38,6 +38,7 @@ public class ConsoleMain {
 	public static final String TOOL_VCFSAMPLENAMESWAP = "vcfsns";
 	public static final String TOOL_DELLYCLEANER = "cleandelly";
 	public static final String TOOL_TRIMCHROM = "trimchrom";
+	public static final String TOOL_SVANALYZE = "svreport";
 
 	public static final String OP_GENOMEBUILD = "-g";
 	public static final String OP_VERBOSE = "-v";
@@ -68,6 +69,7 @@ public class ConsoleMain {
 		System.out.println("\tstdchrom\tStandardize the name of the chromosomes in a SAM file.");
 		System.out.println("\tsvanno\tAnnotate structural variants with refGene. (Note: This tool does not work with hg18 by default)");
 		System.out.println("\tvcfsns\tChange sample names in a VCF file (VCF Sample Name Swapper)");
+		System.out.println("\tsvreport\tPrint files separated by SV type and position effect containing candidate information from a family merged callset.");
 		System.out.println();
 		System.out.println("Flags:");
 		System.out.println("\t-g\tSTRING\t[Usually Required]\t\tName (case insensitive) of genome build to use with input.");
@@ -83,6 +85,7 @@ public class ConsoleMain {
 		System.out.println("java -jar bioisvtools.jar survivorgeno -g hg19 -v [...]");
 		System.out.println("java -jar bioisvtools.jar stdchrom -g GRCh38 -v [...]");
 		System.out.println("java -jar bioisvtools.jar svanno -g grch37 -v [...]");
+		System.out.println("java -jar bioisvtools.jar svreport -g hg19 -v [...]");
 		System.out.println();
 		System.out.println("--------------------------------------------------------------------------------");
 	}
@@ -673,6 +676,21 @@ public class ConsoleMain {
 				System.exit(1);
 			}
 			ChromTrim.runTool(args, gb, verbose);
+		}
+		else if (program.equals(TOOL_SVANALYZE))
+		{
+			if (verbose){
+				System.err.println("Tool Selected: " + TOOL_SVANALYZE);
+				System.err.println();
+			}
+			GenomeBuild gb = loadBuild(homedir, genome, verbose);
+			if(gb == null)
+			{
+				System.err.println("Genome build for \"" + genome + "\" could not be loaded!");
+				printUsage();
+				System.exit(1);
+			}
+			SVFam.RunSVFamily(args, gb);
 		}
 		else
 		{

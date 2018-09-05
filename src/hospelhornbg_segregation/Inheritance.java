@@ -32,5 +32,40 @@ public enum Inheritance {
 	{
 		return str;
 	}
+	
+	public static boolean isHalfhet(Inheritance i)
+	{
+		switch (i)
+		{
+		case COMP_HET:
+			return false;
+		case COMP_HET_DEL:
+			return false;
+		case COMP_HET_SV:
+			return false;
+		case DENOVO_DOM:
+			return false;
+		case DENOVO_HET:
+			return true;
+		case DENOVO_HET_SV:
+			return true;
+		case DENOVO_REC:
+			return false;
+		case DOMINANT:
+			return false;
+		case HALF_HET:
+			return true;
+		case HALF_HET_SV:
+			return true;
+		case HOM_REC:
+			return false;
+		case MVIOL:
+			return false;
+		case UNRESOLVED:
+			return false;
+		default:
+			return false;
+		}
+	}
 
 }

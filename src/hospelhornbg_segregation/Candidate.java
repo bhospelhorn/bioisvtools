@@ -332,5 +332,48 @@ public class Candidate implements Comparable<Candidate>{
 		return copies;
 	}
 
+	public boolean segregatesWithAny()
+	{
+		Collection<Inheritance> allip = iIPatternMap.values();
+		for (Inheritance i : allip)
+		{
+			if (i != null && i != Inheritance.UNRESOLVED) return true;
+		}
+		return false;
+	}
+	
+	public boolean isUnpairedHalfHet()
+	{
+		Set<Individual> aff = iIPatternMap.keySet();
+		for (Individual i : aff)
+		{
+			Inheritance ip = iIPatternMap.get(i);
+			if (i == null) continue;
+			if (!Inheritance.isHalfhet(ip)) return false;
+			//Check for partners
+			Set<Candidate> hetpartners = iPartners.get(i);
+			if (hetpartners == null) continue;
+			if (hetpartners.isEmpty()) continue;
+			return false;
+		}
+		return true;
+	}
+
+	public Collection<Variant> getAllPartnerVariants()
+	{
+		Set<Variant> vset = new HashSet<Variant>();
+		Set<Individual> aff = iIPatternMap.keySet();
+		for (Individual i : aff)
+		{
+			Set<Candidate> hetpartners = iPartners.get(i);
+			if (hetpartners == null) continue;
+			for (Candidate c : hetpartners)
+			{
+				vset.add(c.getVariant());
+			}
+		}
+		return vset;
+	}
+	
 	
 }
