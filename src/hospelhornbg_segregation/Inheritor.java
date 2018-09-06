@@ -1,6 +1,7 @@
 package hospelhornbg_segregation;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,6 +17,9 @@ import hospelhornbg_bioinformatics.VariantPool;
 import hospelhornbg_genomeBuild.Gene;
 import hospelhornbg_genomeBuild.GeneSet;
 
+//TODO: Need 2 fixes:
+	// Check comphet candidate pairs against other affecteds
+	// XY chrom should behave differently!
 public class Inheritor {
 	
 	/* --- Check Parental Relationships --- */
@@ -402,6 +406,29 @@ public class Inheritor {
 		return true;
 	}
 	
+	public static boolean hetPairCheck(Candidate c1, Candidate c2, Collection<Individual> unaffected)
+	{
+		if (c1 == null) return true;
+		if (c2 == null) return true;
+		if (unaffected == null) return true;
+		
+		Variant v1 = c1.getVariant();
+		Variant v2 = c2.getVariant();
+		
+		//Make sure no unaffected individuals have both
+		for (Individual u : unaffected)
+		{
+			Genotype g1 = v1.getSampleGenotype(u.getName());
+			Genotype g2 = v2.getSampleGenotype(u.getName());
+			if (g1 == null || g2 == null) continue;
+			boolean h1 = g1.hasAllele(c1.getAllele());
+			boolean h2 = g2.hasAllele(c2.getAllele());
+			if (h1 && h2) return false;
+		}
+		
+		return true;
+	}
+	
 	/* --- Segregation --- */
 	
 	public static List<Gene> getVariantGenes(Variant v, GeneSet genes)
@@ -493,6 +520,7 @@ public class Inheritor {
 		
 		//Get affected indiv list
 		List<Individual> affected = family.getAllAffected();
+		List<Individual> unaffected = family.getAllUnaffected();
 		
 		//Attempt to pair half-hets
 		//Have to have both candidates in an individual
@@ -524,7 +552,8 @@ public class Inheritor {
 							{
 								//Try to pair!
 								boolean pairs = family.checkPair(c1, c2);
-								if (pairs)
+								boolean stillpairs = Inheritor.hetPairCheck(c1, c2, unaffected);
+								if (pairs && stillpairs)
 								{
 									c1.addPartner(aff, c2);
 									c2.addPartner(aff, c1);

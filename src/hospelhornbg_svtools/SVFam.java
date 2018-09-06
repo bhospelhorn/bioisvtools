@@ -32,6 +32,7 @@ import hospelhornbg_segregation.Individual;
 import hospelhornbg_segregation.Inheritance;
 import hospelhornbg_segregation.Inheritor;
 import hospelhornbg_segregation.Pedigree;
+import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 public class SVFam {
@@ -79,7 +80,7 @@ public class SVFam {
 		System.out.println("--------------------------------------------------------------------------------");
 	}
 	
-	public static void writeTable(List<Candidate> clist, Pedigree fam, String outpath) throws IOException
+	public static void writeTable(List<Candidate> clist, Pedigree fam, String outpath, boolean includePartners) throws IOException
 	{
 		//int ncand = clist.size();
 		String header = "VARID\tPOS\tTYPE\tSIZE\tPOSEFF\tGENE\tTID\tALLELE";
@@ -95,6 +96,16 @@ public class SVFam {
 		BufferedWriter bw = new BufferedWriter(fw);
 		
 		bw.write("##" + header + "\n");
+		if (includePartners)
+		{
+			List<Candidate> oldlist = clist;
+			clist = new LinkedList<Candidate>();
+			Set<Candidate> cset = new HashSet<Candidate>();
+			cset.addAll(oldlist);
+			for (Candidate c : oldlist) cset.addAll(c.getAllPartners());
+			clist.addAll(cset);
+			Collections.sort(clist);
+		}
 		
 		for (Candidate c : clist)
 		{
@@ -210,6 +221,10 @@ public class SVFam {
 	
 	public static void writeGeneList(Collection<Gene> genes, String outpath)
 	{
+		if (genes == null) {
+			System.err.println("ERROR: Gene list list null! No gene list written to " + outpath);
+			return;
+		}
 		List<Gene> sorted = new LinkedList<Gene>();
 		sorted.addAll(genes);
 		Collections.sort(sorted);
@@ -224,7 +239,7 @@ public class SVFam {
 			
 			for (Gene g : sorted)
 			{
-				bw.write(g.getName() + "\t" + g.getID() + "\n");
+				if(g != null) bw.write(g.getName() + "\t" + g.getID() + "\n");
 			}
 			
 			bw.close();
@@ -410,6 +425,29 @@ public class SVFam {
 			System.exit(1);
 		}
 		
+		System.err.println("ARGUMENT | Input VCF: " + inPath);
+		System.err.println("ARGUMENT | Output Directory: " + outPath);
+		System.err.println("ARGUMENT | Input PED: " + inPath);
+		System.err.println("ARGUMENT | Maximum Size: " + maxsize);
+		
+		
+		//Create output directory if it doesn't exist
+		if (!FileBuffer.directoryExists(outPath))
+		{
+			System.err.println("NOTICE: Output directory does not exist. Creating...");
+			try
+			{
+				Files.createDirectories(Paths.get(outPath));
+			} 
+			catch (IOException e) 
+			{
+				System.err.println("ERROR: Output directory " + outPath + " could not be created!");
+				e.printStackTrace();
+				System.exit(1);
+			}
+			System.err.println("NOTICE: " + outPath + " has been created!");
+		}
+		
 		//Read files
 		
 		Pedigree fam = null;
@@ -430,6 +468,7 @@ public class SVFam {
 			e.printStackTrace();
 			System.exit(1);
 		}
+		System.err.println("NOTICE: PED file read!");
 		
 		VariantPool vcf = null;
 		try 
@@ -448,6 +487,7 @@ public class SVFam {
 			e.printStackTrace();
 			System.exit(1);
 		}
+		System.err.println("NOTICE: VCF file read!");
 		
 		//Load gene set
 		GeneSet gs = GeneSet.loadRefGene(g);
@@ -459,6 +499,7 @@ public class SVFam {
 		System.err.println("Gene info loaded!");
 		
 		//Filter size - toss anything above max size
+		System.err.println("NOTICE: Filtering out CNVs larger than " + maxsize + "bp...");
 		List<Variant> vlist = vcf.getVariants();
 		List<Variant> smallv = new LinkedList<Variant>();
 		for (Variant v : vlist)
@@ -466,11 +507,26 @@ public class SVFam {
 			if (v instanceof StructuralVariant)
 			{
 				StructuralVariant sv = (StructuralVariant)v;
-				if (sv.getType() == SVType.INV) continue;
-				if (sv.getType() == SVType.TRA) continue;
-				if (sv.getType() == SVType.BND) continue;
-				if (sv.getType() == SVType.INS) continue;
-				if (sv.getType() == SVType.INSME) continue;
+				if (sv.getType() == SVType.INV) {
+					smallv.add(v);
+					continue;
+				}
+				if (sv.getType() == SVType.TRA) {
+					smallv.add(v);
+					continue;
+				}
+				if (sv.getType() == SVType.BND) {
+					smallv.add(v);
+					continue;
+				}
+				if (sv.getType() == SVType.INS) {
+					smallv.add(v);
+					continue;
+				}
+				if (sv.getType() == SVType.INSME) {
+					smallv.add(v);
+					continue;
+				}
 			}
 			if (v.getSmallestAbsoluteLength() <= maxsize)
 			{
@@ -479,6 +535,10 @@ public class SVFam {
 		}
 		vcf.clearVariants();
 		vcf.addVariants(smallv);
+		int oldct = vlist.size();
+		int newct = smallv.size();
+		int diff = oldct - newct;
+		System.err.println("NOTICE: " + diff + " variants will be ignored (exceed " + maxsize + "bp in length)");
 		
 		//Filter mapability - not functional at the moment
 		
@@ -488,16 +548,19 @@ public class SVFam {
 		//Sort and write
 		//Print full table
 		String fulltablepath = outPath + File.separator + "fulltable.tsv";
+		System.err.println("NOTICE: Printing full candidate table to " + fulltablepath);
 		try 
 		{
-			writeTable(clist, fam, fulltablepath);
+			writeTable(clist, fam, fulltablepath, false);
 		} 
 		catch (IOException e) 
 		{
 			System.err.println("ERROR: Table could not be written to " + fulltablepath);
 			e.printStackTrace();
 		}
+		
 		//Filter out ref alleles (They will only appear as halfhet partners)
+		System.err.println("NOTICE: Filtering out ref-allele based candidates...");
 		List<Candidate> altlist = new LinkedList<Candidate>();
 		for (Candidate c : clist)
 		{
@@ -509,6 +572,26 @@ public class SVFam {
 		for (SVType t : types)
 		{
 			String tstr = t.getString();
+			System.err.println("NOTICE: Processing " + tstr + " type candidates...");
+			
+			//Get subset
+			List<Candidate> tlist = new LinkedList<Candidate>();
+			for (Candidate c : altlist)
+			{
+				Variant v = c.getVariant();
+				if (v instanceof StructuralVariant)
+				{
+					StructuralVariant sv = (StructuralVariant)v;
+					if (sv.getType() == t) tlist.add(c);
+				}
+			}
+			
+			//If empty, continue
+			if (tlist.isEmpty()) {
+				System.out.println("No " + tstr + " type candidates found!");
+				continue;
+			}
+			System.out.println(tstr + " candidates: " + tlist.size());
 			
 			//Make directory
 			String tdir = outPath + File.separator + tstr;
@@ -523,28 +606,23 @@ public class SVFam {
 				continue;
 			}
 			
-			//Get subset
-			List<Candidate> tlist = new LinkedList<Candidate>();
-			for (Candidate c : altlist)
-			{
-				Variant v = c.getVariant();
-				if (v instanceof StructuralVariant)
-				{
-					StructuralVariant sv = (StructuralVariant)v;
-					if (sv.getType() == t) tlist.add(c);
-				}
-			}
-			
 			//Sort by effect
 			GeneFunc[] effects = GeneFunc.values();
 			for (GeneFunc e : effects)
 			{
-				String estr = effects.toString();
+				String estr = e.toString();
+				System.err.println("NOTICE: Processing " + estr + " " + tstr + " candidates!");
 				List<Candidate> elist = new LinkedList<Candidate>();
 				for (Candidate c : tlist)
 				{
 					if (c.getPositionEffect() == e) elist.add(c);
 				}
+				
+				if (elist.isEmpty()) {
+					System.out.println("No " + estr + "" + tstr + " found!");
+					continue;
+				}
+				System.out.println(tstr + "(" + estr + ") count: " + elist.size());
 				
 				String pathbase = tdir + File.separator + tstr + "_" + estr;
 				
@@ -566,6 +644,9 @@ public class SVFam {
 					}
 					finalc.add(c);
 				}
+				System.out.println(tstr + "(" + estr + ") passed segregation: " + finalc.size());
+				System.out.println(tstr + "(" + estr + ") Unpaired HalfHet count: " + uphh.size());
+				System.out.println(tstr + "(" + estr + ") DNS count: " + dns.size());
 				
 				//Write tsv table
 				String tsvpath_std = pathbase + "_table.tsv";
@@ -574,7 +655,7 @@ public class SVFam {
 				
 				try 
 				{
-					writeTable(finalc, fam, tsvpath_std);
+					writeTable(finalc, fam, tsvpath_std, true);
 				} 
 				catch (IOException ex) 
 				{
@@ -583,7 +664,7 @@ public class SVFam {
 				}
 				try 
 				{
-					writeTable(uphh, fam, fulltablepath);
+					writeTable(uphh, fam, fulltablepath, true);
 				} 
 				catch (IOException ex) 
 				{
@@ -592,7 +673,7 @@ public class SVFam {
 				}
 				try 
 				{
-					writeTable(dns, fam, tsvpath_dns);
+					writeTable(dns, fam, tsvpath_dns, true);
 				} 
 				catch (IOException ex) 
 				{
@@ -637,9 +718,9 @@ public class SVFam {
 				{
 					String tname_base = i.getName() + " " + tstr + " " + estr;
 					String tdesc_base = "Structural Variant Calls for " + i.getName() + " (" + estr + " " + tstr + ") MaxSize = " + maxsize + "bp";
-					writeUCSCBED(finalc, pathbase + "_" + i.getName() + "_" + bedsuf_std, tname_base, tdesc_base, i.getName());
-					writeUCSCBED(uphh, pathbase + "_" + i.getName() + "_" + bedsuf_uphh, tname_base + " [UPHH]", tdesc_base + " [Unpaired HalfHets]", i.getName());
-					writeUCSCBED(dns, pathbase + "_" + i.getName() + "_" + bedsuf_dns, tname_base + " [DNS]", tdesc_base + " [Called Non-Segregating]", i.getName());
+					writeUCSCBED(finalc, pathbase + "_" + i.getName() + bedsuf_std, tname_base, tdesc_base, i.getName());
+					writeUCSCBED(uphh, pathbase + "_" + i.getName() + bedsuf_uphh, tname_base + " [UPHH]", tdesc_base + " [Unpaired HalfHets]", i.getName());
+					writeUCSCBED(dns, pathbase + "_" + i.getName() + bedsuf_dns, tname_base + " [DNS]", tdesc_base + " [Called Non-Segregating]", i.getName());
 				}
 				
 			}

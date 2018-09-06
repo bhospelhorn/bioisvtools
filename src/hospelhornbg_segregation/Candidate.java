@@ -103,6 +103,23 @@ public class Candidate implements Comparable<Candidate>{
 		return plist;
 	}
 	
+	public List<Candidate> getAllPartners()
+	{
+		Set<Candidate> pset = new HashSet<Candidate>();
+		Set<Individual> aff = iPartners.keySet();
+		for (Individual i : aff)
+		{
+			pset.addAll(iPartners.get(i));
+		}
+		int sz = 1;
+		if (pset != null) sz += pset.size();
+		List<Candidate> plist = new ArrayList<Candidate>(sz);
+		if (pset != null) plist.addAll(pset);
+		Collections.sort(plist);
+		return plist;
+	}
+	
+	
 	public void setInheritancePattern(Individual indiv, Inheritance ip)
 	{
 		iIPatternMap.put(indiv, ip);
@@ -362,7 +379,7 @@ public class Candidate implements Comparable<Candidate>{
 	public Collection<Variant> getAllPartnerVariants()
 	{
 		Set<Variant> vset = new HashSet<Variant>();
-		Set<Individual> aff = iIPatternMap.keySet();
+		Set<Individual> aff = iPartners.keySet();
 		for (Individual i : aff)
 		{
 			Set<Candidate> hetpartners = iPartners.get(i);

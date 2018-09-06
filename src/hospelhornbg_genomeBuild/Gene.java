@@ -20,13 +20,16 @@ import waffleoRai_Utils.FileBuffer;
  * 
  * 1.1.0 -> 1.2.0 | August 31, 2018
  * 		Added methods to get position effect of region
+ * 
+ * 1.2.0 -> 1.2.1 | September 5, 2018
+ * 		Region pos effect function wasn't detecting UTR5/UTR3 :P
  */
 
 /**
  * A container for basic gene information - location and exons.
  * @author Blythe Hospelhorn
- * @version 1.2.0
- * @since August 31, 2018
+ * @version 1.2.1
+ * @since September 5, 2018
  *
  */
 public class Gene implements Comparable<Gene>{
@@ -967,6 +970,18 @@ public class Gene implements Comparable<Gene>{
 		
 		if (exonCaught)
 		{
+			//Determine if UTR
+			if (this.getStrand())
+			{
+				if (edpos <= this.getTranslationStart()) return GeneFunc.UTR5;
+				if (stpos > this.getTranslationStop()) return GeneFunc.UTR3;
+			}
+			else
+			{
+				if (edpos <= this.getTranslationStart()) return GeneFunc.UTR3;
+				if (stpos > this.getTranslationStop()) return GeneFunc.UTR5;
+			}
+			
 			//Determine if ncRNA
 			if (this.is_ncRNA()) return GeneFunc.NCRNA;
 			else return GeneFunc.EXONIC;
