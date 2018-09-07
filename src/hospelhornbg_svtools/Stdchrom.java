@@ -45,7 +45,7 @@ public class Stdchrom {
 	
 	public static String generateSQBlock(GenomeBuild g)
 	{
-		String s = "\n";
+		String s = "";
 		List<Contig> clist = g.getChromosomes();
 		int sz = clist.size();
 		for (int i = 0; i < sz; i++)
@@ -301,7 +301,10 @@ public class Stdchrom {
 				{
 					if (line.startsWith("@SQ"))
 					{
-						if (!sqfound) sw.writeString(generateSQBlock(g));
+						if (!sqfound) {
+							if (!skipnl) sw.writeString("\n");
+							sw.writeString(generateSQBlock(g));
+						}
 						sqfound = true;
 					}
 					else if (line.startsWith("@HD"))
@@ -398,15 +401,20 @@ public class Stdchrom {
 			while ((line = br.readLine()) != null)
 			{
 				if (line.isEmpty()) continue;
-				if (!skipnl) bw.write("\n");
 				if (line.charAt(0) == '@')
 				{
 					if (line.startsWith("@SQ"))
 					{
-						if (!sqfound) bw.write(generateSQBlock(g));
+						if (!sqfound) {
+							if (!skipnl) bw.write("\n");
+							bw.write(generateSQBlock(g));
+						}
 						sqfound = true;
 					}
-					else bw.write(line);
+					else {
+						if (!skipnl) bw.write("\n");
+						bw.write(line);
+					}
 				}
 				else
 				{
@@ -451,6 +459,7 @@ public class Stdchrom {
 						s += fields[i];
 						if (i < (fields.length - 1)) s += "\t";
 					}
+					if (!skipnl) bw.write("\n");
 					bw.write(s);
 				}
 				skipnl = false;
