@@ -664,7 +664,7 @@ public class SVFam {
 				}
 				try 
 				{
-					writeTable(uphh, fam, fulltablepath, true);
+					writeTable(uphh, fam, tsvpath_uphh, true);
 				} 
 				catch (IOException ex) 
 				{
