@@ -39,6 +39,7 @@ public class ConsoleMain {
 	public static final String TOOL_DELLYCLEANER = "cleandelly";
 	public static final String TOOL_TRIMCHROM = "trimchrom";
 	public static final String TOOL_SVANALYZE = "svreport";
+	public static final String TOOL_SVGENEHITTALLY = "svght";
 
 	public static final String OP_GENOMEBUILD = "-g";
 	public static final String OP_VERBOSE = "-v";
@@ -70,6 +71,7 @@ public class ConsoleMain {
 		System.out.println("\tsvanno\tAnnotate structural variants with refGene. (Note: This tool does not work with hg18 by default)");
 		System.out.println("\tvcfsns\tChange sample names in a VCF file (VCF Sample Name Swapper)");
 		System.out.println("\tsvreport\tPrint files separated by SV type and position effect containing candidate information from a family merged callset.");
+		System.out.println("\tsvght\tTally number of times gene hits are found in different families from svreport output.");
 		System.out.println();
 		System.out.println("Flags:");
 		System.out.println("\t-g\tSTRING\t[Usually Required]\t\tName (case insensitive) of genome build to use with input.");
@@ -86,6 +88,7 @@ public class ConsoleMain {
 		System.out.println("java -jar bioisvtools.jar stdchrom -g GRCh38 -v [...]");
 		System.out.println("java -jar bioisvtools.jar svanno -g grch37 -v [...]");
 		System.out.println("java -jar bioisvtools.jar svreport -g hg19 -v [...]");
+		System.out.println("java -jar bioisvtools.jar svght -v [...]");
 		System.out.println();
 		System.out.println("--------------------------------------------------------------------------------");
 	}
@@ -691,6 +694,14 @@ public class ConsoleMain {
 				System.exit(1);
 			}
 			SVFam.RunSVFamily(args, gb);
+		}
+		else if (program.equals(TOOL_SVGENEHITTALLY))
+		{
+			if (verbose){
+				System.err.println("Tool Selected: " + TOOL_SVGENEHITTALLY);
+				System.err.println();
+			}
+			GeneTally.runGeneTally(args);
 		}
 		else
 		{
