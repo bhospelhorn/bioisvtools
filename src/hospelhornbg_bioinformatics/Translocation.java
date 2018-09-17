@@ -150,6 +150,8 @@ public class Translocation extends StructuralVariant{
 	
 	public String toViewerBEDLine(String sample)
 	{
+		//chrom chrstart chrend name score strand thickstart thickend rgb blockcount blocksizes blockstarts
+		
 		String s = "";
 		//var1
 		Genotype g = super.getSampleGenotype(sample);

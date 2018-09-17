@@ -1252,7 +1252,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	public void setPosition(int pos)
 	{
 		super.setPosition(pos);
-		if (end < super.getPosition()) endLow = true;
+		if (end >= 0 && end < super.getPosition()) endLow = true;
 		else endLow = false;
 	}
 	
@@ -1264,7 +1264,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	public void setEndPosition(int pos)
 	{
 		end = pos;
-		if (end < super.getPosition()) endLow = true;
+		if (end >= 0 && end < super.getPosition()) endLow = true;
 		else endLow = false;
 		if (SVlen == null) SVlen = new int[1];
 		SVlen[0] = end - this.getPosition();

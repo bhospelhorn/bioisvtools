@@ -221,7 +221,7 @@ public class SVFam {
 	
 	public static void writeGeneList(Collection<Gene> genes, String outpath)
 	{
-		if (genes == null) {
+		if (genes == null || genes.isEmpty()) {
 			System.err.println("ERROR: Gene list list null! No gene list written to " + outpath);
 			return;
 		}
