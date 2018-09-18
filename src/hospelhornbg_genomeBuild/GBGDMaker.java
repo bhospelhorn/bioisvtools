@@ -13,13 +13,20 @@ public class GBGDMaker {
 
 	public static void main(String[] args) 
 	{
+		/*
 		String inpath = "C:\\Users\\Blythe\\Documents\\Work\\Bioinformatics\\References\\refGene38.txt"; //Hardcode - I'm lazy
 		String outpath = "C:\\Users\\Blythe\\Documents\\Work\\Bioinformatics\\References\\grch38_refSeq.gbgd";
 		String tblpath = "C:\\Users\\Blythe\\Documents\\Work\\Bioinformatics\\References\\grch38_refSeq.txt";
-		String checkpath = "C:\\Users\\Blythe\\Documents\\Work\\Bioinformatics\\References\\grch38_refSeq_check.txt";
+		String checkpath = "C:\\Users\\Blythe\\Documents\\Work\\Bioinformatics\\References\\grch38_refSeq_check.txt";*/
 		
+		//Update Sep 2018
+		String inpath = "X:\\usr\\hospelhornbg\\Java\\db\\refGene_hg38_Aug2018.txt";
+		String outpath = "X:\\usr\\hospelhornbg\\Java\\db\\grch38_refSeq.gbgd";
+		String tblpath = "X:\\usr\\hospelhornbg\\Java\\db\\grch38_refSeq.txt";
+		String checkpath = "X:\\usr\\hospelhornbg\\Java\\db\\grch38_refSeq_check.txt";
+		
+		//GenomeBuild ncbi36 = GenomeBuild.loadStandardBuild("hg18");
 		//GenomeBuild grch37 = GenomeBuild.loadStandardBuild("grch37");
-		
 		GenomeBuild grch38 = GenomeBuild.loadStandardBuild("grch38");
 
 		try 
@@ -115,9 +122,9 @@ public class GBGDMaker {
 			System.out.println("Serialization completed.");
 			
 			//Check
-			GeneSet check38 = new GeneSet(outpath, grch38, true);
+			GeneSet check36 = new GeneSet(outpath, grch38, true);
 			System.out.println("Reparse completed.");
-			check38.outputTable(checkpath);
+			check36.outputTable(checkpath);
 			System.out.println("Reparse table output completed.");
 			
 		} 

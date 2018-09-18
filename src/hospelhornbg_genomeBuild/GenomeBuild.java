@@ -50,9 +50,13 @@ public class GenomeBuild {
 	public static final String PACKAGEPATH_37 = "resources/GRCh37.gbdh";
 	public static final String PACKAGEPATH_38 = "resources/GRCh38.gbdh";
 	
-	public static final String DEBUGPATH_36 = "C:\\Users\\Blythe\\NCBI36.gbdh";
-	public static final String DEBUGPATH_37 = "C:\\Users\\Blythe\\GRCh37.gbdh";
-	public static final String DEBUGPATH_38 = "C:\\Users\\Blythe\\GRCh38.gbdh";
+	//public static final String DEBUGPATH_36 = "C:\\Users\\Blythe\\NCBI36.gbdh";
+	//public static final String DEBUGPATH_37 = "C:\\Users\\Blythe\\GRCh37.gbdh";
+	//public static final String DEBUGPATH_38 = "C:\\Users\\Blythe\\GRCh38.gbdh";
+	
+	public static final String DEBUGPATH_36 = "X:\\usr\\hospelhornbg\\Java\\db\\NCBI36.gbdh";
+	public static final String DEBUGPATH_37 = "X:\\usr\\hospelhornbg\\Java\\db\\GRCh37.gbdh";
+	public static final String DEBUGPATH_38 = "X:\\usr\\hospelhornbg\\Java\\db\\GRCh38.gbdh";
 	
 	private String species;
 	private String buildName;
