@@ -1886,6 +1886,7 @@ public class GeneSet
 	
 	/* --- Load Standard --- */
 	
+	public static final String PACKAGEPATH_36 = "resources/ncbi36_refSeq.gbgd";
 	public static final String PACKAGEPATH_37 = "resources/grch37_refSeq.gbgd";
 	public static final String PACKAGEPATH_38 = "resources/grch38_refSeq.gbgd";
 	
@@ -1905,11 +1906,14 @@ public class GeneSet
 		debugPathMap = new HashMap<String, String>();
 		loadedMap = new HashMap<String, GeneSet>();
 		
+		buildDict.put("hg18", "hg18");
+		buildDict.put("ncbi36", "hg18");
 		buildDict.put("hg19", "hg19");
 		buildDict.put("grch37", "hg19");
 		buildDict.put("hg38", "hg38");
 		buildDict.put("grch38", "hg38");
 		
+		packPathMap.put("hg18", PACKAGEPATH_36);
 		packPathMap.put("hg19", PACKAGEPATH_37);
 		packPathMap.put("hg38", PACKAGEPATH_38);
 		

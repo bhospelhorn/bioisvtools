@@ -860,12 +860,16 @@ public class Gene implements Comparable<Gene>{
 	{
 		if (positionInGene(position))
 		{
-			if (positionInUTR5(position)) return GeneFunc.UTR5;
-			if (positionInUTR3(position)) return GeneFunc.UTR3;
+			//if (positionInUTR5(position)) return GeneFunc.UTR5;
+			//if (positionInUTR3(position)) return GeneFunc.UTR3;
 			if (positionInExon(position) >= 0)
 			{
 				if (is_ncRNA()) return GeneFunc.NCRNA;
-				else return GeneFunc.EXONIC;
+				else {
+					if (positionInUTR5(position)) return GeneFunc.UTR5;
+					if (positionInUTR3(position)) return GeneFunc.UTR3;
+					return GeneFunc.EXONIC;
+				}
 			}
 			else
 			{
@@ -970,6 +974,10 @@ public class Gene implements Comparable<Gene>{
 		
 		if (exonCaught)
 		{
+
+			//Determine if ncRNA
+			if (this.is_ncRNA()) return GeneFunc.NCRNA;
+			
 			//Determine if UTR
 			if (this.getStrand())
 			{
@@ -982,9 +990,7 @@ public class Gene implements Comparable<Gene>{
 				if (stpos > this.getTranslationStop()) return GeneFunc.UTR5;
 			}
 			
-			//Determine if ncRNA
-			if (this.is_ncRNA()) return GeneFunc.NCRNA;
-			else return GeneFunc.EXONIC;
+			return GeneFunc.EXONIC;
 		}
 		
 		//Assume no exons were caught
@@ -1013,12 +1019,12 @@ public class Gene implements Comparable<Gene>{
 		}
 		else 
 		{
-			if (this.is_ncRNA()) return GeneFunc.NCRNA;
+			//if (this.is_ncRNA()) return GeneFunc.NCRNA;
 			//Check for splicing/UTR. Otherwise intronic
 			if (positionSplicing(stpos) >= 0) return GeneFunc.SPLICING;
 			if (positionSplicing(edpos) >= 0) return GeneFunc.SPLICING;
-			if (positionInUTR5(stpos) || positionInUTR5(edpos-1)) return GeneFunc.UTR5;
-			if (positionInUTR3(stpos) || positionInUTR3(edpos-1)) return GeneFunc.UTR3;
+			//if (positionInUTR5(stpos) || positionInUTR5(edpos-1)) return GeneFunc.UTR5; //If intronic UTR, return intronic
+			//if (positionInUTR3(stpos) || positionInUTR3(edpos-1)) return GeneFunc.UTR3;
 			return GeneFunc.INTRONIC;
 		}
 
