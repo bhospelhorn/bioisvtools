@@ -34,6 +34,54 @@ public class SAMRecord {
 
 	private Map<String, SAMField> alignmentFields;
 	
+	private WarningFlags warnings;
+	
+	/* ----- Inner Objects ----- */
+	
+	public static class FailFlags
+	{
+		public boolean err_syntax;
+		public boolean err_nullseq_nnqual;
+		public String err_bad_customFieldType;
+	}
+	
+	public static class WarningFlags
+	{
+		public String err_invalid_RNAME;
+		public int err_invalid_POS;
+		public String err_invalid_RNEXT;
+		public int err_invalid_PNEXT;
+		
+		public boolean err_qualstr_len_bad;
+		
+		public WarningFlags()
+		{
+			err_invalid_RNAME = null;
+			err_invalid_POS = 0;
+			err_invalid_RNEXT = null;
+			err_invalid_PNEXT = 0;
+			err_qualstr_len_bad = false;
+		}
+	}
+	
+	public static class InvalidSAMRecordException extends Exception
+	{
+		private static final long serialVersionUID = 6376597106929888202L;
+		
+		private FailFlags reason;
+		
+		public InvalidSAMRecordException(FailFlags flags)
+		{
+			reason = flags;
+		}
+		
+		public FailFlags getFlags()
+		{
+			return reason;
+		}
+		
+	}
+	
 	/* ----- Construction/Parsing ----- */
 	
 	public SAMRecord()
@@ -50,6 +98,7 @@ public class SAMRecord {
 		sequence = "";
 		seqQuality = null;
 		alignmentFields = new HashMap<String, SAMField>();
+		warnings = new WarningFlags();
 	}
 	
 	public SAMRecord(String seq)
@@ -66,18 +115,19 @@ public class SAMRecord {
 		sequence = seq;
 		seqQuality = new int[seq.length()];
 		alignmentFields = new HashMap<String, SAMField>();
+		warnings = new WarningFlags();
 	}
 	
-	public static SAMRecord parseSAMRecord(String samLine, GenomeBuild gbuild) throws UnsupportedFileTypeException
+	public static SAMRecord parseSAMRecord(String samLine, GenomeBuild gbuild, boolean verbose) throws UnsupportedFileTypeException, InvalidSAMRecordException
 	{
 		if (samLine == null)
 		{
-			System.err.println("SAMRecord.parseSAMRecord || ERROR: No record provided for parsing...");
+			if(verbose)System.err.println("SAMRecord.parseSAMRecord || ERROR: No record provided for parsing...");
 			throw new FileBuffer.UnsupportedFileTypeException();
 		}
 		if (gbuild == null)
 		{
-			System.err.println("SAMRecord.parseSAMRecord || ERROR: Genome build required for SAM record parsing!");
+			if(verbose)System.err.println("SAMRecord.parseSAMRecord || ERROR: Genome build required for SAM record parsing!");
 			throw new FileBuffer.UnsupportedFileTypeException();
 		}
 		
@@ -87,9 +137,10 @@ public class SAMRecord {
 		
 		if (fields.length < 11)
 		{
-			System.err.println("SAMRecord.parseSAMRecord || ERROR: SAM Record contains insufficient number of fields (" + fields.length + ")!");
-			System.err.println(samLine);
-			throw new FileBuffer.UnsupportedFileTypeException();
+			if(verbose)System.err.println("SAMRecord.parseSAMRecord || ERROR: SAM Record contains insufficient number of fields (" + fields.length + ")!");
+			if(verbose)System.err.println(samLine);
+			FailFlags ff = new FailFlags(); ff.err_syntax = true;
+			throw new InvalidSAMRecordException(ff);
 		}
 		
 		//QNAME
@@ -103,9 +154,10 @@ public class SAMRecord {
 		}
 		catch (NumberFormatException e)
 		{
-			System.err.println("SAMRecord.parseSAMRecord || ERROR: Flag record (" + fields[1] + ") could not be parsed as a decimal integer!");
-			System.err.println(samLine);
-			throw new FileBuffer.UnsupportedFileTypeException();
+			if(verbose)System.err.println("SAMRecord.parseSAMRecord || ERROR: Flag record (" + fields[1] + ") could not be parsed as a decimal integer!");
+			if(verbose)System.err.println(samLine);
+			FailFlags ff = new FailFlags(); ff.err_syntax = true;
+			throw new InvalidSAMRecordException(ff);
 		}
 		
 		//RNAME
@@ -113,19 +165,24 @@ public class SAMRecord {
 		else
 		{
 			rec.reference = gbuild.getContig(fields[2]);
-			if (rec.reference == null) System.err.println("SAMRecord.parseSAMRecord || WARNING: RNAME contig \"" + fields[2] + "\" did not match any contig in the provided build.");
+			if (rec.reference == null) {
+				if(verbose) System.err.println("SAMRecord.parseSAMRecord || WARNING: RNAME contig \"" + fields[2] + "\" did not match any contig in the provided build.");
+				rec.warnings.err_invalid_RNAME = fields[2];
+			}
 		}
 		
 		//POS
 		try
 		{
 			rec.position = Integer.parseInt(fields[3]);
+			if (rec.position < 0 || rec.position > rec.reference.getLength()) rec.warnings.err_invalid_POS = rec.position;
 		}
 		catch (NumberFormatException e)
 		{
 			System.err.println("SAMRecord.parseSAMRecord || ERROR: POS record (" + fields[3] + ") could not be parsed as a decimal integer!");
 			System.err.println(samLine);
-			throw new FileBuffer.UnsupportedFileTypeException();
+			FailFlags ff = new FailFlags(); ff.err_syntax = true;
+			throw new InvalidSAMRecordException(ff);
 		}
 		
 		//MAPQ
@@ -135,9 +192,10 @@ public class SAMRecord {
 		}
 		catch (NumberFormatException e)
 		{
-			System.err.println("SAMRecord.parseSAMRecord || ERROR: MAPQ record (" + fields[4] + ") could not be parsed as a decimal integer!");
-			System.err.println(samLine);
-			throw new FileBuffer.UnsupportedFileTypeException();
+			if(verbose)System.err.println("SAMRecord.parseSAMRecord || ERROR: MAPQ record (" + fields[4] + ") could not be parsed as a decimal integer!");
+			if(verbose)System.err.println(samLine);
+			FailFlags ff = new FailFlags(); ff.err_syntax = true;
+			throw new InvalidSAMRecordException(ff);
 		}
 		
 		//CIGAR
@@ -150,19 +208,24 @@ public class SAMRecord {
 		else
 		{
 			rec.refNext = gbuild.getContig(fields[6]);
-			if (rec.refNext == null) System.err.println("SAMRecord.parseSAMRecord || WARNING: RNEXT contig \"" + fields[6] + "\" did not match any contig in the provided build.");
+			if (rec.refNext == null) {
+				if(verbose) System.err.println("SAMRecord.parseSAMRecord || WARNING: RNEXT contig \"" + fields[6] + "\" did not match any contig in the provided build.");
+				rec.warnings.err_invalid_RNEXT = fields[6];
+			}
 		}
 		
 		//PNEXT
 		try
 		{
 			rec.pNext = Integer.parseInt(fields[7]);
+			if (rec.pNext < 0 || rec.pNext > rec.refNext.getLength()) rec.warnings.err_invalid_PNEXT = rec.pNext;
 		}
 		catch (NumberFormatException e)
 		{
-			System.err.println("SAMRecord.parseSAMRecord || ERROR: PNEXT record (" + fields[7] + ") could not be parsed as a decimal integer!");
-			System.err.println(samLine);
-			throw new FileBuffer.UnsupportedFileTypeException();
+			if(verbose)System.err.println("SAMRecord.parseSAMRecord || ERROR: PNEXT record (" + fields[7] + ") could not be parsed as a decimal integer!");
+			if(verbose)System.err.println(samLine);
+			FailFlags ff = new FailFlags(); ff.err_syntax = true;
+			throw new InvalidSAMRecordException(ff);
 		}
 		
 		//TLEN
@@ -172,9 +235,10 @@ public class SAMRecord {
 		}
 		catch (NumberFormatException e)
 		{
-			System.err.println("SAMRecord.parseSAMRecord || ERROR: TLEN record (" + fields[8] + ") could not be parsed as a decimal integer!");
-			System.err.println(samLine);
-			throw new FileBuffer.UnsupportedFileTypeException();
+			if(verbose)System.err.println("SAMRecord.parseSAMRecord || ERROR: TLEN record (" + fields[8] + ") could not be parsed as a decimal integer!");
+			if(verbose)System.err.println(samLine);
+			FailFlags ff = new FailFlags(); ff.err_syntax = true;
+			throw new InvalidSAMRecordException(ff);
 		}
 		
 		//SEQ
@@ -185,26 +249,27 @@ public class SAMRecord {
 		String qualstring = fields[10];
 		if (qualstring.equals("*"))
 		{
-			System.err.println("SAMRecord.parseSAMRecord || WARNING: Phred scaled base call qualities not recorded for this read!");
+			if(verbose)System.err.println("SAMRecord.parseSAMRecord || WARNING: Phred scaled base call qualities not recorded for this read!");
 			rec.seqQuality = null;
 		}
 		else
 		{
 			if (rec.sequence == null)
 			{
-				System.err.println("SAMRecord.parseSAMRecord || ERROR: Non-null quality string cannot accompany null sequence string!");
-				System.err.println(samLine);
-				throw new FileBuffer.UnsupportedFileTypeException();
+				if(verbose)System.err.println("SAMRecord.parseSAMRecord || ERROR: Non-null quality string cannot accompany null sequence string!");
+				if(verbose)System.err.println(samLine);
+				FailFlags ff = new FailFlags(); ff.err_nullseq_nnqual = true;
+				throw new InvalidSAMRecordException(ff);
 			}
 			int slen = rec.sequence.length();
 			int qlen = qualstring.length();
 			if (slen != qlen)
 			{
-				System.err.println("SAMRecord.parseSAMRecord || WARNING: Length of sequence string does NOT match length of quality string! (slen = " + slen + " | qlen = " + qlen + ")");
+				if(verbose)System.err.println("SAMRecord.parseSAMRecord || WARNING: Length of sequence string does NOT match length of quality string! (slen = " + slen + " | qlen = " + qlen + ")");
 			}
 			if (qlen == 0)
 			{
-				System.err.println("SAMRecord.parseSAMRecord || WARNING: Quality string is empty!");
+				if(verbose)System.err.println("SAMRecord.parseSAMRecord || WARNING: Quality string is empty!");
 			}
 			else
 			{
@@ -224,7 +289,7 @@ public class SAMRecord {
 			int flen = fields.length;
 			for (int j = 11; j < flen; j++)
 			{
-				SAMField ofield = parseOptionalField(fields[j]);
+				SAMField ofield = parseOptionalField(fields[j], verbose);
 				rec.alignmentFields.put(ofield.getKey(), ofield);
 			}
 		}
@@ -232,20 +297,22 @@ public class SAMRecord {
 		return rec;
 	}
 	
-	public static SAMField parseOptionalField(String field) throws UnsupportedFileTypeException
+	public static SAMField parseOptionalField(String field, boolean verbose) throws UnsupportedFileTypeException, InvalidSAMRecordException
 	{
 		if (field == null || field.isEmpty())
 		{
-			System.err.println("SAMRecord.parseOptionalField || ERROR: No field provided for parsing...");
-			throw new FileBuffer.UnsupportedFileTypeException();
+			if(verbose)System.err.println("SAMRecord.parseOptionalField || ERROR: No field provided for parsing...");
+			FailFlags ff = new FailFlags(); ff.err_nullseq_nnqual = true;
+			throw new InvalidSAMRecordException(ff);
 		}
 		
 		String[] fields = field.split(":");
 		
 		if (fields.length != 3)
 		{
-			System.err.println("SAMRecord.parseOptionalField || ERROR: Custom field is not formatted correctly: " + field);
-			throw new FileBuffer.UnsupportedFileTypeException();
+			if(verbose)System.err.println("SAMRecord.parseOptionalField || ERROR: Custom field is not formatted correctly: " + field);
+			FailFlags ff = new FailFlags(); ff.err_nullseq_nnqual = true;
+			throw new InvalidSAMRecordException(ff);
 		}
 		
 		String tag = fields[0];
@@ -268,8 +335,9 @@ public class SAMRecord {
 			return new SAMNumbersField(tag, upval);
 		}
 		
-		System.err.println("SAMRecord.parseOptionalField || ERROR: Custom field type not recoginized: " + field);
-		throw new FileBuffer.UnsupportedFileTypeException();
+		if(verbose)System.err.println("SAMRecord.parseOptionalField || ERROR: Custom field type not recoginized: " + field);
+		FailFlags ff = new FailFlags(); ff.err_bad_customFieldType = field;
+		throw new InvalidSAMRecordException(ff);
 	}
 	
 	/* ----- Getters ----- */
@@ -406,6 +474,11 @@ public class SAMRecord {
 		Collections.sort(list);
 		
 		return list;
+	}
+	
+	public WarningFlags getParserWarnings()
+	{
+		return this.warnings;
 	}
 	
 	/* ----- Setters ----- */
