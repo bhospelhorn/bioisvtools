@@ -175,7 +175,7 @@ public class SAMRecord {
 		try
 		{
 			rec.position = Integer.parseInt(fields[3]);
-			if (rec.position < 0 || rec.position > rec.reference.getLength()) rec.warnings.err_invalid_POS = rec.position;
+			if (rec.reference != null && (rec.position < 0 || rec.position > rec.reference.getLength())) rec.warnings.err_invalid_POS = rec.position;
 		}
 		catch (NumberFormatException e)
 		{
@@ -218,7 +218,7 @@ public class SAMRecord {
 		try
 		{
 			rec.pNext = Integer.parseInt(fields[7]);
-			if (rec.pNext < 0 || rec.pNext > rec.refNext.getLength()) rec.warnings.err_invalid_PNEXT = rec.pNext;
+			if (rec.refNext != null && (rec.pNext < 0 || rec.pNext > rec.refNext.getLength())) rec.warnings.err_invalid_PNEXT = rec.pNext;
 		}
 		catch (NumberFormatException e)
 		{
