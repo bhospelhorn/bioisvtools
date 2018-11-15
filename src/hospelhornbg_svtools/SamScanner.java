@@ -1,7 +1,10 @@
 package hospelhornbg_svtools;
 
 import java.io.BufferedReader;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -181,6 +184,35 @@ public class SamScanner {
 			return list;
 		}
 		
+	}
+	
+	public static void printUsage()
+	{
+		System.out.println("--------------------------------------------------------------------------------");
+		System.out.println("BioisvTools || SAM Scanner");
+		System.out.println();
+		System.out.println("Purpose: Scans SAM files and outputs information about syntax errors that are present");
+		System.out.println("or oversights that may make the SAM unreadable to some tools.");
+		System.out.println();
+		System.out.println("Input Formats:");
+		System.out.println("\tInput callset must be a SAM file");
+		System.out.println();
+		System.out.println("Flags:");
+		System.out.println("\t-i\tFILE\t[Optional]\t\tInput file path. Defaults to stdin stream if not provided.");
+		System.out.println("\t-t\tINT\t[Optional]\t\tNumber of threads to use.");
+		System.out.println();
+		System.out.println("Note:");
+		System.out.println("You may specify a genome build if you wish to check the @SQ, REF, and RNEXT contigs");
+		System.out.println("against a known build to see if there are any contig strings other tools may not");
+		System.out.println("recognize.");
+		System.out.println("If you do not specify a genome build, the scanner uses the @SQ lines for reference.");
+		System.out.println();
+		System.out.println("Sample Usage:");
+		System.out.println("java -jar bioisvtools.jar scansam -g hg38");
+		System.out.println("java -jar bioisvtools.jar scansam -v -t 16");
+		System.out.println("java -jar bioisvtools.jar scansam -g GRCh37 -i sample.sam -t 24");
+		System.out.println();
+		System.out.println("--------------------------------------------------------------------------------");
 	}
 	
 	private static Contig generateContig(SAMHeaderLine sq)
@@ -558,6 +590,100 @@ public class SamScanner {
 		
 		String inPath = null;
 		int threads = 1;
+		
+		for (int i = 0; i < args.length; i++)
+		{
+			String s = args[i];
+			if (s.equals(OP_INPUT))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_INPUT + " flag MUST be followed by input VCF path!");
+					printUsage();
+					System.exit(1);
+				}
+				inPath = args[i+1];
+			}
+			else if (s.equals(OP_THREADS))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_THREADS + " flag MUST be followed by postive integer greater than or equal to 1!");
+					printUsage();
+					System.exit(1);
+				}
+				String tstr = args[i+1];
+				try {threads = Integer.parseInt(tstr);}
+				catch(NumberFormatException e) {
+					System.err.println("ERROR: " + OP_THREADS + " flag MUST be followed by postive integer greater than or equal to 1!");
+					printUsage();
+					System.exit(1);
+				}
+			}
+		}
+		
+		//Check validity of thread argument
+		if (threads < 1)
+		{
+			System.err.println("ERROR: " + OP_THREADS + " flag MUST be followed by postive integer greater than or equal to 1!");
+			printUsage();
+			System.exit(1);
+		}
+		
+		//Input - default to stdin if there's no path
+		BufferedReader br = null;
+		if (inPath == null || inPath.isEmpty())
+		{
+			br = new BufferedReader(new InputStreamReader(System.in));
+		}
+		else
+		{
+			try 
+			{
+				FileReader fr = new FileReader(inPath);
+				br = new BufferedReader(fr);
+			} 
+			catch (FileNotFoundException e)
+			{
+				System.err.println("ERROR: File " + inPath + " could not be opened!");
+				e.printStackTrace();
+				System.exit(1);
+			}
+		}
+		
+		
+		try 
+		{
+			scanSam(br, gb, verbose, threads);
+		} 
+		catch (IOException e1) 
+		{
+			System.err.println("ERROR: Error reading input stream. Exiting...");
+			e1.printStackTrace();
+			try 
+			{
+				br.close();
+			} 
+			catch (IOException e) 
+			{
+				System.err.println("ERROR: BufferedReader could not be closed... Exiting anyway.");
+				e.printStackTrace();
+				System.exit(1);
+			}
+			System.exit(1);
+		}
+		
+		
+		try 
+		{
+			br.close();
+		} 
+		catch (IOException e) 
+		{
+			System.err.println("ERROR: BufferedReader could not be closed... Exiting anyway.");
+			e.printStackTrace();
+			System.exit(1);
+		}
 		
 	}
 

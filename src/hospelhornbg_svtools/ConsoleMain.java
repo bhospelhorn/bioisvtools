@@ -40,6 +40,7 @@ public class ConsoleMain {
 	public static final String TOOL_TRIMCHROM = "trimchrom";
 	public static final String TOOL_SVANALYZE = "svreport";
 	public static final String TOOL_SVGENEHITTALLY = "svght";
+	public static final String TOOL_SCANSAM = "scansam";
 
 	public static final String OP_GENOMEBUILD = "-g";
 	public static final String OP_VERBOSE = "-v";
@@ -72,6 +73,7 @@ public class ConsoleMain {
 		System.out.println("\tvcfsns\tChange sample names in a VCF file (VCF Sample Name Swapper)");
 		System.out.println("\tsvreport\tPrint files separated by SV type and position effect containing candidate information from a family merged callset.");
 		System.out.println("\tsvght\tTally number of times gene hits are found in different families from svreport output.");
+		System.out.println("\tscansam\tScan a SAM file to look for syntax errors.");
 		System.out.println();
 		System.out.println("Flags:");
 		System.out.println("\t-g\tSTRING\t[Usually Required]\t\tName (case insensitive) of genome build to use with input.");
@@ -89,6 +91,7 @@ public class ConsoleMain {
 		System.out.println("java -jar bioisvtools.jar svanno -g grch37 -v [...]");
 		System.out.println("java -jar bioisvtools.jar svreport -g hg19 -v [...]");
 		System.out.println("java -jar bioisvtools.jar svght -v [...]");
+		System.out.println("java -jar bioisvtools.jar samscan (-g grch37) -v [...]");
 		System.out.println();
 		System.out.println("--------------------------------------------------------------------------------");
 	}
@@ -702,6 +705,15 @@ public class ConsoleMain {
 				System.err.println();
 			}
 			GeneTally.runGeneTally(args);
+		}
+		else if (program.equals(TOOL_SCANSAM))
+		{
+			if (verbose){
+				System.err.println("Tool Selected: " + TOOL_SCANSAM);
+				System.err.println();
+			}
+			GenomeBuild gb = loadBuild(homedir, genome, verbose);
+			SamScanner.runSamScanner(args, gb, verbose);
 		}
 		else
 		{
