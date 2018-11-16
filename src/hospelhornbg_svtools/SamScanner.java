@@ -64,17 +64,17 @@ public class SamScanner {
 			err_qualstr_len_bad = 0;
 		}
 		
-		public void incrementTotal()
+		public synchronized void incrementTotal()
 		{
 			total++;
 		}
 		
-		public void incrementSyntaxErrCount()
+		public synchronized void incrementSyntaxErrCount()
 		{
 			err_syntax_general++;
 		}
 		
-		public void incrementNullSeqErrCount()
+		public synchronized void incrementNullSeqErrCount()
 		{
 			err_nullseq_nnqual++;
 		}
@@ -97,17 +97,17 @@ public class SamScanner {
 			bad_RNEXT.add(c);
 		}
 		
-		public void incrementInvalidPosErrCount()
+		public synchronized void incrementInvalidPosErrCount()
 		{
 			err_invalid_POS++;
 		}
 		
-		public void incrementInvalidPNextCount()
+		public synchronized void incrementInvalidPNextCount()
 		{
 			err_invalid_PNEXT++;
 		}
 		
-		public void incrementQualStrLengthErrCount()
+		public synchronized void incrementQualStrLengthErrCount()
 		{
 			err_qualstr_len_bad++;
 		}
@@ -281,6 +281,7 @@ public class SamScanner {
 		//	in records
 		//If there is no provided GenomeBuild, build one from the SQ lines and regurgitate for user
 		//Check for RG line
+		reader.mark(1000000);
 		System.out.println("===================== HEADER =====================");
 		String line = reader.readLine();
 		//This line should be the @HD. If not, report.
@@ -420,8 +421,8 @@ public class SamScanner {
 				if(wf.err_qualstr_len_bad) c.incrementQualStrLengthErrCount();
 				if(wf.err_invalid_RNAME != null) c.addInvalidRefContig(wf.err_invalid_RNAME);
 				if(wf.err_invalid_RNEXT != null) c.addInvalidRNextContig(wf.err_invalid_RNEXT);
-				if(wf.err_invalid_POS >= 0) c.incrementInvalidPosErrCount();
-				if(wf.err_invalid_PNEXT >= 0) c.incrementInvalidPNextCount();
+				if(wf.err_invalid_POS != 0) c.incrementInvalidPosErrCount();
+				if(wf.err_invalid_PNEXT != 0) c.incrementInvalidPNextCount();
 			} 
 			catch (UnsupportedFileTypeException e)
 			{
@@ -455,6 +456,7 @@ public class SamScanner {
 				@Override
 				public void run() 
 				{
+					int pcount = 0;
 					while(!Thread.interrupted())
 					{
 						if(linequeue.isEmpty()) 
@@ -466,6 +468,7 @@ public class SamScanner {
 							catch (InterruptedException e) 
 							{
 								//If it's getting interrupted, that should only be a kill signal...
+								if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning... (From queue empty sleep)");
 								return;
 							}
 						}
@@ -473,6 +476,7 @@ public class SamScanner {
 						{
 							String line = linequeue.poll();
 							if (line == null) continue;
+							pcount++;
 							c.incrementTotal();
 							try 
 							{
@@ -481,8 +485,8 @@ public class SamScanner {
 								if(wf.err_qualstr_len_bad) c.incrementQualStrLengthErrCount();
 								if(wf.err_invalid_RNAME != null) c.addInvalidRefContig(wf.err_invalid_RNAME);
 								if(wf.err_invalid_RNEXT != null) c.addInvalidRNextContig(wf.err_invalid_RNEXT);
-								if(wf.err_invalid_POS >= 0) c.incrementInvalidPosErrCount();
-								if(wf.err_invalid_PNEXT >= 0) c.incrementInvalidPNextCount();
+								if(wf.err_invalid_POS != 0) c.incrementInvalidPosErrCount();
+								if(wf.err_invalid_PNEXT != 0) c.incrementInvalidPNextCount();
 							} 
 							catch (UnsupportedFileTypeException e)
 							{
@@ -495,30 +499,75 @@ public class SamScanner {
 								if (ff.err_nullseq_nnqual) c.incrementNullSeqErrCount();
 								if (ff.err_bad_customFieldType != null) c.addBadCustomFieldErr(ff.err_bad_customFieldType);
 							}
+							//if(pcount % 1000000 == 0) System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ")");
 						}		
 					}
+					//Run until the queue is empty...
+					while(!linequeue.isEmpty())
+					{
+						String line = linequeue.poll();
+						if (line == null) break;
+						pcount++;
+						c.incrementTotal();
+						try 
+						{
+							SAMRecord rec = SAMRecord.parseSAMRecord(line, gb, verbose);
+							WarningFlags wf = rec.getParserWarnings();
+							if(wf.err_qualstr_len_bad) c.incrementQualStrLengthErrCount();
+							if(wf.err_invalid_RNAME != null) c.addInvalidRefContig(wf.err_invalid_RNAME);
+							if(wf.err_invalid_RNEXT != null) c.addInvalidRNextContig(wf.err_invalid_RNEXT);
+							if(wf.err_invalid_POS != 0) c.incrementInvalidPosErrCount();
+							if(wf.err_invalid_PNEXT != 0) c.incrementInvalidPNextCount();
+						} 
+						catch (UnsupportedFileTypeException e)
+						{
+							c.incrementSyntaxErrCount();
+						} 
+						catch (InvalidSAMRecordException e) 
+						{
+							FailFlags ff = e.getFlags();
+							if (ff.err_syntax) c.incrementSyntaxErrCount();
+							if (ff.err_nullseq_nnqual) c.incrementNullSeqErrCount();
+							if (ff.err_bad_customFieldType != null) c.addBadCustomFieldErr(ff.err_bad_customFieldType);
+						}
+					}
+					if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning...");
 				}
 			});
 			tarr[i].setName("SamScannerWorkerThread" + i);
 		}
 		
 		//Start worker threads
-		for (Thread t : tarr) t.start();
+		for (Thread t : tarr) {
+			t.start();
+			if(verbose)System.err.println("DEBUG: Worker thread " + t.getName() + " started!");
+		}
 		
 		//Start line reading
 		String line = null;
+		int lcount = 0;
+		int hcount = 0;
 		while((line = reader.readLine()) != null)
 		{
-			if (line.startsWith("@")) continue; //Skip header
+			if (line.startsWith("@")) {
+				hcount++;
+				continue; //Skip header
+			}
+			lcount++;
 			linequeue.add(line);
+			if(verbose && (lcount % 10000000 == 0)) System.err.println("DEBUG: Lines Read: " + lcount);
 		}
+		if(verbose)System.err.println("DEBUG: SAM readin complete. Total records read: " + lcount);
+		if(verbose)System.err.println("DEBUG: Total header lines read: " + hcount);
 		
 		//Kill worker threads
 		for (Thread t : tarr){
 			synchronized(t) { t.interrupt();}
+			if(verbose)System.err.println("DEBUG: Worker thread " + t.getName() + " interrupted!");
 		}
 		
 		//Wait for worker threads to die
+		if(verbose)System.err.println("DEBUG: Waiting for worker threads to die...");
 		boolean anyalive = true;
 		while(anyalive)
 		{
@@ -532,6 +581,7 @@ public class SamScanner {
 				}
 			}	
 		}
+		if(verbose)System.err.println("DEBUG: Worker threads dead.");
 		
 		return c;
 	}

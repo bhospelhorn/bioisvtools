@@ -198,7 +198,10 @@ public class GenomeBuild {
 	
 	public void removeContig(String contigName)
 	{
-		contigMap.remove(contigName);
+		Contig c = contigMap.get(contigName);
+		if (c == null) return;
+		Collection<String> cnames = c.getAllNames();
+		for (String n : cnames) contigMap.remove(n);
 	}
 	
 	public String getSpeciesID()
