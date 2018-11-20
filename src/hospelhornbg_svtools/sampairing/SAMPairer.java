@@ -98,9 +98,12 @@ public class SAMPairer {
 		Files.deleteIfExists(Paths.get(path));
 	}
 	
-	private void decompressFile(String inpath, String outpath)
+	private void decompressFile(String inpath, String outpath) throws IOException
 	{
-		
+		FileBuffer in = FileBuffer.createBuffer(inpath);
+		FileBuffer out = Huffman.HuffDecodeFile(in);
+		out.writeFile(outpath);
+		Files.deleteIfExists(Paths.get(inpath));
 	}
 	
 	public synchronized void closeOpenStreams() throws IOException
