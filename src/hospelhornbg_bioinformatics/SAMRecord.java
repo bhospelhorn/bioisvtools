@@ -13,7 +13,11 @@ import waffleoRai_Utils.BitStreamer;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
-public class SAMRecord {
+public class SAMRecord implements Comparable<SAMRecord>{
+	
+	/* ----- Static Variables ----- */
+	
+	private static SAMSortOrder sortOrder = SAMSortOrder.COORDINATE;
 	
 	/* ----- Instance Variables ----- */
 	
@@ -82,6 +86,34 @@ public class SAMRecord {
 		
 	}
 	
+	public static class ParsedRecord
+	{
+		private SAMRecord record;
+		
+		//public String raw_qname;
+		//public String raw_flag;
+		public String raw_rname;
+		//public String raw_pos;
+		//public String raw_mapq;
+		//public String raw_cigar;
+		public String raw_rnext;
+		//public String raw_pnext;
+		//public String raw_tlen;
+		//public String raw_seq;
+		//public String raw_qual;
+		//public String[] raw_customs;
+		
+		public ParsedRecord(SAMRecord r)
+		{
+			record = r;
+		}
+		
+		public SAMRecord getRecord()
+		{
+			return record;
+		}
+	}
+	
 	/* ----- Construction/Parsing ----- */
 	
 	public SAMRecord()
@@ -118,7 +150,7 @@ public class SAMRecord {
 		warnings = new WarningFlags();
 	}
 	
-	public static SAMRecord parseSAMRecord(String samLine, GenomeBuild gbuild, boolean verbose) throws UnsupportedFileTypeException, InvalidSAMRecordException
+	public static ParsedRecord parseSAMRecord(String samLine, GenomeBuild gbuild, boolean verbose) throws UnsupportedFileTypeException, InvalidSAMRecordException
 	{
 		if (samLine == null)
 		{
@@ -132,6 +164,7 @@ public class SAMRecord {
 		}
 		
 		SAMRecord rec = new SAMRecord();
+		ParsedRecord p = new ParsedRecord(rec);
 		
 		String[] fields = samLine.split("\t");
 		
@@ -144,10 +177,12 @@ public class SAMRecord {
 		}
 		
 		//QNAME
+		//p.raw_qname = fields[0];
 		if (fields[0].equals("*")) rec.qname = null;
 		else rec.qname = fields[0];
 		
 		//FLAG
+		//p.raw_flag = fields[1];
 		try
 		{
 			rec.flags = Integer.parseInt(fields[1]);
@@ -161,6 +196,7 @@ public class SAMRecord {
 		}
 		
 		//RNAME
+		p.raw_rname = fields[2];
 		if (fields[2].equals("*")) rec.reference = null;
 		else
 		{
@@ -172,6 +208,7 @@ public class SAMRecord {
 		}
 		
 		//POS
+		//p.raw_pos = fields[3];
 		try
 		{
 			rec.position = Integer.parseInt(fields[3]);
@@ -186,6 +223,7 @@ public class SAMRecord {
 		}
 		
 		//MAPQ
+		//p.raw_mapq = fields[4];
 		try
 		{
 			rec.mapq = Integer.parseInt(fields[4]);
@@ -199,10 +237,12 @@ public class SAMRecord {
 		}
 		
 		//CIGAR
+		//p.raw_cigar = fields[5];
 		if (fields[5].equals("*")) rec.CIGAR = null;
 		else rec.CIGAR = fields[5];
 		
 		//RNEXT
+		p.raw_rnext = fields[6];
 		if (fields[6].equals("*")) rec.refNext = null;
 		else if (fields[6].equals("=")) rec.refNext = rec.reference;
 		else
@@ -215,6 +255,7 @@ public class SAMRecord {
 		}
 		
 		//PNEXT
+		//p.raw_pnext = fields[7];
 		try
 		{
 			rec.pNext = Integer.parseInt(fields[7]);
@@ -229,6 +270,7 @@ public class SAMRecord {
 		}
 		
 		//TLEN
+		//p.raw_tlen = fields[8];
 		try
 		{
 			rec.templateLength = Integer.parseInt(fields[8]);
@@ -242,10 +284,12 @@ public class SAMRecord {
 		}
 		
 		//SEQ
+		//p.raw_seq = fields[9];
 		if (fields[9].equals("*")) rec.sequence = null;
 		else rec.sequence = fields[9];
 		
 		//QUAL
+		//p.raw_qual = fields[10];
 		String qualstring = fields[10];
 		if (qualstring.equals("*"))
 		{
@@ -287,14 +331,16 @@ public class SAMRecord {
 		if (fields.length > 11)
 		{
 			int flen = fields.length;
+			//p.raw_customs = new String[flen - 11];
 			for (int j = 11; j < flen; j++)
 			{
+				//p.raw_customs[j - 11] = fields[j];
 				SAMField ofield = parseOptionalField(fields[j], verbose);
 				rec.alignmentFields.put(ofield.getKey(), ofield);
 			}
 		}
 		
-		return rec;
+		return p;
 	}
 	
 	public static SAMField parseOptionalField(String field, boolean verbose) throws UnsupportedFileTypeException, InvalidSAMRecordException
@@ -695,6 +741,113 @@ public class SAMRecord {
 	{
 		refNext = null;
 		if (flaggedSegmented()) flagNextSegmentUnmapped(true);
+	}
+	
+	/* ----- Sort ----- */
+	
+	public static void setSortOrder(SAMSortOrder so)
+	{
+		sortOrder = so;
+	}
+	
+	public int hashCode()
+	{
+		return this.writeSAMRecord(false).hashCode();
+	}
+	
+	public boolean equals(Object o)
+	{
+		if (o == null) return false;
+		if (o == this) return true;
+		if (!(o instanceof SAMRecord)) return false;
+		return this.hashCode() == o.hashCode();
+	}
+
+	public boolean isNextSegment(SAMRecord rec)
+	{
+		if (rec == null) return false;
+		
+		Contig next = this.getNextReferenceContig();
+		Contig oc = rec.getReferenceContig();
+		if (next == null && oc != null) return false;
+		if (next != null && !next.equals(oc)) return false;
+		
+		//Assuming same contig
+		//Check pos
+		int pnext = this.getNextPosition();
+		int opos = rec.getPosition();
+		
+		if (pnext != opos) return false;
+		
+		return true;
+	}
+	
+	private int compareByQueryInfo(SAMRecord other)
+	{
+		//Query name
+		String thisqn = this.getQueryName();
+		String otherqn = other.getQueryName();
+		if (thisqn != null)
+		{
+			if(!thisqn.equals(otherqn)) return thisqn.compareTo(otherqn);
+		}
+		else
+		{
+			if (otherqn != null) return -1;
+		}
+		
+		//Check for first/last flags
+		if (this.flaggedFirstSegment()) return -1;
+		if (other.flaggedFirstSegment()) return 1;
+		if (this.flaggedLastSegment()) return 1;
+		if (other.flaggedLastSegment()) return -1;
+		
+		//See if one is directly after the other
+		if (this.isNextSegment(other)) return -1; //Other comes after this
+		if (other.isNextSegment(this)) return 1; //This comes after other
+		
+		//If no other info, we have no data. Just return 0.
+		
+		return 0;
+	}
+	
+	@Override
+	public int compareTo(SAMRecord other) 
+	{
+		if (other == null) return 1;
+		if (other == this) return 0;
+		
+		if (sortOrder == SAMSortOrder.COORDINATE)
+		{
+			//Coordinate mode	
+			//Get contig
+			Contig ct = this.getReferenceContig();
+			Contig co = other.getReferenceContig();
+			if (ct == null && co != null) return 1;
+			else if (co == null && ct != null) return -1;
+			else if (ct != null && co != null)
+			{
+				if (!ct.equals(co)) return ct.compareTo(co);	
+			}
+			//Position
+			int pt = this.getPosition();
+			int po = other.getPosition();
+			if (pt != po) return pt - po;
+			
+			//Length
+			int lt = this.getTemplateLength();
+			int lo = other.getTemplateLength();
+			if (lt != lo) return lt - lo;
+			
+			return compareByQueryInfo(other);
+		}
+		else if (sortOrder == SAMSortOrder.QUERY_NAME)
+		{
+			//Query group mode	
+			return compareByQueryInfo(other);
+		}
+		
+		return 0;
 	}
 	
 }

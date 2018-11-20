@@ -16,6 +16,7 @@ import hospelhornbg_bioinformatics.SAMHeaderLine;
 import hospelhornbg_bioinformatics.SAMRecord;
 import hospelhornbg_bioinformatics.SAMRecord.FailFlags;
 import hospelhornbg_bioinformatics.SAMRecord.InvalidSAMRecordException;
+import hospelhornbg_bioinformatics.SAMRecord.ParsedRecord;
 import hospelhornbg_bioinformatics.SAMRecord.WarningFlags;
 import hospelhornbg_genomeBuild.Contig;
 import hospelhornbg_genomeBuild.GenomeBuild;
@@ -44,6 +45,9 @@ public class SamScanner {
 		private Set<String> bad_RNAME;
 		private Set<String> bad_RNEXT;
 		
+		private Set<String> all_RNAME;
+		private Set<String> all_RNEXT;
+		
 		private volatile int err_qualstr_len_bad;
 		
 		public Counts()
@@ -60,6 +64,8 @@ public class SamScanner {
 			err_invalid_PNEXT = 0;
 			bad_RNAME = new HashSet<String>();
 			bad_RNEXT = new HashSet<String>();
+			all_RNAME = new HashSet<String>();
+			all_RNEXT = new HashSet<String>();
 			
 			err_qualstr_len_bad = 0;
 		}
@@ -110,6 +116,16 @@ public class SamScanner {
 		public synchronized void incrementQualStrLengthErrCount()
 		{
 			err_qualstr_len_bad++;
+		}
+		
+		public synchronized void add_RNAME(String rname)
+		{
+			all_RNAME.add(rname);
+		}
+		
+		public synchronized void add_RNEXT(String rname)
+		{
+			all_RNEXT.add(rname);
 		}
 		
 		public int getTotal()
@@ -180,6 +196,24 @@ public class SamScanner {
 			int lsz = bad_RNEXT.size() + 1;
 			List<String> list = new ArrayList<String>(lsz);
 			list.addAll(bad_RNEXT);
+			Collections.sort(list);
+			return list;
+		}
+		
+		public synchronized List<String> getAll_RNAME_Strings()
+		{
+			int lsz = all_RNAME.size() + 1;
+			List<String> list = new ArrayList<String>(lsz);
+			list.addAll(all_RNAME);
+			Collections.sort(list);
+			return list;
+		}
+		
+		public synchronized List<String> getAll_RNEXT_Strings()
+		{
+			int lsz = all_RNEXT.size() + 1;
+			List<String> list = new ArrayList<String>(lsz);
+			list.addAll(all_RNEXT);
 			Collections.sort(list);
 			return list;
 		}
@@ -416,13 +450,16 @@ public class SamScanner {
 			c.incrementTotal();
 			try 
 			{
-				SAMRecord rec = SAMRecord.parseSAMRecord(line, gb, verbose);
+				ParsedRecord pr = SAMRecord.parseSAMRecord(line, gb, verbose);
+				SAMRecord rec = pr.getRecord();
 				WarningFlags wf = rec.getParserWarnings();
 				if(wf.err_qualstr_len_bad) c.incrementQualStrLengthErrCount();
 				if(wf.err_invalid_RNAME != null) c.addInvalidRefContig(wf.err_invalid_RNAME);
 				if(wf.err_invalid_RNEXT != null) c.addInvalidRNextContig(wf.err_invalid_RNEXT);
 				if(wf.err_invalid_POS != 0) c.incrementInvalidPosErrCount();
 				if(wf.err_invalid_PNEXT != 0) c.incrementInvalidPNextCount();
+				c.add_RNAME(pr.raw_rname);
+				c.add_RNEXT(pr.raw_rnext);
 			} 
 			catch (UnsupportedFileTypeException e)
 			{
@@ -480,13 +517,16 @@ public class SamScanner {
 							c.incrementTotal();
 							try 
 							{
-								SAMRecord rec = SAMRecord.parseSAMRecord(line, gb, verbose);
+								ParsedRecord pr = SAMRecord.parseSAMRecord(line, gb, verbose);
+								SAMRecord rec = pr.getRecord();
 								WarningFlags wf = rec.getParserWarnings();
 								if(wf.err_qualstr_len_bad) c.incrementQualStrLengthErrCount();
 								if(wf.err_invalid_RNAME != null) c.addInvalidRefContig(wf.err_invalid_RNAME);
 								if(wf.err_invalid_RNEXT != null) c.addInvalidRNextContig(wf.err_invalid_RNEXT);
 								if(wf.err_invalid_POS != 0) c.incrementInvalidPosErrCount();
 								if(wf.err_invalid_PNEXT != 0) c.incrementInvalidPNextCount();
+								c.add_RNAME(pr.raw_rname);
+								c.add_RNEXT(pr.raw_rnext);
 							} 
 							catch (UnsupportedFileTypeException e)
 							{
@@ -511,13 +551,16 @@ public class SamScanner {
 						c.incrementTotal();
 						try 
 						{
-							SAMRecord rec = SAMRecord.parseSAMRecord(line, gb, verbose);
+							ParsedRecord pr = SAMRecord.parseSAMRecord(line, gb, verbose);
+							SAMRecord rec = pr.getRecord();
 							WarningFlags wf = rec.getParserWarnings();
 							if(wf.err_qualstr_len_bad) c.incrementQualStrLengthErrCount();
 							if(wf.err_invalid_RNAME != null) c.addInvalidRefContig(wf.err_invalid_RNAME);
 							if(wf.err_invalid_RNEXT != null) c.addInvalidRNextContig(wf.err_invalid_RNEXT);
 							if(wf.err_invalid_POS != 0) c.incrementInvalidPosErrCount();
 							if(wf.err_invalid_PNEXT != 0) c.incrementInvalidPNextCount();
+							c.add_RNAME(pr.raw_rname);
+							c.add_RNEXT(pr.raw_rnext);
 						} 
 						catch (UnsupportedFileTypeException e)
 						{
@@ -619,7 +662,7 @@ public class SamScanner {
 		System.out.println("Records containing an illegal REF contig: " + count);
 		if (count > 0)
 		{
-			System.out.println("--- Illegel REF Contig Strings ---");
+			System.out.println("--- Illegal REF Contig Strings ---");
 			for (String s : slist) System.out.println("\t" + s);
 		}
 		slist = c.getBadRNextContigs();
@@ -627,11 +670,20 @@ public class SamScanner {
 		System.out.println("Records containing an illegal RNEXT contig: " + count);
 		if (count > 0)
 		{
-			System.out.println("--- Illegel RNEXT Contig Strings ---");
+			System.out.println("--- Illegal RNEXT Contig Strings ---");
 			for (String s : slist) System.out.println("\t" + s);
 		}
 		System.out.println("Records containing an illegal POS value: " + c.getInvalidPosErrCount());
 		System.out.println("Records containing an illegal PNEXT value: " + c.getInvalidPNextCount());
+		
+		slist = c.getAll_RNAME_Strings();
+		System.out.println("--- All REF Contig Strings In Readable Records ---");
+		for (String s : slist) System.out.println("\t" + s);
+		
+		slist = c.getAll_RNEXT_Strings();
+		System.out.println("--- All RNEXT Contig Strings In Readable Records ---");
+		for (String s : slist) System.out.println("\t" + s);
+		
 	}
 	
 	public static void runSamScanner(String[] args, GenomeBuild gb, boolean verbose)
