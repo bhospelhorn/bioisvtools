@@ -30,6 +30,11 @@ public class Pedigree {
 	private List<Individual> iUnaffected;
 	private List<Individual> iAffected;
 	
+	protected Pedigree()
+	{
+		
+	}
+	
  	public Pedigree(Individual PB)
 	{
 		proband = PB;

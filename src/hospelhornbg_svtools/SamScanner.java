@@ -7,9 +7,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import hospelhornbg_bioinformatics.SAMHeaderLine;
@@ -29,24 +31,26 @@ public class SamScanner {
 	public static final String OP_TEMPDIR = "-T"; 
 	public static final String OP_THREADS = "-t"; 
 	
+	public static final int MAX_QUEUESIZE = 100000000;
+	
 	private static class Counts
 	{
 		private volatile int total;
 		
 		private volatile int err_syntax_general;
 		private volatile int err_nullseq_nnqual;
-		private volatile int err_bad_customFieldType;
-		private Set<String> bad_customFieldTypes;
+		//private volatile int err_bad_customFieldType;
+		private HashMap<String, Integer> bad_customFieldTypes;
 		
-		private volatile int err_invalid_RNAME;
+		//private volatile int err_invalid_RNAME;
 		private volatile int err_invalid_POS;
-		private volatile int err_invalid_RNEXT;
+		//private volatile int err_invalid_RNEXT;
 		private volatile int err_invalid_PNEXT;
-		private Set<String> bad_RNAME;
-		private Set<String> bad_RNEXT;
+		private HashMap<String, Integer> bad_RNAME;
+		private HashMap<String, Integer> bad_RNEXT;
 		
-		private Set<String> all_RNAME;
-		private Set<String> all_RNEXT;
+		private HashMap<String, Integer> all_RNAME;
+		private HashMap<String, Integer> all_RNEXT;
 		
 		private volatile int err_qualstr_len_bad;
 		
@@ -55,17 +59,17 @@ public class SamScanner {
 			total = 0;
 			err_syntax_general = 0;
 			err_nullseq_nnqual = 0;
-			err_bad_customFieldType = 0;
-			bad_customFieldTypes = new HashSet<String>();
+			//err_bad_customFieldType = 0;
+			bad_customFieldTypes = new HashMap<String, Integer>();
 			
-			err_invalid_RNAME = 0;
+			//err_invalid_RNAME = 0;
 			err_invalid_POS = 0;
-			err_invalid_RNEXT = 0;
+			//err_invalid_RNEXT = 0;
 			err_invalid_PNEXT = 0;
-			bad_RNAME = new HashSet<String>();
-			bad_RNEXT = new HashSet<String>();
-			all_RNAME = new HashSet<String>();
-			all_RNEXT = new HashSet<String>();
+			bad_RNAME = new HashMap<String, Integer>();
+			bad_RNEXT = new HashMap<String, Integer>();
+			all_RNAME = new HashMap<String, Integer>();
+			all_RNEXT = new HashMap<String, Integer>();
 			
 			err_qualstr_len_bad = 0;
 		}
@@ -87,20 +91,24 @@ public class SamScanner {
 		
 		public synchronized void addBadCustomFieldErr(String badtype)
 		{
-			err_bad_customFieldType++;
-			bad_customFieldTypes.add(badtype);
+			//err_bad_customFieldType++;
+			Integer count = bad_customFieldTypes.get(badtype);
+			if (count == null) bad_customFieldTypes.put(badtype, 1);
+			else bad_customFieldTypes.put(badtype, count+1);
 		}
 		
 		public synchronized void addInvalidRefContig(String c)
 		{
-			err_invalid_RNAME++;
-			bad_RNAME.add(c);
+			Integer count = bad_RNAME.get(c);
+			if (count == null) bad_RNAME.put(c, 1);
+			else bad_RNAME.put(c, count+1);
 		}
 		
 		public synchronized void addInvalidRNextContig(String c)
 		{
-			err_invalid_RNEXT++;
-			bad_RNEXT.add(c);
+			Integer count = bad_RNEXT.get(c);
+			if (count == null) bad_RNEXT.put(c, 1);
+			else bad_RNEXT.put(c, count+1);
 		}
 		
 		public synchronized void incrementInvalidPosErrCount()
@@ -120,12 +128,16 @@ public class SamScanner {
 		
 		public synchronized void add_RNAME(String rname)
 		{
-			all_RNAME.add(rname);
+			Integer count = all_RNAME.get(rname);
+			if (count == null) all_RNAME.put(rname, 1);
+			else all_RNAME.put(rname, count+1);
 		}
 		
 		public synchronized void add_RNEXT(String rname)
 		{
-			all_RNEXT.add(rname);
+			Integer count = all_RNEXT.get(rname);
+			if (count == null) all_RNEXT.put(rname, 1);
+			else all_RNEXT.put(rname, count+1);
 		}
 		
 		public int getTotal()
@@ -158,26 +170,26 @@ public class SamScanner {
 			return err_qualstr_len_bad;
 		}
 		
-		public int getBadCustomFieldErrCount()
+		public synchronized int getBadCustomFieldErrCount()
 		{
-			return err_bad_customFieldType;
+			return bad_customFieldTypes.size();
 		}
 		
-		public int getInvalidRefContigErrCount()
+		public synchronized int getInvalidRefContigErrCount()
 		{
-			return err_invalid_RNAME;
+			return bad_RNAME.size();
 		}
 		
-		public int getInvalidRNextContigErrCount()
+		public synchronized int getInvalidRNextContigErrCount()
 		{
-			return err_invalid_RNEXT;
+			return bad_RNEXT.size();
 		}
 		
 		public synchronized List<String> getBadCustomFieldTypes()
 		{
 			int lsz = bad_customFieldTypes.size() + 1;
 			List<String> list = new ArrayList<String>(lsz);
-			list.addAll(bad_customFieldTypes);
+			list.addAll(bad_customFieldTypes.keySet());
 			Collections.sort(list);
 			return list;
 		}
@@ -186,7 +198,7 @@ public class SamScanner {
 		{
 			int lsz = bad_RNAME.size() + 1;
 			List<String> list = new ArrayList<String>(lsz);
-			list.addAll(bad_RNAME);
+			list.addAll(bad_RNAME.keySet());
 			Collections.sort(list);
 			return list;
 		}
@@ -195,7 +207,7 @@ public class SamScanner {
 		{
 			int lsz = bad_RNEXT.size() + 1;
 			List<String> list = new ArrayList<String>(lsz);
-			list.addAll(bad_RNEXT);
+			list.addAll(bad_RNEXT.keySet());
 			Collections.sort(list);
 			return list;
 		}
@@ -204,7 +216,7 @@ public class SamScanner {
 		{
 			int lsz = all_RNAME.size() + 1;
 			List<String> list = new ArrayList<String>(lsz);
-			list.addAll(all_RNAME);
+			list.addAll(all_RNAME.keySet());
 			Collections.sort(list);
 			return list;
 		}
@@ -213,7 +225,7 @@ public class SamScanner {
 		{
 			int lsz = all_RNEXT.size() + 1;
 			List<String> list = new ArrayList<String>(lsz);
-			list.addAll(all_RNEXT);
+			list.addAll(all_RNEXT.keySet());
 			Collections.sort(list);
 			return list;
 		}
@@ -597,6 +609,19 @@ public class SamScanner {
 				continue; //Skip header
 			}
 			lcount++;
+			//pause if linequeue is too full
+			while (linequeue.size() >= MAX_QUEUESIZE)
+			{
+				try 
+				{
+					Thread.sleep(10);
+				} 
+				catch (InterruptedException e) 
+				{
+					//Eat
+					e.printStackTrace();
+				}
+			}
 			linequeue.add(line);
 			if(verbose && (lcount % 10000000 == 0)) System.err.println("DEBUG: Lines Read: " + lcount);
 		}
