@@ -41,6 +41,7 @@ public class ConsoleMain {
 	public static final String TOOL_SVANALYZE = "svreport";
 	public static final String TOOL_SVGENEHITTALLY = "svght";
 	public static final String TOOL_SCANSAM = "scansam";
+	public static final String TOOL_FIXSAM = "fixsam";
 
 	public static final String OP_GENOMEBUILD = "-g";
 	public static final String OP_VERBOSE = "-v";
@@ -74,6 +75,7 @@ public class ConsoleMain {
 		System.out.println("\tsvreport\tPrint files separated by SV type and position effect containing candidate information from a family merged callset.");
 		System.out.println("\tsvght\tTally number of times gene hits are found in different families from svreport output.");
 		System.out.println("\tscansam\tScan a SAM file to look for syntax errors.");
+		System.out.println("\tfixsam\tScan a SAM file to look for contig name errors, and output a fixed version.");
 		System.out.println();
 		System.out.println("Flags:");
 		System.out.println("\t-g\tSTRING\t[Usually Required]\t\tName (case insensitive) of genome build to use with input.");
@@ -92,6 +94,7 @@ public class ConsoleMain {
 		System.out.println("java -jar bioisvtools.jar svreport -g hg19 -v [...]");
 		System.out.println("java -jar bioisvtools.jar svght -v [...]");
 		System.out.println("java -jar bioisvtools.jar samscan (-g grch37) -v [...]");
+		System.out.println("java -jar bioisvtools.jar fixsam -g grch37 -v [...]");
 		System.out.println();
 		System.out.println("--------------------------------------------------------------------------------");
 	}
@@ -714,6 +717,21 @@ public class ConsoleMain {
 			}
 			GenomeBuild gb = loadBuild(homedir, genome, verbose);
 			SamScanner.runSamScanner(args, gb, verbose);
+		}
+		else if (program.equals(TOOL_FIXSAM))
+		{
+			if (verbose){
+				System.err.println("Tool Selected: " + TOOL_FIXSAM);
+				System.err.println();
+			}
+			GenomeBuild gb = loadBuild(homedir, genome, verbose);
+			if(gb == null)
+			{
+				System.err.println("Genome build for \"" + genome + "\" could not be loaded!");
+				printUsage();
+				System.exit(1);
+			}
+			SamFixer.runSamFixer(args, gb, verbose);
 		}
 		else
 		{

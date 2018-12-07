@@ -705,6 +705,19 @@ public class GeneSet
 			return genes.size();
 		}*/
 		
+		public List<Gene> getGenesInRegion(int stPos, int edPos)
+		{
+			HitRecord start = search(stPos, false, false);
+			HitRecord end = search(edPos, false, false);
+			
+			int sti = start.index;
+			int edi = end.index;
+			if (start.location.isIntergenic() && end.location.isIntergenic() && (sti == edi)) return new LinkedList<Gene>(); //Empty
+			if(start.location.isIntergenic()) sti++; //Index refers to gene before location
+			
+			return getGenes(sti, edi);
+		}
+		
 		public boolean hasGenes()
 		{
 			return (genes.size() > 0);
@@ -1882,6 +1895,17 @@ public class GeneSet
 		}
 		Collections.sort(results);
 		return results;
+	}
+	
+	public List<Gene> getGenesInRegion(Contig c, int stPos, int edPos)
+	{
+		if (c == null) return null;
+		if (stPos < 0) stPos = 0;
+		
+		ChromSet cs = genemap.get(c);
+		if(cs == null) return null;
+		
+		return cs.getGenesInRegion(stPos, edPos);
 	}
 	
 	/* --- Load Standard --- */

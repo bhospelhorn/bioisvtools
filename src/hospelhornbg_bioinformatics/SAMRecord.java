@@ -202,7 +202,7 @@ public class SAMRecord implements Comparable<SAMRecord>{
 		{
 			rec.reference = gbuild.getContig(fields[2]);
 			if (rec.reference == null) {
-				if(verbose) System.err.println("SAMRecord.parseSAMRecord || WARNING: RNAME contig \"" + fields[2] + "\" did not match any contig in the provided build.");
+				//if(verbose) System.err.println("SAMRecord.parseSAMRecord || WARNING: RNAME contig \"" + fields[2] + "\" did not match any contig in the provided build.");
 				rec.warnings.err_invalid_RNAME = fields[2];
 			}
 		}
@@ -249,7 +249,7 @@ public class SAMRecord implements Comparable<SAMRecord>{
 		{
 			rec.refNext = gbuild.getContig(fields[6]);
 			if (rec.refNext == null) {
-				if(verbose) System.err.println("SAMRecord.parseSAMRecord || WARNING: RNEXT contig \"" + fields[6] + "\" did not match any contig in the provided build.");
+				//if(verbose) System.err.println("SAMRecord.parseSAMRecord || WARNING: RNEXT contig \"" + fields[6] + "\" did not match any contig in the provided build.");
 				rec.warnings.err_invalid_RNEXT = fields[6];
 			}
 		}

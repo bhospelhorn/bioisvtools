@@ -11,7 +11,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import hospelhornbg_bioinformatics.SAMHeaderLine;
@@ -31,11 +30,11 @@ public class SamScanner {
 	public static final String OP_TEMPDIR = "-T"; 
 	public static final String OP_THREADS = "-t"; 
 	
-	public static final int MAX_QUEUESIZE = 100000000;
+	public static final int MAX_QUEUESIZE = 1000000000;
 	
 	private static class Counts
 	{
-		private volatile int total;
+		private volatile long total;
 		
 		private volatile int err_syntax_general;
 		private volatile int err_nullseq_nnqual;
@@ -46,8 +45,8 @@ public class SamScanner {
 		private volatile int err_invalid_POS;
 		//private volatile int err_invalid_RNEXT;
 		private volatile int err_invalid_PNEXT;
-		private HashMap<String, Integer> bad_RNAME;
-		private HashMap<String, Integer> bad_RNEXT;
+		private HashMap<String, Long> bad_RNAME;
+		private HashMap<String, Long> bad_RNEXT;
 		
 		private HashMap<String, Integer> all_RNAME;
 		private HashMap<String, Integer> all_RNEXT;
@@ -66,8 +65,8 @@ public class SamScanner {
 			err_invalid_POS = 0;
 			//err_invalid_RNEXT = 0;
 			err_invalid_PNEXT = 0;
-			bad_RNAME = new HashMap<String, Integer>();
-			bad_RNEXT = new HashMap<String, Integer>();
+			bad_RNAME = new HashMap<String, Long>();
+			bad_RNEXT = new HashMap<String, Long>();
 			all_RNAME = new HashMap<String, Integer>();
 			all_RNEXT = new HashMap<String, Integer>();
 			
@@ -99,16 +98,19 @@ public class SamScanner {
 		
 		public synchronized void addInvalidRefContig(String c)
 		{
-			Integer count = bad_RNAME.get(c);
-			if (count == null) bad_RNAME.put(c, 1);
-			else bad_RNAME.put(c, count+1);
+			if(!bad_RNAME.containsKey(c)) bad_RNAME.put(c, 1L);
+			else
+			{
+				Long count = bad_RNAME.get(c);
+				bad_RNAME.put(c, count+1L);
+			}
 		}
 		
 		public synchronized void addInvalidRNextContig(String c)
 		{
-			Integer count = bad_RNEXT.get(c);
-			if (count == null) bad_RNEXT.put(c, 1);
-			else bad_RNEXT.put(c, count+1);
+			Long count = bad_RNEXT.get(c);
+			if (count == null) bad_RNEXT.put(c, 1L);
+			else bad_RNEXT.put(c, count+1L);
 		}
 		
 		public synchronized void incrementInvalidPosErrCount()
@@ -140,7 +142,7 @@ public class SamScanner {
 			else all_RNEXT.put(rname, count+1);
 		}
 		
-		public int getTotal()
+		public long getTotal()
 		{
 			return total;
 		}
@@ -175,14 +177,29 @@ public class SamScanner {
 			return bad_customFieldTypes.size();
 		}
 		
-		public synchronized int getInvalidRefContigErrCount()
+		public synchronized long getInvalidRefContigErrCount()
 		{
-			return bad_RNAME.size();
+			long tot = 0;
+			Set<String> kset = bad_RNAME.keySet();
+			for (String k : kset)
+			{
+				Long l = bad_RNAME.get(k);
+				if (l != null) tot += l;
+			}
+			return tot;
+			//return bad_RNAME.size();
 		}
 		
-		public synchronized int getInvalidRNextContigErrCount()
+		public synchronized long getInvalidRNextContigErrCount()
 		{
-			return bad_RNEXT.size();
+			long tot = 0;
+			Set<String> kset = bad_RNEXT.keySet();
+			for (String k : kset)
+			{
+				Long l = bad_RNEXT.get(k);
+				if (l != null) tot += l;
+			}
+			return tot;
 		}
 		
 		public synchronized List<String> getBadCustomFieldTypes()
@@ -241,7 +258,7 @@ public class SamScanner {
 		System.out.println("or oversights that may make the SAM unreadable to some tools.");
 		System.out.println();
 		System.out.println("Input Formats:");
-		System.out.println("\tInput callset must be a SAM file");
+		System.out.println("\tInput must be a SAM file");
 		System.out.println();
 		System.out.println("Flags:");
 		System.out.println("\t-i\tFILE\t[Optional]\t\tInput file path. Defaults to stdin stream if not provided.");
@@ -600,7 +617,7 @@ public class SamScanner {
 		
 		//Start line reading
 		String line = null;
-		int lcount = 0;
+		long lcount = 0;
 		int hcount = 0;
 		while((line = reader.readLine()) != null)
 		{
@@ -683,7 +700,7 @@ public class SamScanner {
 			for (String s : slist) System.out.println("\t" + s);
 		}
 		List<String> slist = c.getBadRefContigs();
-		int count = c.getInvalidRefContigErrCount();
+		long count = c.getInvalidRefContigErrCount();
 		System.out.println("Records containing an illegal REF contig: " + count);
 		if (count > 0)
 		{
@@ -725,7 +742,7 @@ public class SamScanner {
 			{
 				if (i+1 >= args.length)
 				{
-					System.err.println("ERROR: " + OP_INPUT + " flag MUST be followed by input VCF path!");
+					System.err.println("ERROR: " + OP_INPUT + " flag MUST be followed by input SAM path!");
 					printUsage();
 					System.exit(1);
 				}
