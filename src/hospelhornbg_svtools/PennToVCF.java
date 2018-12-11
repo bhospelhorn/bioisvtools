@@ -317,6 +317,7 @@ public class PennToVCF {
 				sv.setCIDiff(stCIHi - stPos, false, true, true);
 				sv.setCIDiff(edCILo - edPos, true, true, false);
 				sv.setCIDiff(edCIHi - edPos, true, true, true);
+				sv.setImprecise(true);
 				sv.addGenotype(samplename, gt);
 				
 				//Add to pool

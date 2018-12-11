@@ -336,6 +336,7 @@ public class SAMRecord implements Comparable<SAMRecord>{
 			{
 				//p.raw_customs[j - 11] = fields[j];
 				SAMField ofield = parseOptionalField(fields[j], verbose);
+				if (ofield == null) continue;
 				rec.alignmentFields.put(ofield.getKey(), ofield);
 			}
 		}
@@ -348,7 +349,7 @@ public class SAMRecord implements Comparable<SAMRecord>{
 		if (field == null || field.isEmpty())
 		{
 			if(verbose)System.err.println("SAMRecord.parseOptionalField || ERROR: No field provided for parsing...");
-			FailFlags ff = new FailFlags(); ff.err_nullseq_nnqual = true;
+			FailFlags ff = new FailFlags(); ff.err_syntax = true;
 			throw new InvalidSAMRecordException(ff);
 		}
 		
@@ -357,13 +358,21 @@ public class SAMRecord implements Comparable<SAMRecord>{
 		if (fields.length != 3)
 		{
 			if(verbose)System.err.println("SAMRecord.parseOptionalField || ERROR: Custom field is not formatted correctly: " + field);
-			FailFlags ff = new FailFlags(); ff.err_nullseq_nnqual = true;
+			FailFlags ff = new FailFlags(); ff.err_syntax = true;
 			throw new InvalidSAMRecordException(ff);
 		}
 		
 		String tag = fields[0];
 		char type = fields[1].charAt(0);
 		String upval = fields[2];
+		if (upval == null || upval.isEmpty())
+		{
+			if(verbose) {
+				System.err.println("SAMRecord.parseOptionalField || ERROR: Custom field has empty value. It will be thrown away!");
+				System.err.println("\tField: " + field);
+			}
+			return null;
+		}
 		
 		switch (type)
 		{

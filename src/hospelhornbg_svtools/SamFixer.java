@@ -415,6 +415,7 @@ public class SamFixer {
 							//output.write("\n" + line);
 							output.write(line + "\n");
 							lcount++;
+							if(lcount > 6190000000L) System.err.println("R" + lcount + "\t" + line); //DEBUG
 						} 
 						catch (IOException e) 
 						{
@@ -469,13 +470,15 @@ public class SamFixer {
 		
 		//Output new header
 		//boolean first = true;
+		int hlcount = 0;
 		for(SAMHeaderLine hl : nhlist)
 		{
 			//if (!first) output.write("\n");
 			//first = false;
 			output.write(hl.toString() + "\n");
+			hlcount++;
 		}
-		if(verbose) System.err.println("DEBUG: New header written... Starting record processing...");
+		if(verbose) System.err.println("DEBUG: New header written (" + hlcount + " lines)... Starting record processing...");
 		
 		//Now, the records!
 		//Start the workers and writer
@@ -532,7 +535,6 @@ public class SamFixer {
 				}
 			}
 		}
-		
 		
 		return counter;
 	}
