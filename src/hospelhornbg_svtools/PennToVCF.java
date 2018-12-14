@@ -28,6 +28,10 @@ public class PennToVCF {
 	public static final String OP_OUTPATH = "-o"; 
 	public static final String OP_BEDTRACK = "-b"; 
 	
+	public static final String COL_NAME = "name";
+	public static final String COL_CHROM = "chr";
+	public static final String COL_POS = "position";
+	
 	//Read a set of a minsnp file (SNP chip SOP/ PennCNV output) and Genome Studio SNP table
 	//Convert minsnp calls to VCF format!
 	
@@ -346,10 +350,24 @@ public class PennToVCF {
 		final int arraySize = 1000000;
 		List<SNP> table = new ArrayList<SNP>(arraySize);
 		
-		//Eat the first line
-		br.readLine();
+		//Read the first line to figure out which columns we want...
+		String line = br.readLine();
+		String[] hfields = line.split("\t");
+		int ncol = -1;
+		int ccol = -1;
+		int pcol = -1;
+		for (int i = 0; i < hfields.length; i++)
+		{
+			if (ncol < 0 && hfields[i].equalsIgnoreCase(COL_NAME)) {ncol = i; continue;}
+			if (ccol < 0 && hfields[i].equalsIgnoreCase(COL_CHROM)) {ccol = i; continue;}
+			if (pcol < 0 && hfields[i].equalsIgnoreCase(COL_POS)) {pcol = i; continue;}
+		}
+		if (ncol < 0 || ccol < 0 || pcol < 0) {
+			br.close();
+			System.err.println("PennToVCF.readTable || One or more required fields was not found in SNP table!");
+			throw new IllegalArgumentException();
+		}
 		
-		String line = null;
 		while ((line = br.readLine()) != null)
 		{
 			String[] fields = line.split("\t");
@@ -359,12 +377,12 @@ public class PennToVCF {
 				throw new IllegalArgumentException();
 			}
 			
-			String name = fields[0];
-			String chromStr = fields[1];
-			String posStr = fields[2];
+			String name = fields[ncol];
+			String chromStr = fields[ccol];
+			String posStr = fields[pcol];
 			
 			Contig c = g.getContig(chromStr);
-			if (c == null) System.err.println("PennToVCF.pennToVCF || WARNING: Contig not found for chrom \"" + chromStr + "\". SNP will be tossed.");
+			if (c == null) System.err.println("PennToVCF.readTable || WARNING: Contig not found for chrom \"" + chromStr + "\". SNP will be tossed.");
 			int pos = Integer.parseInt(posStr);
 			
 			if (c != null)
@@ -408,6 +426,8 @@ public class PennToVCF {
 		String outPath = null;
 		String sampleName = null;
 		String bedpath = null;
+		
+		System.err.println("bioisvtools PennToVcf ----- Version 121418");
 		
 		for (int i = 0; i < args.length; i++)
 		{

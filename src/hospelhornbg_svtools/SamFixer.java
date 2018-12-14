@@ -251,17 +251,20 @@ public class SamFixer {
 	
 	private static void generateOutputLine(String input, GenomeBuild gb, BadCounter counter, ConcurrentLinkedQueue<String> writequeue, boolean verbose, boolean ucsc) throws InterruptedException
 	{
+		//Tosses lines with bad contigs (commented out lines for unmapping bad contig lines)
 		try 
 		{
 			SAMRecord sr = SAMRecord.parseSAMRecord(input, gb, verbose).getRecord();
 			WarningFlags wf = sr.getParserWarnings();
 			if (wf.err_invalid_RNAME != null) {
 				counter.increment_RNAME();
-				sr.flagSegmentUnmapped(true);
+				//sr.flagSegmentUnmapped(true);
+				return;
 			}
 			if (wf.err_invalid_RNEXT != null) {
 				counter.increment_RNEXT();
-				sr.flagNextSegmentUnmapped(true);
+				//sr.flagNextSegmentUnmapped(true);
+				return;
 			}
 			String outline = sr.writeSAMRecord(ucsc);
 			//Wait until queue has space...
@@ -415,7 +418,7 @@ public class SamFixer {
 							//output.write("\n" + line);
 							output.write(line + "\n");
 							lcount++;
-							if(lcount > 6190000000L) System.err.println("R" + lcount + "\t" + line); //DEBUG
+							if(lcount > 6198000000L && lcount < 6199000000L) System.err.println("R" + lcount + "\t" + line); //DEBUG
 						} 
 						catch (IOException e) 
 						{
