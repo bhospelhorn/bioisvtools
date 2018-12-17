@@ -418,7 +418,7 @@ public class SamFixer {
 							//output.write("\n" + line);
 							output.write(line + "\n");
 							lcount++;
-							if(lcount > 6198000000L && lcount < 6199000000L) System.err.println("R" + lcount + "\t" + line); //DEBUG
+							if(lcount > 5942000000L && lcount < 5943000000L) System.err.println("R" + lcount + "\t" + line); //DEBUG
 						} 
 						catch (IOException e) 
 						{
