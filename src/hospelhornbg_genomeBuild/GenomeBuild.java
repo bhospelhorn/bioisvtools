@@ -14,7 +14,7 @@ import java.util.Set;
 import waffleoRai_Utils.CompositeBuffer;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.Huffman;
+import waffleoRai_Compression.huffman.Huffman;
 
 /*
  * UPDATES
@@ -28,14 +28,17 @@ import waffleoRai_Utils.Huffman;
  * 1.2.2 | July 18, 2018
  * 	Input stream constructor was not advancing input stream!!
  * 
+ * 1.2.3 | January 4, 2019
+ * 	Huffman class was moved. Resolved import reference.
+ * 
  */
 
 /**
  * A container for information about a genome build, such as the contigs present, their
  * various aliases, and their lengths.
  * @author Blythe Hospelhorn
- * @version 1.2.2
- * @since July 18, 2018
+ * @version 1.2.3
+ * @since January 4, 2019
  *
  */
 public class GenomeBuild {

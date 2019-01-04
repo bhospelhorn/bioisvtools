@@ -18,7 +18,7 @@ import hospelhornbg_bioinformatics.SAMRecord.InvalidSAMRecordException;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.Huffman;
+import waffleoRai_Compression.huffman.Huffman;
 
 public class SAMPairer {
 	

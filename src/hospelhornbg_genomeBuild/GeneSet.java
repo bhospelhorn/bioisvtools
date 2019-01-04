@@ -24,7 +24,7 @@ import hospelhornbg_bioinformatics.VariantPool.InfoDefinition;
 import hospelhornbg_genomeBuild.Gene.Exon;
 import waffleoRai_Utils.CompositeBuffer;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.Huffman;
+import waffleoRai_Compression.huffman.Huffman;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 /*
@@ -52,14 +52,17 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 
  * 1.2.2 -> 1.2.3 | August 30, 2018
  * 		Fixed bug for reading file from package- needed inputstream
+ * 
+ * 1.2.3 -> 1.2.4 | January 4, 2019
+ * 	Huffman class was moved. Resolved import reference.
  */
 
 
 /**
  * A set of gene annotations for a genome build.
  * @author Blythe Hospelhorn
- * @version 1.2.3
- * @since August 30, 2018
+ * @version 1.2.4
+ * @since January 4, 2019
  *
  */
 public class GeneSet 
