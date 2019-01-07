@@ -70,5 +70,10 @@ public class FamilyMember extends Individual{
 	{
 		return phenotypicSex;
 	}
+	
+	public AffectedStatus getAffectedStatus(String pheno)
+	{
+		return affected.get(pheno);
+	}
 
 }
