@@ -8,6 +8,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -16,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import hospelhornbg_bioinformatics.SAMField;
 import hospelhornbg_bioinformatics.SAMHeaderLine;
 import hospelhornbg_bioinformatics.SAMRecord;
 import hospelhornbg_bioinformatics.SAMRecord.InvalidSAMRecordException;
@@ -74,12 +77,15 @@ public class SamFixer {
 		private long bad_format;
 		private long bad_record;
 		
+		private Set<String> aux_recs;
+		
 		public BadCounter()
 		{
 			bad_RNAME = 0;
 			bad_RNEXT = 0;
 			bad_format = 0;
 			bad_record = 0;
+			aux_recs = new HashSet<String>();
 		}
 		
 		public synchronized void increment_RNAME()
@@ -122,7 +128,19 @@ public class SamFixer {
 			return bad_record;
 		}
 	
+		public synchronized void addAux(String s)
+		{
+			aux_recs.add(s);
+		}
 		
+		public synchronized List<String> getAuxRecords()
+		{
+			int count = aux_recs.size() + 1;
+			List<String> mylist = new ArrayList<String>(count);
+			mylist.addAll(aux_recs);
+			Collections.sort(mylist);
+			return mylist;
+		}
 	
 	}
 	
@@ -266,6 +284,13 @@ public class SamFixer {
 				//sr.flagNextSegmentUnmapped(true);
 				return;
 			}
+			//Dump any aux fields...
+			List<SAMField> auxlist = sr.getAllOptionalFields();
+			for (SAMField aux : auxlist)
+			{
+				counter.addAux(aux.getSAMString());
+			}
+			//Render to line
 			String outline = sr.writeSAMRecord(ucsc);
 			//Wait until queue has space...
 			while(writequeue.size() >= SamFixer.MAX_QUEUESIZE)
@@ -712,6 +737,12 @@ public class SamFixer {
 		System.err.println("Records with Illegal RNAME: " + counter.get_RNAME());
 		System.err.println("Records with Illegal RNEXT: " + counter.get_RNEXT());
 		
+		System.err.println("All Unique Aux Fields Found: -----------------");
+		List<String> auxfields = counter.getAuxRecords();
+		for (String aux : auxfields)
+		{
+			System.err.println(aux);
+		}
 		
 	}
 	
