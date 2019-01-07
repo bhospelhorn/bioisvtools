@@ -1,5 +1,6 @@
 package hospelhornbg_segregation;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -32,6 +33,18 @@ public class Individual implements Comparable<Individual>{
 		iChildren = new HashMap<String, Individual>();
 		eSex = Sex.UNKNOWN;
 		eAffected = AffectedStatus.UNKNOWN;
+	}
+	
+	protected Individual (Individual source)
+	{
+		iParent1 = source.iParent1;
+		iParent2 = source.iParent2;
+		sName = source.sName;
+		eSex = source.eSex;
+		eAffected = source.eAffected;
+		iChildren = new HashMap<String, Individual>();
+		Set<String> keyset = source.iChildren.keySet();
+		for (String k : keyset) iChildren.put(k, source.iChildren.get(k));
 	}
 	
 	public String getName()
@@ -294,6 +307,36 @@ public class Individual implements Comparable<Individual>{
 		if (o == null) return 1;
 		if (o == this) return 0;
 		return this.sName.compareTo(o.sName);
+	}
+	
+	private void dumpRelativesIntoSet(Set<Individual> set)
+	{
+		//Dump self, parents, and children
+		set.add(this);
+		if (this.iParent1 != null) {
+			iParent1.dumpRelativesIntoSet(set);
+		}
+		if (this.iParent2 != null) {
+			iParent2.dumpRelativesIntoSet(set);
+		}
+		//Children
+		if (iChildren != null && !iChildren.isEmpty())
+		{
+			Collection<Individual> children = iChildren.values();
+			for (Individual c : children)
+			{
+				c.dumpRelativesIntoSet(set);
+			}
+		}
+		
+	}
+	
+	public Collection<Individual> getAllRelatives()
+	{
+		//Set includes this individual (recursive)
+		Set<Individual> rset = new HashSet<Individual>();
+		this.dumpRelativesIntoSet(rset);
+		return rset;
 	}
 	
 }

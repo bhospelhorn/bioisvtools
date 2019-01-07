@@ -1,9 +1,12 @@
 package hospelhornbg_segregation;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -131,12 +134,18 @@ public class Pedigree {
 	
 	/* --- Setters --- */
 	
-	public void setProband(String pbID)
+	public boolean setProband(String pbID)
 	{
 		Individual newpb = indivMap.get(pbID);
-		if (newpb == null) return;
-		if (!newpb.isAffected()) return;
+		if (newpb == null) return false;
+		if (!newpb.isAffected()) return false;
 		proband = newpb;
+		return true;
+	}
+	
+	public void setFamilyName(String name)
+	{
+		this.familyName = name;
 	}
 	
 	/* --- Lists --- */
@@ -260,6 +269,45 @@ public class Pedigree {
 		Relationship r = proband.getRelationship(relative);
 		if (r == null) return "[Unrelated]";
 		return r.toString_English();
+	}
+
+	/* --- Serialization --- */
+	
+	public static void writeToPED(Pedigree fam, String pedpath) throws IOException
+	{
+		if (fam == null) return;
+		if (pedpath == null) return;
+		
+		FileWriter fw = new FileWriter(pedpath);
+		BufferedWriter bw = new BufferedWriter(fw);
+		
+		bw.write("#FamID\tSampleID\tFather\tMother\tSex\tAffected\n");
+		List<Individual> ilist = fam.getAllMembers();
+		Collections.sort(ilist);
+		for(Individual i : ilist)
+		{
+			bw.write(fam.getFamilyName() + "\t");
+			bw.write(i.getName() + "\t");
+			//Get dad
+			Individual dad = i.getFather();
+			if (dad != null) bw.write(dad.getName() + "\t");
+			else bw.write("0\t");
+			//Get mom
+			Individual mom = i.getMother();
+			if (mom != null) bw.write(mom.getName() + "\t");
+			else bw.write("0\t");
+			//The others...
+			Sex isex = i.getSex();
+			if (isex == Sex.MALE) bw.write("1\t");
+			else if (isex == Sex.FEMALE) bw.write("2\t");
+			else bw.write("0\t");
+			AffectedStatus as = i.getAffectedStatus();
+			if (as == AffectedStatus.UNAFFECTED) bw.write("1\n");
+			else if (as == AffectedStatus.AFFECTED) bw.write("2\n");
+			else bw.write("0\n");
+		}
+		
+		bw.close();
 	}
 	
 }

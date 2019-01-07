@@ -1,9 +1,13 @@
 package hospelhornbg_segregation;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import hospelhornbg_bioinformatics.AffectedStatus;
 import hospelhornbg_bioinformatics.Sex;
@@ -30,6 +34,16 @@ public class FamilyMember extends Individual{
 		affected = new HashMap<String, AffectedStatus>();
 		birthYear = -1;
 		deathYear = -1;
+	}
+	
+	public FamilyMember(Individual indiv)
+	{
+		super(indiv);
+		uid = super.getName().hashCode();
+		affected = new HashMap<String, AffectedStatus>();
+		birthYear = -1;
+		deathYear = -1;
+		phenotypicSex = super.getSex();
 	}
 	
 	public int getUID()
@@ -76,4 +90,121 @@ public class FamilyMember extends Individual{
 		return affected.get(pheno);
 	}
 
+	public FamilyMember getParent1AsFamilyMember()
+	{
+		//See if parent 1 is an instance of FamilyMember.
+		//If not, return null
+		Individual p1 = super.getParent1();
+		if (p1 instanceof FamilyMember) return (FamilyMember)p1;
+		return null;
+	}
+	
+	public FamilyMember getParent2AsFamilyMember()
+	{
+		//See if parent 2 is an instance of FamilyMember.
+		//If not, return null
+		Individual p2 = super.getParent2();
+		if (p2 instanceof FamilyMember) return (FamilyMember)p2;
+		return null;
+	}
+	
+	public Collection<FamilyMember> getChildrenAsFamilyMembers()
+	{
+		//Get any children that are FamilyMembers
+		Set<Individual> children = super.getChildren();
+		Set<FamilyMember> set = new HashSet<FamilyMember>();
+		if (children != null && !children.isEmpty())
+		{
+			for (Individual c : children)
+			{
+				if (c instanceof FamilyMember)
+				{
+					set.add((FamilyMember)c);
+				}
+			}
+		}
+		return set;
+	}
+	
+	private void dumpRelativesIntoSet(Set<FamilyMember> set)
+	{
+		set.add(this);
+		FamilyMember p1 = this.getParent1AsFamilyMember();
+		if (p1 != null) p1.dumpRelativesIntoSet(set);
+		FamilyMember p2 = this.getParent2AsFamilyMember();
+		if (p2 != null) p2.dumpRelativesIntoSet(set);
+		Collection<FamilyMember> children = this.getChildrenAsFamilyMembers();
+		if (!children.isEmpty())
+		{
+			for (FamilyMember c : children) c.dumpRelativesIntoSet(set);
+		}
+	}
+	
+	public Collection<FamilyMember> getAllRelativesAsFamilyMembers()
+	{
+		Set<FamilyMember> set = new HashSet<FamilyMember>();
+		this.dumpRelativesIntoSet(set);
+		return set;
+	}
+	
+	public void setAffectedCondition(String pheno)
+	{
+		super.setAffectedStatus(this.getAffectedStatus(pheno));
+	}
+	
+	public void setAffectedStatus(String pheno, AffectedStatus status)
+	{
+		this.affected.put(pheno, status);
+		
+	}
+	
+	public void removeAffectedStatus(String pheno)
+	{
+		this.affected.remove(pheno);
+	}
+	
+	public void setPhenotypicSex(Sex s)
+	{
+		this.phenotypicSex = s;
+	}
+	
+	protected void setUID(int UID)
+	{
+		this.uid = UID;
+	}
+	
+	public void setFirstName(String s)
+	{
+		this.firstName = s;
+	}
+	
+	public void setLastName(String s)
+	{
+		this.lastName = s;
+	}
+	
+	public void setBirthYear(int year)
+	{
+		this.birthYear = year;
+	}
+	
+	public void setDeathYear(int year)
+	{
+		this.deathYear = year;
+	}
+	
+	public void addMiddleName(String s)
+	{
+		if (this.middleNames == null)
+		{
+			this.middleNames = new LinkedList<String>();
+		}
+		middleNames.add(s);
+	}
+	
+	public void clearMiddleNames()
+	{
+		this.middleNames = null;
+	}
+	
 }
