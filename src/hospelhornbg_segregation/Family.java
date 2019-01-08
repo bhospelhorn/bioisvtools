@@ -667,6 +667,12 @@ public class Family extends Pedigree{
 			}
 		}
 		
+		//Compress if needed
+		if(huff)
+		{
+			FileBuffer decomp = myfile;
+			myfile = Huffman.HuffEncodeFile(decomp, 8, FAMH_MAGIC);
+		}
 		
 		//Write to disk
 		myfile.writeFile(path);
