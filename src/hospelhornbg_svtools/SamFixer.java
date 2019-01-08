@@ -141,6 +141,16 @@ public class SamFixer {
 			Collections.sort(mylist);
 			return mylist;
 		}
+		
+		public synchronized List<String> dumpAuxRecords()
+		{
+			int count = aux_recs.size() + 1;
+			List<String> mylist = new ArrayList<String>(count);
+			mylist.addAll(aux_recs);
+			aux_recs.clear();
+			Collections.sort(mylist);
+			return mylist;
+		}
 	
 	}
 	
@@ -446,6 +456,16 @@ public class SamFixer {
 							else output.write(line);
 							lcount++;
 							//if(lcount > 5942000000L && lcount < 5943000000L) System.err.println("R" + lcount + "\t" + line); //DEBUG
+							//Every billion lines, dump the aux field set. It's too big.
+							if (lcount % 1000000000L == 0)
+							{
+								System.err.println("Unique Aux Field Dump: -----------------");
+								List<String> auxfields = counter.dumpAuxRecords();
+								for (String aux : auxfields)
+								{
+									System.err.println(aux);
+								}
+							}
 						} 
 						catch (IOException e) 
 						{
