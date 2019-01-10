@@ -36,6 +36,8 @@ public class Candidate implements Comparable<Candidate>{
 	private Gene iGene;
 	private GeneFunc iEffect;
 	
+	private CandidateFlags iFlags;
+	
 	public Candidate(Variant variant, int allele)
 	{
 		iVariant = variant;
@@ -392,5 +394,25 @@ public class Candidate implements Comparable<Candidate>{
 		return vset;
 	}
 	
+	public CandidateFlags getFlags()
+	{
+		//May be null!
+		return iFlags;
+	}
+	
+	public void initializedEmptyFlags()
+	{
+		iFlags = new CandidateFlags();
+	}
+	
+	public void initializeFlagsFromVarTable(int bitfield)
+	{
+		iFlags = CandidateFlags.readVarTableField(bitfield);
+	}
+	
+	public void initializeFlagsFromVCF(String bitstring)
+	{
+		iFlags = CandidateFlags.readVCFBitField(bitstring);
+	}
 	
 }

@@ -23,13 +23,16 @@ import waffleoRai_Utils.FileBuffer;
  * 
  * 1.2.0 -> 1.2.1 | September 5, 2018
  * 		Region pos effect function wasn't detecting UTR5/UTR3 :P
+ * 
+ * 1.2.1 -> 1.3.0 | January 10, 2019
+ * 		Added blacklist flags
  */
 
 /**
  * A container for basic gene information - location and exons.
  * @author Blythe Hospelhorn
- * @version 1.2.1
- * @since September 5, 2018
+ * @version 1.3.0
+ * @since January 10, 2019
  *
  */
 public class Gene implements Comparable<Gene>{
@@ -56,6 +59,11 @@ public class Gene implements Comparable<Gene>{
 	private int tlEnd; //End of translated region
 	
 	private List<Exon> exons;
+	
+	private boolean flag_lowComplexity;
+	private boolean flag_variablityTolerant;
+	private boolean flag_similarGenes; 
+	private boolean flag_pseudogene;
 	
 	/* --- Inner Structures --- */
 	
@@ -1064,6 +1072,94 @@ public class Gene implements Comparable<Gene>{
 	public String toString()
 	{
 		return this.getName();
+	}
+	
+	/* --- Flags --- */
+	
+	/**
+	 * Get the [Low complexity] blacklist flag. This flag should be set
+	 * if a significant portion of this transcript is known to be difficult
+	 * to align.
+	 * @return Low complexity flag
+	 */
+	public boolean flaggedLowComplexity()
+	{
+		return this.flag_lowComplexity;
+	}
+	
+	/**
+	 * Set the [Low complexity] blacklist flag. This flag should be set
+	 * if a significant portion of this transcript is known to be difficult
+	 * to align.
+	 * @param b True to set, false to clear
+	 */
+	public void flagLowComplexity(boolean b)
+	{
+		this.flag_lowComplexity = b;
+	}
+	
+	/**
+	 * Get the [Similar Genes] blacklist flag. This flag should be set
+	 * if a this transcript tends to be difficult to align or tolerant
+	 * to variation due to there being many similar or related genes in the
+	 * genome.
+	 * @return Similar Genes flag
+	 */
+	public boolean flaggedManySimilar()
+	{
+		return this.flag_similarGenes;
+	}
+	
+	/**
+	 * Set the [Similar Genes] blacklist flag. This flag should be set
+	 * if a this transcript tends to be difficult to align or tolerant
+	 * to variation due to there being many similar or related genes in the
+	 * genome.
+	 * @param b True to set, false to clear
+	 */
+	public void flagManySimilar(boolean b)
+	{
+		this.flag_similarGenes = b;
+	}
+	
+	/**
+	 * Get the [Highly Variable] blacklist flag. This flag should be set
+	 * if a this transcript is known to be highly tolerant to variation.
+	 * @return Highly Variable flag
+	 */
+	public boolean flaggedHighlyVariable()
+	{
+		return this.flag_variablityTolerant;
+	}
+	
+	/**
+	 * Set the [Highly Variable] blacklist flag. This flag should be set
+	 * if a this transcript is known to be highly tolerant to variation.
+	 * @param b True to set, false to clear
+	 */
+	public void flagHighlyVariable(boolean b)
+	{
+		this.flag_variablityTolerant = b;
+	}
+	
+	/**
+	 * Get the [Pseudogene] blacklist flag. This flag should be set
+	 * if a this transcript is known to be a pseudogene.
+	 * @return Pseudogene flag
+	 */
+	public boolean flaggedPseudogene()
+	{
+		return this.flag_pseudogene;
+	}
+	
+	/**
+	 * Set the [Pseudogene] blacklist flag. This flag should be set
+	 * if a this transcript is known to be a pseudogene.
+	 * @param b True to set, false to clear
+	 */
+	public void flagPseudogene(boolean b)
+	{
+		this.flag_pseudogene = b;
 	}
 	
 }
