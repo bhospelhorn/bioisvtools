@@ -8,8 +8,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -18,7 +16,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import hospelhornbg_bioinformatics.SAMField;
 import hospelhornbg_bioinformatics.SAMHeaderLine;
 import hospelhornbg_bioinformatics.SAMRecord;
 import hospelhornbg_bioinformatics.SAMRecord.InvalidSAMRecordException;
@@ -77,7 +74,7 @@ public class SamFixer {
 		private long bad_format;
 		private long bad_record;
 		
-		private Set<String> aux_recs;
+		//private Set<String> aux_recs;
 		
 		public BadCounter()
 		{
@@ -85,7 +82,7 @@ public class SamFixer {
 			bad_RNEXT = 0;
 			bad_format = 0;
 			bad_record = 0;
-			aux_recs = new HashSet<String>();
+			//aux_recs = new HashSet<String>();
 		}
 		
 		public synchronized void increment_RNAME()
@@ -128,6 +125,7 @@ public class SamFixer {
 			return bad_record;
 		}
 	
+		/*
 		public synchronized void addAux(String s)
 		{
 			aux_recs.add(s);
@@ -151,7 +149,8 @@ public class SamFixer {
 			Collections.sort(mylist);
 			return mylist;
 		}
-	
+	*/
+		
 	}
 	
 	private static class SyncedInt
@@ -294,12 +293,26 @@ public class SamFixer {
 				//sr.flagNextSegmentUnmapped(true);
 				return;
 			}
+			//Look for qual/seq mismatches...
+			//I don't know how they would be getting through though...
+			String seq = sr.getSequence();
+			String qstring = sr.getPhredBaseQualityString();
+			
+			if(seq.length() != qstring.length() && verbose)
+			{
+				System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || Mismatching seq/qual strings found!");
+				System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || SEQ = " + seq);
+				System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || QUAL = " + qstring);
+				System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || Skipping record...");
+				return;
+			}
+			
 			//Dump any aux fields...
-			List<SAMField> auxlist = sr.getAllOptionalFields();
-			for (SAMField aux : auxlist)
+			//List<SAMField> auxlist = sr.getAllOptionalFields();
+			/*for (SAMField aux : auxlist)
 			{
 				counter.addAux(aux.getSAMString());
-			}
+			}*/
 			//Render to line
 			String outline = sr.writeSAMRecord(ucsc);
 			//Wait until queue has space...
@@ -456,16 +469,6 @@ public class SamFixer {
 							else output.write(line);
 							lcount++;
 							//if(lcount > 5942000000L && lcount < 5943000000L) System.err.println("R" + lcount + "\t" + line); //DEBUG
-							//Every billion lines, dump the aux field set. It's too big.
-							if (lcount % 1000000000L == 0)
-							{
-								System.err.println("Unique Aux Field Dump: -----------------");
-								List<String> auxfields = counter.dumpAuxRecords();
-								for (String aux : auxfields)
-								{
-									System.err.println(aux);
-								}
-							}
 						} 
 						catch (IOException e) 
 						{
@@ -757,12 +760,6 @@ public class SamFixer {
 		System.err.println("Records with Illegal RNAME: " + counter.get_RNAME());
 		System.err.println("Records with Illegal RNEXT: " + counter.get_RNEXT());
 		
-		System.err.println("All Unique Aux Fields Found: -----------------");
-		List<String> auxfields = counter.getAuxRecords();
-		for (String aux : auxfields)
-		{
-			System.err.println(aux);
-		}
 		
 	}
 	

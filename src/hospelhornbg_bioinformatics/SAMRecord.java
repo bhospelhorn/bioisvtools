@@ -514,6 +514,21 @@ public class SAMRecord implements Comparable<SAMRecord>{
 		return this.seqQuality[index];
 	}
 	
+	public String getPhredBaseQualityString()
+	{
+		String s = "";
+		if (seqQuality == null || seqQuality.length < 1) s += "*\t";
+		else
+		{
+			for(int q : seqQuality)
+			{
+				s += (char)(q + 33);
+			}
+		}
+		
+		return s;
+	}
+	
 	public SAMField getCustomField(String TAG)
 	{
 		return this.alignmentFields.get(TAG);
@@ -727,7 +742,10 @@ public class SAMRecord implements Comparable<SAMRecord>{
 			}
 		}
 		
-		if (alignmentFields == null || alignmentFields.isEmpty()) return s;
+		//Temporarily disable aux fields...
+		return s;
+		
+		/*if (alignmentFields == null || alignmentFields.isEmpty()) return s;
 		List<SAMField> opfields = this.getAllOptionalFields();
 		
 		for (SAMField f : opfields)
@@ -735,7 +753,7 @@ public class SAMRecord implements Comparable<SAMRecord>{
 			s += "\t" + f.getSAMString();
 		}
 		
-		return s;
+		return s;*/
 	}
 	
 	/* ----- Utility ----- */
