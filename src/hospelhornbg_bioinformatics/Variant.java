@@ -14,6 +14,7 @@ import hospelhornbg_genomeBuild.Contig;
 import hospelhornbg_genomeBuild.GeneFunc;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
+import hospelhornbg_segregation.CandidateFlags;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
@@ -58,6 +59,12 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 1.2.3 -> 1.3.0 | August 10, 2018
  * 	Moved the GeneFunc instance variable from subclass StructuralVariant
  * 
+ * 1.3.0 -> 1.3.1 | January 18, 2019
+ * 	Added support vector field
+ * 
+ * 1.3.1 -> 1.3.2 | January 22, 2019
+ * 	Added optional candidate flags map
+ * 
  */
 
 /*
@@ -73,8 +80,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * <br>Providing InfoDefinition instances allows for parsing of these INFO annotations into 
  * integers, floats, and flags. By default, they are all stored as either strings or flags.
  * @author Blythe Hospelhorn
- * @version 1.3.0
- * @since August 10, 2018
+ * @version 1.3.2
+ * @since January 22, 2019
  *
  */
 public class Variant implements Comparable<Variant>{
@@ -189,6 +196,22 @@ public class Variant implements Comparable<Variant>{
 	 * If noted, the coding effect the variant has.
 	 */
 	private GeneFunc function;
+	
+	/**
+	 * A field for holding a support vector field. This field is not
+	 * filled automatically from VCF parsing. It can be filled
+	 * manually, though.
+	 */
+	private Set<String> support_set;
+	
+	/**
+	 * Candidate flags map for optional use.
+	 * This map is not instantiated normally (defaults to null), nor
+	 * is is populated automatically by VCF parsing. 
+	 * It's used by the VarTable parser, but not otherwise in order to 
+	 * save memory.
+	 */
+	private Map<Integer, CandidateFlags> cflagsMap;
 	
 	/* --- Construction/Parsing --- */
 	
@@ -1004,6 +1027,30 @@ public class Variant implements Comparable<Variant>{
 		return function;
 	}
 	
+	/**
+	 * Check whether the provided string matches a field
+	 * marked as "supporting" this variant.
+	 * @param s String to check support
+	 * @return True if this variant has a support record denoted
+	 * by the provided string. False otherwise.
+	 */
+	public boolean supportMarked(String s)
+	{
+		if(support_set == null) return false;
+		return support_set.contains(s);
+	}
+	
+	/**
+	 * Get the candidate flags map (used by the VarTable parser as an
+	 * intermediate before Candidates are created) for this Variant.
+	 * @return Map of int transcriptUIDs to CandidateFlags objects, if 
+	 * in use. Null otherwise.
+	 */
+	public Map<Integer, CandidateFlags> getCandidateFlagsMap()
+	{
+		return this.cflagsMap;
+	}
+	
 	/* --- Setters --- */
 	
 	/**
@@ -1013,7 +1060,7 @@ public class Variant implements Comparable<Variant>{
 	 * @param chrom New chromosome.
 	 * <br>If this argument is null, the method will return without changing anything.
 	 */
-	public void setChromosome(Contig chrom)
+ 	public void setChromosome(Contig chrom)
 	{
 		if (chrom == null) return;
 		chromosome = chrom;
@@ -1404,6 +1451,49 @@ public class Variant implements Comparable<Variant>{
 	{
 		function = eff;
 		removeInfoField(GeneSet.INFODEF_INFO_GFUNC.getKey());
+	}
+	
+	/**
+	 * Add a "support" mark correlated to the provided string.
+	 * @param supportString String to mark as supporting evidence for
+	 * this variant.
+	 */
+	public void addSupportMark(String supportString)
+	{
+		if (this.support_set == null) this.support_set = new HashSet<String>();
+		this.support_set.add(supportString);
+	}
+	
+	/**
+	 * Remove the "support" mark correlated to the provided string.
+	 * @param supportString String to remove as supporting evidence for
+	 * this variant.
+	 */
+	public void removeSupportMark(String supportString)
+	{
+		if (this.support_set == null) return;
+		this.support_set.remove(supportString);
+	}
+	
+	/**
+	 * Note a transcriptUID, CandidateFlags pairing.
+	 * @param transcriptUID Integer UID of gene transcript associated with the
+	 * candidate the flags apply to.
+	 * @param cf CandidateFlags object containing the flags.
+	 */
+	public void addCandidateFlagsNotation(int transcriptUID, CandidateFlags cf)
+	{
+		if (cflagsMap == null) cflagsMap = new HashMap<Integer, CandidateFlags>();
+		cflagsMap.put(transcriptUID, cf);
+	}
+	
+	/**
+	 * Delete the CandidateFlags map from this Variant to free up memory when
+	 * it is no longer in use.
+	 */
+	public void clearCandidateFlags()
+	{
+		cflagsMap = null;
 	}
 	
 	/* --- Comparing --- */

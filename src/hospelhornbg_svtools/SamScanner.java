@@ -443,7 +443,7 @@ public class SamScanner {
 		}
 		else
 		{
-			GenomeBuild ngb = new GenomeBuild("UNKNOWN", "UNKNOWN");
+			GenomeBuild ngb = new GenomeBuild("UNKNOWN", "UNKNOWN", null);
 			for (SAMHeaderLine sq : sqlines)
 			{
 				Contig c = generateContig(sq);

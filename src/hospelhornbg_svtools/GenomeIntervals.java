@@ -46,8 +46,8 @@ public class GenomeIntervals {
 	public static void main(String[] args) 
 	{
 		String gbpath = "Z:\\svref\\bioi\\GRCh37.gbdh";
-		String outpath = "Z:\\svref\\gatk\\grch37_50bp_intervals.bed";
-		int interval = 50;
+		String outpath = "Z:\\svref\\gatk\\grch37_25bp_intervals.bed";
+		int interval = 25;
 		
 		try 
 		{

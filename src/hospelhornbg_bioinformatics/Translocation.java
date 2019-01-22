@@ -15,6 +15,9 @@ import hospelhornbg_genomeBuild.GenomeBuild;
  * 1.0.1 -> 1.0.2 | August 17, 2018
  * 	Added getEndChromosome method
  * 
+ * 1.0.2 -> 1.1.0 | January 22, 2019
+ * 	Added orientation fields, getters, setters
+ * 
  */
 
 
@@ -24,8 +27,8 @@ import hospelhornbg_genomeBuild.GenomeBuild;
  * This is not the same as a BreakendPair.
  * This SV class is represented in VCF form using the "TRA" type.
  * @author Blythe Hospelhorn
- * @version 1.0.2
- * @since August 17, 2018
+ * @version 1.1.0
+ * @since January 22, 2019
  *
  */
 public class Translocation extends StructuralVariant{
@@ -48,6 +51,8 @@ public class Translocation extends StructuralVariant{
 	/* --- Instance Variables --- */
 	
 	private Contig chrom2;
+	private int orientation1;
+	private int orientation2;
 	
 	/* --- Construction --- */
 	
@@ -55,6 +60,8 @@ public class Translocation extends StructuralVariant{
 	{
 		super();
 		chrom2 = null;
+		orientation1 = BreakendPair.ORIENTATION_UNKNOWN;
+		orientation2 = BreakendPair.ORIENTATION_UNKNOWN;
 	}
 	
 	protected Translocation(StructuralVariant sv, GenomeBuild genome)
@@ -67,6 +74,8 @@ public class Translocation extends StructuralVariant{
 			chrom2 = genome.getContig(c2);
 			if (chrom2 == null) chrom2 = super.getChromosome();
 		}
+		orientation1 = BreakendPair.ORIENTATION_UNKNOWN;
+		orientation2 = BreakendPair.ORIENTATION_UNKNOWN;
 		
 	}
 	
@@ -90,11 +99,31 @@ public class Translocation extends StructuralVariant{
 		return chrom2;
 	}
 	
+	public int getOrientation1()
+	{
+		return this.orientation1;
+	}
+	
+	public int getOrientation2()
+	{
+		return this.orientation2;
+	}
+	
 	/* --- Setters --- */
 	
 	public void setChromosome2(Contig c)
 	{
 		chrom2 = c;
+	}
+		
+	public void setOrientation1(int o)
+	{
+		this.orientation1 = o;
+	}
+	
+	public void setOrientation2(int o)
+	{
+		this.orientation2 = o;
 	}
 	
 	/* --- Serialization --- */

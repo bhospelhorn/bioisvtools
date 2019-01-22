@@ -31,18 +31,27 @@ import waffleoRai_Compression.huffman.Huffman;
  * 1.2.3 | January 4, 2019
  * 	Huffman class was moved. Resolved import reference.
  * 
+ * 1.3.0 | January 17, 2019
+ * 	!!IMPORTANT!! Fields added to file format (will have to regen existing files!)
+ * 
+ * 1.4.0 | January 18, 2019
+ * 	!!IMPORTANT!! Fields added to file format (will have to regen existing files!)
+ * 	Now stores Contig UIDs in file and GenomeBuild object
+ * 
  */
 
 /**
  * A container for information about a genome build, such as the contigs present, their
  * various aliases, and their lengths.
  * @author Blythe Hospelhorn
- * @version 1.2.3
- * @since January 4, 2019
+ * @version 1.4.0
+ * @since January 18, 2019
  *
  */
 public class GenomeBuild {
 
+	public static final int CURRENT_VERSION = 2;
+	
 	public static final String GBLD_MAGIC = "GBLD";
 	public static final String GBDH_MAGIC = "GBDH";
 	
@@ -63,19 +72,24 @@ public class GenomeBuild {
 	
 	private String species;
 	private String buildName;
+	private GenomeBuildUID uid_enum;
 	
 	private Map<String, Contig> contigMap;
+	private Map<Integer, Contig> UIDMap;
 	
-	public GenomeBuild(String speciesID, String buildID)
+	public GenomeBuild(String speciesID, String buildID, GenomeBuildUID uide)
 	{
 		contigMap = new HashMap<String, Contig>();
+		UIDMap = new HashMap<Integer, Contig>();
 		species = speciesID;
 		buildName = buildID;
+		uid_enum = uide; 
 	}
 	
 	public GenomeBuild(String filePath) throws IOException, UnsupportedFileTypeException
 	{
 		contigMap = new HashMap<String, Contig>();
+		UIDMap = new HashMap<Integer, Contig>();
 		parseGLBD(filePath);
 	}
 	
@@ -83,6 +97,7 @@ public class GenomeBuild {
 	{
 		FileBuffer myFile = new FileBuffer(1024 * 500); //500KB
 		contigMap = new HashMap<String, Contig>();
+		UIDMap = new HashMap<Integer, Contig>();
 	//	int sz = 0;
 		int b = stream.read();
 		while (b != -1)
@@ -107,6 +122,8 @@ public class GenomeBuild {
 		//Multi byte fields are Big-Endian
 		
 		// ASCII "GBLD" [4]
+		// Version [4] (v2+)
+		// GB UID [4] (-1 if not known) (v2+)
 		// Species name length [2]
 		// Species name [variable, ascii]
 		// Padding
@@ -139,6 +156,23 @@ public class GenomeBuild {
 		}
 		
 		cPos += 4;
+		
+		//Version
+		// This field isn't in version 1, so if the first nlen field (and following chars) in a 
+		// version 1 file happens to be 2, then the file will be parsed as a 
+		// v2 file (ie incorrectly)
+		// It's best to just update the files!
+		int version = genome.intFromFile(cPos);
+		if (version < 2 || version > 2) version = 1;
+		else cPos += 4; //Only advances cPos if v2+
+		
+		//GB UID
+		if (version >= 2)
+		{
+			int gbuid = genome.intFromFile(cPos);
+			cPos += 4;
+			uid_enum = GenomeBuildUID.getByID(gbuid);
+		}
 		
 		int nlen = (int)genome.shortFromFile(cPos); cPos += 2;
 		species = genome.getASCII_string(cPos, nlen); cPos += nlen;
@@ -192,6 +226,7 @@ public class GenomeBuild {
 		{
 			contigMap.put(n, c);
 		}
+		UIDMap.put(c.getUDPName().hashCode(), c);
 	}
 	
 	public Contig getContig(String contigName)
@@ -199,9 +234,28 @@ public class GenomeBuild {
 		return contigMap.get(contigName);
 	}
 	
+	public Contig getContigByUID(int uid)
+	{
+		return UIDMap.get(uid);
+	}
+	
 	public void removeContig(String contigName)
 	{
 		Contig c = contigMap.get(contigName);
+		if (c == null) return;
+		Collection<String> cnames = c.getAllNames();
+		for (String n : cnames) contigMap.remove(n);
+		Set<Integer> uidkeyset = UIDMap.keySet();
+		for (Integer k : uidkeyset)
+		{
+			Contig v = UIDMap.get(k);
+			if (v == c) UIDMap.remove(k);		
+		}
+	}
+	
+	public void removeContig(int uid)
+	{
+		Contig c = UIDMap.remove(uid);
 		if (c == null) return;
 		Collection<String> cnames = c.getAllNames();
 		for (String n : cnames) contigMap.remove(n);
@@ -215,6 +269,11 @@ public class GenomeBuild {
 	public String getBuildName()
 	{
 		return buildName;
+	}
+	
+	public GenomeBuildUID getUIDEnum()
+	{
+		return this.uid_enum;
 	}
 	
 	public List<Contig> getChromosomes()
@@ -237,9 +296,12 @@ public class GenomeBuild {
 		Collection<Contig> allContigs = contigMap.values();
 		
 		FileBuffer file = new CompositeBuffer(1 + allContigs.size());
-		FileBuffer header = new FileBuffer(12 + buildName.length() + 1 + species.length() + 1);
+		FileBuffer header = new FileBuffer(12 + 8 + buildName.length() + 1 + species.length() + 1);
 		
 		header.printASCIIToFile(GBLD_MAGIC);
+		header.addToFile(CURRENT_VERSION);
+		if (this.uid_enum != null) header.addToFile(this.uid_enum.getUID());
+		else header.addToFile(-1);
 		
 		short nlen = (short)species.length();
 		header.addToFile(nlen);
@@ -399,6 +461,11 @@ public class GenomeBuild {
 		{
 			System.out.println(c.printInfo());
 		}
+	}
+	
+	public void setUID(GenomeBuildUID uid)
+	{
+		this.uid_enum = uid;
 	}
 	
 }

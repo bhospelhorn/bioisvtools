@@ -111,6 +111,7 @@ public class Contig implements Comparable<Contig>{
 		myContig.addToFile(96 + namesSize); //Contig block size excluding actual size record
 		myContig.addToFile(length); //Contig length
 		myContig.addToFile(sortClass); //Type
+		//myContig.addToFile(localUID); //Contig ID
 		
 		String name = UCSC_name;
 		if (name != null)

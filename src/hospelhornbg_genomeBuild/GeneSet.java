@@ -1,7 +1,9 @@
 package hospelhornbg_genomeBuild;
 
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -55,20 +57,30 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 
  * 1.2.3 -> 1.2.4 | January 4, 2019
  * 	Huffman class was moved. Resolved import reference.
+ * 
+ * 1.2.4 -> 1.3.0 | January 17, 2019
+ * 	Greylist (Blacklist) imports
+ * 	!!ALSO - Updated format itself (to include gb UID)
+ * 
+ * 1.3.0 -> 1.3.1 | January 18, 2019
+ * 	Transcript ID map switched to int (hash of transcript ID string)
+ * 	
  */
 
 
 /**
  * A set of gene annotations for a genome build.
  * @author Blythe Hospelhorn
- * @version 1.2.4
- * @since January 4, 2019
+ * @version 1.3.1
+ * @since January 18, 2019
  *
  */
 public class GeneSet 
 {
 	
 	/* --- Constants --- */
+	
+	public static final int CURRENT_VERSION = 2;
 	
 	/**
 	 * Expected first four bytes (as ASCII string) in a compressed gbgd
@@ -156,6 +168,8 @@ public class GeneSet
 	private GenomeBuild genome;
 	
 	private Map<Contig, ChromSet> genemap;
+	
+	private Map<Integer, Gene> transcriptMap; //null until queried...
 	
 	/* --- Inner Structures --- */
 	
@@ -977,18 +991,35 @@ public class GeneSet
 				myFile = Huffman.HuffDecodeFile(compressed, cPos + 4);
 				cPos = myFile.findString(0, 0x10, MAGIC_GBGD);
 				if (cPos < 0) throw new UnsupportedFileTypeException();
+				cPos = 4;
 				//DEBUG
 				//myFile.writeFile("C:\\Users\\Blythe\\Documents\\Work\\Bioinformatics\\References\\grch37_refSeq_redecompressed.gbgd");
 				
-				//Get genome build name and confirm it with desired build
-				cPos = 4;
-				String gbName = myFile.getASCII_string(cPos, 12); cPos += 12;
-				//System.err.println("GeneSet.parseGBDB || Build name: " + gbName);
-				boolean namematch = gbName.equals(gb.getBuildName());
-				//System.err.println("GeneSet.parseGBDB || Namematch = " + namematch);
-				if (strictBuildMatch && !namematch) throw new UnsupportedFileTypeException();
-				if (namematch) genome = gb;
-				else genome = new GenomeBuild("unknown", gbName);
+				//Check for the "version" field
+				int version = myFile.intFromFile(cPos);
+				if (version != 2) version = 1;
+				
+				//Get genome build UID and confirm with desired build (v2+)
+				boolean namematch = false;
+				if (version >= 2)
+				{
+					cPos += 4;
+					int gbuid = myFile.intFromFile(cPos);
+					int mybuilduid = gb.getUIDEnum().getUID();
+					namematch = (gbuid == mybuilduid);
+				}
+				else
+				{
+					//Get genome build name and confirm it with desired build (v1)
+					String gbName = myFile.getASCII_string(cPos, 12); cPos += 12;
+					//System.err.println("GeneSet.parseGBDB || Build name: " + gbName);
+					namematch = gbName.equals(gb.getBuildName());
+					//System.err.println("GeneSet.parseGBDB || Namematch = " + namematch);
+					if (strictBuildMatch && !namematch) throw new UnsupportedFileTypeException();
+					if (namematch) genome = gb;
+					else genome = new GenomeBuild("unknown", gbName, null);
+				}
+				
 				
 				//Get database name
 				name = myFile.getASCII_string(cPos, 16); cPos += 16;
@@ -1113,10 +1144,16 @@ public class GeneSet
 		//Header
 		FileBuffer header = new FileBuffer(headersize, true);
 		header.printASCIIToFile(MAGIC_GBGD);
+		//V2
+		header.addToFile(CURRENT_VERSION);
+		GenomeBuildUID uid = genome.getUIDEnum();
+		if (uid == null) header.addToFile(-1);
+		else header.addToFile(uid.getUID());
+		
 		String gname = genome.getBuildName();
-		if (gname.length() > 12) gname = gname.substring(0, 12);
-		header.printASCIIToFile(gname);
-		for (int i = gname.length(); i < 12; i++) header.addToFile((byte)0x00);
+		//if (gname.length() > 12) gname = gname.substring(0, 12);
+		//header.printASCIIToFile(gname);
+		//for (int i = gname.length(); i < 12; i++) header.addToFile((byte)0x00);
 		
 		if (name.length() > 16) name = name.substring(0, 16);
 		header.printASCIIToFile(name);
@@ -1900,6 +1937,33 @@ public class GeneSet
 		return results;
 	}
 	
+	public void clearTranscriptMap()
+	{
+		this.transcriptMap = null;
+	}
+	
+	private void populateTranscriptMap()
+	{
+		this.transcriptMap = new HashMap<Integer, Gene>();
+		List<Gene> allgenes = getAllGenes();
+		for (Gene g : allgenes)
+		{
+			transcriptMap.put(g.getID().hashCode(), g);
+		}
+	}
+	
+	public Gene getGeneByTranscriptID(String transcriptID)
+	{
+		if (this.transcriptMap == null) populateTranscriptMap();
+		return transcriptMap.get(transcriptID.hashCode());
+	}
+	
+	public Gene getGeneByTranscriptHashUID(int uid)
+	{
+		if (this.transcriptMap == null) populateTranscriptMap();
+		return transcriptMap.get(uid);
+	}
+	
 	public List<Gene> getGenesInRegion(Contig c, int stPos, int edPos)
 	{
 		if (c == null) return null;
@@ -1909,6 +1973,88 @@ public class GeneSet
 		if(cs == null) return null;
 		
 		return cs.getGenesInRegion(stPos, edPos);
+	}
+	
+	/* --- Greylists --- */
+	
+	public void importLowComplexityGreylist(String filepath, boolean verbose) throws IOException
+	{
+		BufferedReader br = new BufferedReader(new FileReader(filepath));
+		
+		String line = null;
+		while ((line = br.readLine()) != null)
+		{
+			//Line should be a transcript ID
+			Gene g = this.getGeneByTranscriptID(line);
+			if (g != null) g.flagLowComplexity(true);
+			else {
+				if (verbose) System.err.println(Thread.currentThread().getName() + " || GeneSet.importLowComplexityGreylist || "
+						+ "WARNING: Transcript ID in list \"" + line 
+				+ "\" does not match to any known transcript in this build!");
+			}
+		}
+		
+		br.close();
+	}
+	
+	public void importHighlyVariableGreylist(String filepath, boolean verbose) throws IOException
+	{
+		BufferedReader br = new BufferedReader(new FileReader(filepath));
+		
+		String line = null;
+		while ((line = br.readLine()) != null)
+		{
+			//Line should be a transcript ID
+			Gene g = this.getGeneByTranscriptID(line);
+			if (g != null) g.flagHighlyVariable(true);
+			else {
+				if (verbose) System.err.println(Thread.currentThread().getName() + " || GeneSet.importHighlyVariableGreylist || "
+						+ "WARNING: Transcript ID in list \"" + line 
+				+ "\" does not match to any known transcript in this build!");
+			}
+		}
+		
+		br.close();
+	}
+	
+	public void importManySimilarGreylist(String filepath, boolean verbose) throws IOException
+	{
+		BufferedReader br = new BufferedReader(new FileReader(filepath));
+		
+		String line = null;
+		while ((line = br.readLine()) != null)
+		{
+			//Line should be a transcript ID
+			Gene g = this.getGeneByTranscriptID(line);
+			if (g != null) g.flagManySimilar(true);
+			else {
+				if (verbose) System.err.println(Thread.currentThread().getName() + " || GeneSet.importManySimilarGreylist || "
+						+ "WARNING: Transcript ID in list \"" + line 
+				+ "\" does not match to any known transcript in this build!");
+			}
+		}
+		
+		br.close();
+	}
+	
+	public void importPseudogeneGreylist(String filepath, boolean verbose) throws IOException
+	{
+		BufferedReader br = new BufferedReader(new FileReader(filepath));
+		
+		String line = null;
+		while ((line = br.readLine()) != null)
+		{
+			//Line should be a transcript ID
+			Gene g = this.getGeneByTranscriptID(line);
+			if (g != null) g.flagPseudogene(true);
+			else {
+				if (verbose) System.err.println(Thread.currentThread().getName() + " || GeneSet.importPseudogeneGreylist || "
+						+ "WARNING: Transcript ID in list \"" + line 
+				+ "\" does not match to any known transcript in this build!");
+			}
+		}
+		
+		br.close();
 	}
 	
 	/* --- Load Standard --- */

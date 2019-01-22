@@ -45,6 +45,9 @@ import hospelhornbg_genomeBuild.GeneFunc;
  * 1.2.4 -> 1.2.5 | August 17, 2018
  * 	Added getEndChromosome method
  * 
+ * 1.2.5 -> 1.3.0 | January 22, 2019
+ * 	Update for VarTable compatibility
+ * 
  * /
 
 /*
@@ -57,8 +60,8 @@ import hospelhornbg_genomeBuild.GeneFunc;
  * contiguous, such as the breakends in a translocation.
  * Usually, this class is used to hold two BND type SVs.
  * @author Blythe Hospelhorn
- * @version 1.2.5
- * @since August 17, 2018
+ * @version 1.3.0
+ * @since January 22, 2019
  *
  */
 public class BreakendPair extends StructuralVariant{
@@ -79,6 +82,19 @@ public class BreakendPair extends StructuralVariant{
 	private StructuralVariant var2;
 	
 	private int bndType;
+	private int orientation1;
+	private int orientation2;
+	
+	public BreakendPair(Contig c1, int pos1, Contig c2, int pos2)
+	{
+		var1 = new StructuralVariant();
+		var1.setChromosome(c1);
+		var1.setPosition(pos1);
+		var2 = new StructuralVariant();
+		var2.setChromosome(c2);
+		var2.setPosition(pos2);
+		constructorCore();
+	}
 	
 	/**
 	 * Construct a breakend pair type structural variant from two structural variants.
@@ -186,6 +202,11 @@ public class BreakendPair extends StructuralVariant{
 			if (var2.getGeneFunction().getPriority() < eff.getPriority()) eff = var2.getGeneFunction();	
 		}
 		super.setGeneFunction(eff);
+		
+		if(var1.countAltAlleles() > 0) orientation1 = getAltOrientation(var1);
+		else orientation1 = ORIENTATION_UNKNOWN;
+		if(var2.countAltAlleles() > 0) orientation2 = getAltOrientation(var2);
+		else orientation2 = ORIENTATION_UNKNOWN;
 	}
 	
 	private String generateAltString()
@@ -218,6 +239,7 @@ public class BreakendPair extends StructuralVariant{
 	public static int getAltOrientation(Variant v)
 	{
 		String alt = v.getAltAllele(0);
+		if (alt == null || alt.isEmpty()) return ORIENTATION_UNKNOWN;
 		int iR = alt.indexOf(']');
 		int iL = alt.indexOf('[');
 		if (iR == 0 && iL < 0) return ORIENTATION_LEFT;
@@ -504,6 +526,26 @@ public class BreakendPair extends StructuralVariant{
 	public Contig getEndChromosome()
 	{
 		return var2.getChromosome();
+	}
+	
+	public int getOrientation1()
+	{
+		return this.orientation1;
+	}
+	
+	public int getOrientation2()
+	{
+		return this.orientation2;
+	}
+	
+	public void setOrientation1(int o)
+	{
+		this.orientation1 = o;
+	}
+	
+	public void setOrientation2(int o)
+	{
+		this.orientation2 = o;
 	}
 	
 }

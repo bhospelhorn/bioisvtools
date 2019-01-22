@@ -54,6 +54,9 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  *
  * 1.5.2 -> 1.6.0 | April 19, 2018
  * 	Rewrote parser. Again.
+ * 
+ * 1.6.0 -> 1.6.1 | January 17, 2019
+ * 	GenomeBuild format version 2.0
  *
  */
 
@@ -62,8 +65,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * A container for reading and writing a collection of variants and annotation metadata to
  * VCF format.
  * @author Blythe Hospelhorn
- * @version 1.6.0
- * @since April 19, 2018
+ * @version 1.6.1
+ * @since January 17, 2019
  *
  */
 public class VCF {
@@ -409,7 +412,7 @@ public class VCF {
 					if (gBuild == null)
 					{
 						Random r = new Random();
-						gBuild = new GenomeBuild("Unknown", "VCF_" + String.format("%08x", r.nextInt()));	
+						gBuild = new GenomeBuild("Unknown", "VCF_" + String.format("%08x", r.nextInt()), null);	
 					}
 					t1.start();
 					t2.start();
