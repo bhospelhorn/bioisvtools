@@ -31,6 +31,7 @@ public class SamFixer {
 
 	public static final String OP_THREADS = "-t"; 
 	public static final String OP_UCSC_NAMES = "-u"; 
+	public static final String OP_UNMAP_BAD_CONTIGS = "-k"; 
 	
 	public static final String OP_SAMPLE_NAME = "-s"; 
 	
@@ -276,7 +277,7 @@ public class SamFixer {
 		return outlist;
 	}
 	
-	private static void generateOutputLine(String input, GenomeBuild gb, BadCounter counter, ConcurrentLinkedQueue<String> writequeue, boolean verbose, boolean ucsc) throws InterruptedException
+	private static void generateOutputLine(String input, GenomeBuild gb, BadCounter counter, ConcurrentLinkedQueue<String> writequeue, boolean verbose, boolean ucsc, boolean keep_bad_contig) throws InterruptedException
 	{
 		//Tosses lines with bad contigs (commented out lines for unmapping bad contig lines)
 		try 
@@ -285,13 +286,13 @@ public class SamFixer {
 			WarningFlags wf = sr.getParserWarnings();
 			if (wf.err_invalid_RNAME != null) {
 				counter.increment_RNAME();
-				//sr.flagSegmentUnmapped(true);
-				return;
+				if(keep_bad_contig) sr.flagSegmentUnmapped(true);
+				else return;
 			}
 			if (wf.err_invalid_RNEXT != null) {
 				counter.increment_RNEXT();
-				//sr.flagNextSegmentUnmapped(true);
-				return;
+				if(keep_bad_contig) sr.flagNextSegmentUnmapped(true);
+				else return;
 			}
 			//Look for qual/seq mismatches...
 			//I don't know how they would be getting through though...
@@ -344,7 +345,7 @@ public class SamFixer {
 		}
 	}
 	
-	private static int finishParsingQueue(ConcurrentLinkedQueue<String> linequeue, GenomeBuild gb, BadCounter counter, ConcurrentLinkedQueue<String> writequeue, boolean verbose, boolean ucsc)
+	private static int finishParsingQueue(ConcurrentLinkedQueue<String> linequeue, GenomeBuild gb, BadCounter counter, ConcurrentLinkedQueue<String> writequeue, boolean verbose, boolean ucsc, boolean keep_bad_contig)
 	{
 		int lcount = 0;
 		while(!linequeue.isEmpty())
@@ -353,7 +354,7 @@ public class SamFixer {
 			if (line == null) continue;
 			try 
 			{
-				generateOutputLine(line, gb, counter, writequeue, verbose, ucsc);
+				generateOutputLine(line, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
 			} 
 			catch (InterruptedException e) 
 			{
@@ -365,7 +366,7 @@ public class SamFixer {
 		return lcount;
 	}
 	
-	public static BadCounter fixSam(BufferedReader input, BufferedWriter output, GenomeBuild gb, SAMHeaderLine newRG, int threads, boolean verbose, boolean ucsc) throws IOException, UnsupportedFileTypeException
+	public static BadCounter fixSam(BufferedReader input, BufferedWriter output, GenomeBuild gb, SAMHeaderLine newRG, int threads, boolean verbose, boolean ucsc, boolean keep_bad_contig) throws IOException, UnsupportedFileTypeException
 	{
 		System.err.println("DEBUG: fixSam method entered!");
 		//Prepare Counter
@@ -411,13 +412,13 @@ public class SamFixer {
 							//Try to parse
 							try 
 							{
-								generateOutputLine(line, gb, counter, writequeue, verbose, ucsc);
+								generateOutputLine(line, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
 							} 
 							catch (InterruptedException e) 
 							{
 								//Interruption should only be a kill signal.
 								//Run until read queue is empty, eating any more interruptions, and return.
-								pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc);
+								pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
 								donecount.increment();
 								if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning... (From write queue full sleep)");
 								return;
@@ -426,7 +427,7 @@ public class SamFixer {
 						}		
 					}
 					//Run until the queue is empty...
-					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc);
+					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
 					donecount.increment();
 					if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning...");
 				}
@@ -605,6 +606,7 @@ public class SamFixer {
 		String outPath = null;
 		int threads = 3;
 		boolean ucsc = false;
+		boolean unmap_bad_contig = false;
 		String samplename = "MySAM";
 		
 		for (int i = 0; i < args.length; i++)
@@ -643,6 +645,10 @@ public class SamFixer {
 			else if (s.equals(OP_UCSC_NAMES))
 			{
 				ucsc = true;
+			}
+			else if (s.equals(OP_UNMAP_BAD_CONTIGS))
+			{
+				unmap_bad_contig = true;
 			}
 			else if (s.equals(OP_THREADS))
 			{
@@ -724,7 +730,7 @@ public class SamFixer {
 		BadCounter counter = null;
 		try 
 		{
-			counter = fixSam(br, bw, gb, rgline, threads, verbose, ucsc);
+			counter = fixSam(br, bw, gb, rgline, threads, verbose, ucsc, unmap_bad_contig);
 		} 
 		catch (IOException e) 
 		{

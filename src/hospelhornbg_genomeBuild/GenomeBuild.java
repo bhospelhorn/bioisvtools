@@ -245,12 +245,14 @@ public class GenomeBuild {
 		if (c == null) return;
 		Collection<String> cnames = c.getAllNames();
 		for (String n : cnames) contigMap.remove(n);
-		Set<Integer> uidkeyset = UIDMap.keySet();
+		/*Set<Integer> uidkeyset = new HashSet<Integer>();
+		uidkeyset.addAll(UIDMap.keySet());
 		for (Integer k : uidkeyset)
 		{
 			Contig v = UIDMap.get(k);
 			if (v == c) UIDMap.remove(k);		
-		}
+		}*/
+		UIDMap.remove(c.getUDPName().hashCode());
 	}
 	
 	public void removeContig(int uid)

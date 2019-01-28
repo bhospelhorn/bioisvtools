@@ -743,9 +743,9 @@ public class SAMRecord implements Comparable<SAMRecord>{
 		}
 		
 		//Temporarily disable aux fields...
-		return s;
+		//return s;
 		
-		/*if (alignmentFields == null || alignmentFields.isEmpty()) return s;
+		if (alignmentFields == null || alignmentFields.isEmpty()) return s;
 		List<SAMField> opfields = this.getAllOptionalFields();
 		
 		for (SAMField f : opfields)
@@ -753,7 +753,7 @@ public class SAMRecord implements Comparable<SAMRecord>{
 			s += "\t" + f.getSAMString();
 		}
 		
-		return s;*/
+		return s;
 	}
 	
 	/* ----- Utility ----- */
