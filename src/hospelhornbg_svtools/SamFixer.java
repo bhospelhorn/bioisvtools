@@ -427,7 +427,11 @@ public class SamFixer {
 						}		
 					}
 					//Run until the queue is empty...
+<<<<<<< HEAD
 					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
+=======
+					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc);
+>>>>>>> parent of d127d4e... More debugging of SamFixer
 					donecount.increment();
 					if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning...");
 				}
@@ -488,7 +492,11 @@ public class SamFixer {
 					if (line == null) continue;
 					try 
 					{
+<<<<<<< HEAD
 						output.write("\n"+line);
+=======
+						output.write(line);
+>>>>>>> parent of d127d4e... More debugging of SamFixer
 						lcount++;
 					} 
 					catch (IOException e) 
