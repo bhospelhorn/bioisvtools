@@ -75,6 +75,10 @@ public class SamFixer {
 		private long bad_format;
 		private long bad_record;
 		
+		private volatile long queued_for_write;
+		private volatile long total_read;
+		private volatile long total_written;
+		
 		//private Set<String> aux_recs;
 		
 		public BadCounter()
@@ -84,6 +88,9 @@ public class SamFixer {
 			bad_format = 0;
 			bad_record = 0;
 			//aux_recs = new HashSet<String>();
+			queued_for_write = 0;
+			total_read = 0;
+			total_written = 0;
 		}
 		
 		public synchronized void increment_RNAME()
@@ -126,6 +133,36 @@ public class SamFixer {
 			return bad_record;
 		}
 	
+		public synchronized void incrementQueuedForWrite()
+		{
+			queued_for_write++;
+		}
+		
+		public long getQueuedForWriteCount()
+		{
+			return this.queued_for_write;
+		}
+		
+		public synchronized void incrementTotalRead()
+		{
+			total_read++;
+		}
+		
+		public long getTotalRead()
+		{
+			return this.total_read;
+		}
+		
+		public synchronized void incrementTotalWritten()
+		{
+			total_written++;
+		}
+		
+		public long getTotalWritten()
+		{
+			return this.total_written;
+		}
+		
 		/*
 		public synchronized void addAux(String s)
 		{
@@ -328,10 +365,12 @@ public class SamFixer {
 					//If it's getting interrupted, that should only be a kill signal...
 					//Dump the record in the queue regardless of queue size, and throw the exception.
 					writequeue.add(outline);
+					counter.incrementQueuedForWrite();
 					throw e;
 				}
 			}
 			writequeue.add(outline);
+			counter.incrementQueuedForWrite();
 		}
 		catch (UnsupportedFileTypeException e) 
 		{
@@ -362,6 +401,7 @@ public class SamFixer {
 				//e.printStackTrace();
 			}
 			lcount++;
+			counter.incrementQueuedForWrite();
 		}
 		return lcount;
 	}
@@ -428,8 +468,13 @@ public class SamFixer {
 					}
 					//Run until the queue is empty...
 <<<<<<< HEAD
+<<<<<<< HEAD
 					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
 =======
+=======
+					if(verbose)System.err.println("DEBUG: Running until queue is empty. Total lines queued: " + counter.getQueuedForWriteCount() + " (Worker: " + Thread.currentThread().getName() + ")");
+					if(verbose)System.err.println("DEBUG: Running until queue is empty. Total lines queued by this thread (before final dump): " + pcount + " (Worker: " + Thread.currentThread().getName() + ")");
+>>>>>>> parent of 08708bb... More file formats prepping for svanalyze project files
 					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc);
 >>>>>>> parent of d127d4e... More debugging of SamFixer
 					donecount.increment();
@@ -470,9 +515,10 @@ public class SamFixer {
 						{
 							//output.write("\n" + line);
 							//output.write(line + "\n");
-							if (lcount != 0) output.write("\n" + line);
+							if (lcount != 0L) output.write("\n" + line);
 							else output.write(line);
 							lcount++;
+							counter.incrementTotalWritten();
 							//if(lcount > 5942000000L && lcount < 5943000000L) System.err.println("R" + lcount + "\t" + line); //DEBUG
 						} 
 						catch (IOException e) 
@@ -486,6 +532,7 @@ public class SamFixer {
 					if (verbose && (lcount % 100000000L == 0)) System.err.println("DEBUG: Lines Written: " + lcount);
 				}
 				//Finish writing any lines still in queue or that are waiting to be processed...
+				if(verbose)System.err.println("DEBUG: Interrupt received. Lines Written (before final push): " + lcount + " (" + Thread.currentThread().getName() + ")");
 				while(!writequeue.isEmpty() || donecount.get() < tcount)
 				{
 					String line = writequeue.poll();
@@ -493,11 +540,16 @@ public class SamFixer {
 					try 
 					{
 <<<<<<< HEAD
+<<<<<<< HEAD
 						output.write("\n"+line);
 =======
 						output.write(line);
 >>>>>>> parent of d127d4e... More debugging of SamFixer
+=======
+						output.write("\n" + line);
+>>>>>>> parent of 08708bb... More file formats prepping for svanalyze project files
 						lcount++;
+						counter.incrementTotalWritten();
 					} 
 					catch (IOException e) 
 					{
@@ -564,6 +616,7 @@ public class SamFixer {
 			}
 			linequeue.add(line);
 			readcount++;
+			counter.incrementTotalRead();
 			if ((verbose) && (readcount % 10000000L == 0)) System.err.println("DEBUG: " + readcount + " lines read!");
 		}
 		
@@ -773,6 +826,9 @@ public class SamFixer {
 		System.err.println("Invalid Records: " + counter.get_BadRecord());
 		System.err.println("Records with Illegal RNAME: " + counter.get_RNAME());
 		System.err.println("Records with Illegal RNEXT: " + counter.get_RNEXT());
+		System.err.println("Total Records Read: " + counter.getTotalRead());
+		System.err.println("Total Records Queued for Writing: " + counter.getQueuedForWriteCount());
+		System.err.println("Total Records Written: " + counter.getTotalWritten());
 		
 		
 	}
