@@ -1,7 +1,9 @@
 package hospelhornbg_svproject;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -11,9 +13,11 @@ import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.SVType;
 import hospelhornbg_bioinformatics.StructuralVariant;
 import hospelhornbg_bioinformatics.Translocation;
+import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_bioinformatics.VariantPool;
 import hospelhornbg_bioinformatics.VariantPool.InfoDefinition;
 import hospelhornbg_genomeBuild.Contig;
+import hospelhornbg_genomeBuild.Gene;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_segregation.Candidate;
 import hospelhornbg_segregation.CandidateFlags;
@@ -53,8 +57,28 @@ public class VartableFile {
 		
 	}
 	
-	public static List<Candidate> readVartable(GenomeBuild gb, Family family, String inpath)
+	public static List<Candidate> readVartable(GenomeBuild gb, Family family, String inpath) throws IOException
 	{
+		//Header structure
+		
+		//	Magic [8]
+		//	Version [4]
+		//	# Indivs [4]
+		//	GenomeBuild UID [4]
+		
+		//	Indiv UID Table (4 x #Indivs)
+		
+		//Assumption is made that the file is too damn big. Try not to hold all in mem.
+		
+		//Create a temp file for huff decompression...
+		String tpath = FileBuffer.generateTemporaryPath("vartable_reader_temp");
+		
+		return null;
+	}
+	
+	public static String decompressVarTable(String inpath)
+	{
+		//Return path of temp file
 		return null;
 	}
 	
@@ -112,6 +136,8 @@ public class VartableFile {
 	
 	public static StructuralVariant parseVariant(FileBuffer info, long stpos, GenomeBuild gb, List<String> genoSamples, List<String> supportStrings)
 	{
+		// Big-Endian
+		
 		// VarID [4]
 		// Reserved [4] (Was gonna use for MateID, but BNDs should already be paired!)
 		// SVType [2]
@@ -131,7 +157,9 @@ public class VartableFile {
 		// Supp Vec [2]
 		// BND/TRA Orientation [1] (If applicable)
 		// Reserved Flags [1]
-		// VarName [46]
+		// VarName [44]
+		
+		//-- 112
 		
 		// #Candidate Records [4]
 		//	Candidate Info (x #Candidates) - It'll repartner etc.
@@ -144,6 +172,9 @@ public class VartableFile {
 		//		Allele 1 [1]
 		//		Allele 2 [1]
 		
+		//Total Size: 116 + (8 x #candidates) + (4 x genotypes)
+		
+		info.setEndian(true);
 		
 		long cpos = stpos;
 		
@@ -182,7 +213,7 @@ public class VartableFile {
 		//TRA/BND orientation
 		byte trao = info.getByte(cpos); cpos+=2; //Skip next byte
 		//Variant name
-		String vname = info.getASCII_string(cpos, 46); cpos += 46;
+		String vname = info.getASCII_string(cpos, 44); cpos += 44;
 		
 		//Instantiate SV based upon the type...
 		StructuralVariant sv = null;
@@ -300,6 +331,9 @@ public class VartableFile {
 			}	
 		}
 		
+		sv.setRefAllele("N");
+		sv.addAltAllele("<" + sv.getType().name() + ">");
+		
 
 		return sv;
 	}
@@ -307,9 +341,183 @@ public class VartableFile {
 	public static FileBuffer serializeVariant(Collection<Candidate> varCandidates, List<String> genoSamples, List<String> supportStrings)
 	{
 		//Extracts the variant from the first Candidate, then tosses any other Candidates that don't have the variant!
+		if (varCandidates == null || varCandidates.isEmpty()) return null;
 		
+		int cnum = varCandidates.size();
+		int ngeno = genoSamples.size();
 		
-		return null;
+		int maxrsz = 116 + (cnum * 8) + (ngeno * 4);
+		FileBuffer svar = new FileBuffer(maxrsz, true);
+		List<int[]> candinfo = new LinkedList<int[]>();
+		
+		Variant v = null;
+		for (Candidate c : varCandidates)
+		{
+			if (v == null) v = c.getVariant();
+			if (v != c.getVariant()) continue; //Variant must be SAME REFERENCE!
+			int tid = -1; //If intergenic
+			Gene g = c.getGene();
+			if (g != null) tid = g.getID().hashCode();
+			CandidateFlags cf = c.getFlags();
+			int cfi = 0;
+			if (cf != null) cfi = cf.getVarTableField();
+			int[] cfield = {tid, cfi};
+			candinfo.add(cfield);
+		}
+		if (v == null) return null;
+		
+		//**Serialize variant info
+		
+		svar.addToFile(v.getVarID().hashCode()); //VarID
+		svar.addToFile(0); //MateID
+		if (v instanceof StructuralVariant)
+		{
+			StructuralVariant sv = (StructuralVariant)v;
+			svar.addToFile((short)getSVTypeInt(sv.getType())); //SVType
+			int flags = 0;
+			if (sv.isImprecise()) flags |= 0x1;
+			svar.addToFile((short)flags); //Info flags
+		}
+		else
+		{
+			svar.addToFile((short)-1); //SVType
+			svar.addToFile((short)0); //Info flags
+		}
+		svar.addToFile((int)Math.round(v.getQuality())); //Quality
+		Contig c = v.getChromosome();
+		int pos = v.getPosition();
+		svar.addToFile(c.getUDPName().hashCode()); //Start Contig
+		svar.addToFile(pos); //Start pos
+		if (v instanceof StructuralVariant)
+		{
+			StructuralVariant sv = (StructuralVariant)v;
+			c = sv.getEndChromosome();
+			pos = sv.getEndPosition();
+			svar.addToFile(c.getUDPName().hashCode()); //End Contig
+			svar.addToFile(pos); //End pos
+			svar.addToFile(sv.getCIDiff(false, false, false)); //CIPos90 Start
+			svar.addToFile(sv.getCIDiff(false, false, true)); //CIPos90 End
+			svar.addToFile(sv.getCIDiff(true, false, false)); //CIEnd90 Start
+			svar.addToFile(sv.getCIDiff(true, false, true)); //CIEnd90 End
+			svar.addToFile(sv.getCIDiff(false, true, false)); //CIPos95 Start
+			svar.addToFile(sv.getCIDiff(false, true, true)); //CIPos95 End
+			svar.addToFile(sv.getCIDiff(true, true, false)); //CIEnd95 Start
+			svar.addToFile(sv.getCIDiff(true, true, true)); //CIEnd95 End
+		}
+		else
+		{
+			svar.addToFile(c.getUDPName().hashCode()); //End Contig
+			svar.addToFile(pos); //End pos
+			svar.addToFile(0); //CIPos90 Start
+			svar.addToFile(0); //CIPos90 End
+			svar.addToFile(0); //CIEnd90 Start
+			svar.addToFile(0); //CIEnd90 End
+			svar.addToFile(0); //CIPos95 Start
+			svar.addToFile(0); //CIPos95 End
+			svar.addToFile(0); //CIEnd95 Start
+			svar.addToFile(0); //CIEnd95 End
+		}
+		
+		//Support Vector
+		int suppvec = 0;
+		int mask = 0x1;
+		for (String suppstr : supportStrings)
+		{
+			boolean ev = v.supportMarked(suppstr);
+			if (ev) suppvec |= mask;
+			mask = mask << 1;
+		}
+		svar.addToFile((short)suppvec);
+		
+		if (v instanceof BreakendPair)
+		{
+			BreakendPair bp = (BreakendPair)v;
+			int o = bp.getOrientation1();
+			o = o << 4;
+			o |= bp.getOrientation2();
+			svar.addToFile((byte)o); //Translocation orientation
+		}
+		else if (v instanceof Translocation)
+		{
+			Translocation tra = (Translocation)v;
+			int o = tra.getOrientation1();
+			o = o << 4;
+			o |= tra.getOrientation2();
+			svar.addToFile((byte)o); //Translocation orientation
+		}
+		else
+		{
+			svar.addToFile((byte)0);
+		}
+		
+		svar.addToFile((byte)0); //Reserved
+		
+		//Variant name
+		String vname = v.getVarID();
+		if (vname.length() > 44) vname = vname.substring(0, 44);
+		int vlen = vname.length();
+		svar.printASCIIToFile(vname);
+		if (vlen < 44)
+		{
+			for (int i = vlen; i < 44; i++) svar.addToFile((byte)0);
+		}
+		
+		//**Serialize candidate info
+		int cn = candinfo.size();
+		svar.addToFile(cn); //# Candidates
+		for (int[] cinfo : candinfo)
+		{
+			if (cinfo.length != 2) continue;
+			svar.addToFile(cinfo[0]); //Transcript ID
+			svar.addToFile(cinfo[1]); //Candidate flags
+		}
+		
+		//**Serialize genotype info
+		for (String sname : genoSamples)
+		{
+			Genotype geno = v.getSampleGenotype(sname);
+			if (geno != null)
+			{
+				int[] alleles = geno.getAlleles();
+				int flags = 0;
+				if (geno.isPhased()) flags |= 0x1;
+				int a1 = 0;
+				int a2 = 0;
+				if (alleles.length >= 1) a1 = alleles[0];
+				if (alleles.length >= 2) a2 = alleles[1];
+				svar.addToFile((short)flags);
+				svar.addToFile((byte)a1);
+				svar.addToFile((byte)a2);
+			}
+			else
+			{
+				svar.addToFile((short)0);
+				svar.addToFile((byte)0);
+				svar.addToFile((byte)0);
+			}
+		}
+		
+		return svar;
 	}
 
+	public static void indexVarTable(String path)
+	{
+		//Two indices - one by transcript, one by chrom
+		
+		//Transcript Index .gidx
+		//	Transcript UID [4]
+		//	File offset [4]
+		//	#Variants [4]
+		//	
+		
+		//Chrom Index .cidx
+		//	Contig UID [4]
+		//	File offset [4]
+		//	#Variants [4]
+		//	
+		
+		
+	}
+	
+	
 }

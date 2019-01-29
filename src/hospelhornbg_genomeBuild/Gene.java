@@ -26,13 +26,16 @@ import waffleoRai_Utils.FileBuffer;
  * 
  * 1.2.1 -> 1.3.0 | January 10, 2019
  * 		Added blacklist flags
+ * 
+ * 1.3.0 -> 1.3.1 | January 24, 2019
+ * 		Added two whitelist flags!
  */
 
 /**
  * A container for basic gene information - location and exons.
  * @author Blythe Hospelhorn
- * @version 1.3.0
- * @since January 10, 2019
+ * @version 1.3.1
+ * @since January 24, 2019
  *
  */
 public class Gene implements Comparable<Gene>{
@@ -64,6 +67,8 @@ public class Gene implements Comparable<Gene>{
 	private boolean flag_variablityTolerant;
 	private boolean flag_similarGenes; 
 	private boolean flag_pseudogene;
+	private boolean flag_whitelist;
+	private boolean flag_omim;
 	
 	/* --- Inner Structures --- */
 	
@@ -1160,6 +1165,48 @@ public class Gene implements Comparable<Gene>{
 	public void flagPseudogene(boolean b)
 	{
 		this.flag_pseudogene = b;
+	}
+	
+	/**
+	 * Get the [Whitelist] flag. This flag should be set
+	 * if this transcript is of some kind of interest and should
+	 * be noted as such.
+	 * @return Whitelist flag
+	 */
+	public boolean flaggedWhitelisted()
+	{
+		return this.flag_whitelist;
+	}
+	
+	/**
+	 * Set the [Whitelist] flag. This flag should be set
+	 * if this transcript is of some kind of interest and should
+	 * be noted as such.
+	 * @param b True to set, false to clear
+	 */
+	public void flagWhitelisted(boolean b)
+	{
+		this.flag_whitelist = b;
+	}
+	
+	/**
+	 * Get the [OMIM] whitelist flag. This flag should be set
+	 * if this transcript has a listing in OMIM.
+	 * @return OMIM flag
+	 */
+	public boolean flaggedOMIM()
+	{
+		return this.flag_omim;
+	}
+	
+	/**
+	 * Set the [OMIM] whitelist flag. This flag should be set
+	 * if this transcript has a listing in OMIM.
+	 * @param b True to set, false to clear
+	 */
+	public void flagOMIM(boolean b)
+	{
+		this.flag_omim = b;
 	}
 	
 }

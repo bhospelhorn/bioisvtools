@@ -488,7 +488,7 @@ public class SamFixer {
 					if (line == null) continue;
 					try 
 					{
-						output.write(line);
+						output.write("\n"+line);
 						lcount++;
 					} 
 					catch (IOException e) 
