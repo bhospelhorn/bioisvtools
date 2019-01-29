@@ -467,16 +467,9 @@ public class SamFixer {
 						}		
 					}
 					//Run until the queue is empty...
-<<<<<<< HEAD
-<<<<<<< HEAD
 					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
-=======
-=======
 					if(verbose)System.err.println("DEBUG: Running until queue is empty. Total lines queued: " + counter.getQueuedForWriteCount() + " (Worker: " + Thread.currentThread().getName() + ")");
 					if(verbose)System.err.println("DEBUG: Running until queue is empty. Total lines queued by this thread (before final dump): " + pcount + " (Worker: " + Thread.currentThread().getName() + ")");
->>>>>>> parent of 08708bb... More file formats prepping for svanalyze project files
-					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc);
->>>>>>> parent of d127d4e... More debugging of SamFixer
 					donecount.increment();
 					if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning...");
 				}
@@ -539,15 +532,8 @@ public class SamFixer {
 					if (line == null) continue;
 					try 
 					{
-<<<<<<< HEAD
-<<<<<<< HEAD
+
 						output.write("\n"+line);
-=======
-						output.write(line);
->>>>>>> parent of d127d4e... More debugging of SamFixer
-=======
-						output.write("\n" + line);
->>>>>>> parent of 08708bb... More file formats prepping for svanalyze project files
 						lcount++;
 						counter.incrementTotalWritten();
 					} 
