@@ -64,6 +64,10 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 
  * 1.3.0 -> 1.3.1 | January 18, 2019
  * 	Transcript ID map switched to int (hash of transcript ID string)
+ * 
+ * 1.3.1 -> 1.4.0 | February 11, 2019
+ * 	Fixed a parser oopsy
+ * 	Fixed genes in region search logic
  * 	
  */
 
@@ -71,8 +75,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 /**
  * A set of gene annotations for a genome build.
  * @author Blythe Hospelhorn
- * @version 1.3.1
- * @since January 18, 2019
+ * @version 1.4.0
+ * @since February 11, 2019
  *
  */
 public class GeneSet 
@@ -462,6 +466,7 @@ public class GeneSet
 		public HitRecord search(int position, boolean getLeftFlanking, boolean getRightFlanking)
 		{
 			//If this contig has no genes, the main body of this method will crash hard!
+			//System.err.println("GeneSet.ChromSet.search || DEBUG: Position = " + position);
 			if (this.genes.size() <= 0)
 			{
 				HitRecord rec = new HitRecord();
@@ -722,17 +727,93 @@ public class GeneSet
 			return genes.size();
 		}*/
 		
+		/*private List<Integer> getGenesAtPosition(int pos, HitRecord hr)
+		{
+			List<Integer> ilist = new LinkedList<Integer>();
+			int low = hr.lindex;
+			int hi = hr.index;
+			
+			//Search all genes between those two
+			for (int i = low; i <= hi; i++)
+			{
+				Gene g = genes.get(i);
+				if (g.positionInGene(pos)) ilist.add(i);
+			}
+			
+			return ilist;
+		}*/
+		
+		private int getFloorIndex(int pos, int rawIndex)
+		{
+			//Get overlaps
+			List<Integer> ilist = overlapMap.get(rawIndex);
+			int lowest = rawIndex;
+			for (Integer i : ilist)
+			{
+				Gene g = genes.get(i);
+				if (g.positionInGene(pos))
+				{
+					if (i < lowest) lowest = i;
+				}
+			}
+			
+			return lowest;
+		}
+		
+		public List<Gene> getGenesAtPosition(int pos)
+		{
+			HitRecord phr = search(pos, false, false);
+			int low = getFloorIndex(pos, phr.index);
+			int hi = phr.index;
+			
+			List<Gene> glist = new LinkedList<Gene>();
+			
+			for (int i = low; i <= hi; i++)
+			{
+				Gene g = genes.get(i);
+				if (g.positionInGene(pos)) glist.add(g);
+			}
+			
+			return glist;
+		}
+		
 		public List<Gene> getGenesInRegion(int stPos, int edPos)
 		{
+			//System.err.println("GeneSet.ChromSet.getGenesInRegion || DEBUG: Region = " + stPos + " to " + edPos);
 			HitRecord start = search(stPos, false, false);
 			HitRecord end = search(edPos, false, false);
 			
-			int sti = start.index;
-			int edi = end.index;
-			if (start.location.isIntergenic() && end.location.isIntergenic() && (sti == edi)) return new LinkedList<Gene>(); //Empty
-			if(start.location.isIntergenic()) sti++; //Index refers to gene before location
+			/*System.err.println("GeneSet.ChromSet.getGenesInRegion || DEBUG: Start Hit: ");
+			if (start != null) System.err.println(start.toString());
+			else System.err.println("NULL");
+			System.err.println("GeneSet.ChromSet.getGenesInRegion || DEBUG: End Hit: ");
+			if (end != null) System.err.println(end.toString());
+			else System.err.println("NULL");*/
 			
-			return getGenes(sti, edi);
+			//List<Integer> stgenes = getGenesAtPosition(stPos, start);
+			//List<Integer> edgenes = getGenesAtPosition(edPos, end);
+			
+			//Grab the start index. Scan overlapping transcripts for lowest
+			//	index transcript that start falls inside
+
+			//Scan all genes between the start findex and the end index
+			List<Gene> hits = new LinkedList<Gene>();
+			int sti = getFloorIndex(stPos, start.index);
+			int edi = end.index;
+			
+			for (int i = sti; i <= edi; i++)
+			{
+				Gene g = genes.get(i);
+				if (stPos < g.getTranscriptEnd())
+				{
+					if (edPos >= g.getTranscriptStart())
+					{
+						hits.add(g);
+					}
+				}
+			}
+			
+			return hits;
 		}
 		
 		public boolean hasGenes()
@@ -740,6 +821,17 @@ public class GeneSet
 			return (genes.size() > 0);
 		}
 	
+		/*public void printGenes()
+		{
+			List<Gene> glist = genes.getGenes();
+			int i = 0;
+			for (Gene g : glist)
+			{
+				System.err.println(i + "\t" + g.getID() + "\t" + g.getName() + "\t" + g.getTranscriptStart() + "\t" + g.getTranscriptEnd());
+				i++;
+			}
+		}*/
+		
 	}
 
 	private static class HitRecord
@@ -761,6 +853,13 @@ public class GeneSet
 			{
 				gene = g;
 				dist = d;
+			}
+		
+			public String toString()
+			{
+				String s = "";
+				s += gene.getID() + ":" + dist;
+				return s;
 			}
 		}
 		
@@ -847,6 +946,38 @@ public class GeneSet
 			return iarr;
 		}
 		
+		public String toString()
+		{
+			String s = "";
+			s += "I" + index + "\t";
+			s += "LI" + lindex + "\t";
+			s += location.name() + "\t";
+			if (lflank != null && !lflank.isEmpty())
+			{
+				s += "[";
+				boolean first = true;
+				for(FlankingGene fg : lflank)
+				{
+					if (!first) s += "|";
+					s += fg.toString();
+				}
+				s += "]\t";
+			}
+			else s += "[]\t";
+			if (rflank != null && !rflank.isEmpty())
+			{
+				s += "[";
+				boolean first = true;
+				for(FlankingGene fg : rflank)
+				{
+					if (!first) s += "|";
+					s += fg.toString();
+				}
+				s += "]\t";
+			}
+			else s += "[]\t";
+			return s;
+		}
 	}
 	
 	private static class AnnoRecord
@@ -983,147 +1114,156 @@ public class GeneSet
 	
 	private void parseGBGD(FileBuffer myFile, GenomeBuild gb, boolean strictBuildMatch) throws UnsupportedFileTypeException, IOException
 	{
+		//System.err.println("GeneSet.parseGBGD || DEBUG: Method entered...");
 		// --- Header
-				//Check magic, decompress, and check for inner magic
-				long cPos = myFile.findString(0, 0x10, MAGIC_GBGD_COMPRESSED);
-				if (cPos < 0) throw new UnsupportedFileTypeException();
-				FileBuffer compressed = myFile;
-				myFile = Huffman.HuffDecodeFile(compressed, cPos + 4);
-				cPos = myFile.findString(0, 0x10, MAGIC_GBGD);
-				if (cPos < 0) throw new UnsupportedFileTypeException();
-				cPos = 4;
-				//DEBUG
-				//myFile.writeFile("C:\\Users\\Blythe\\Documents\\Work\\Bioinformatics\\References\\grch37_refSeq_redecompressed.gbgd");
+		//Check magic, decompress, and check for inner magic
+		long cPos = myFile.findString(0, 0x10, MAGIC_GBGD_COMPRESSED);
+		if (cPos < 0) throw new UnsupportedFileTypeException();
+		//System.err.println("GeneSet.parseGBGD || DEBUG: Compressed Magic found...");
+		FileBuffer compressed = myFile;
+		myFile = Huffman.HuffDecodeFile(compressed, cPos + 4);
+		cPos = myFile.findString(0, 0x10, MAGIC_GBGD);
+		if (cPos < 0) throw new UnsupportedFileTypeException();
+		//System.err.println("GeneSet.parseGBGD || DEBUG: Decompressed Magic found...");
+		cPos = 4;
+		//DEBUG
+		//myFile.writeFile("C:\\Users\\Blythe\\Documents\\Work\\Bioinformatics\\References\\grch37_refSeq_redecompressed.gbgd");
+		//myFile.writeFile("C:\\Users\\Blythe\\Documents\\GitHub\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\grch37_refSeq_decomp.gbgd");	
+		
+		
+		//Check for the "version" field
+		int version = myFile.intFromFile(cPos);
+		if (version != 2) version = 1;
+		//System.err.println("GeneSet.parseGBGD || DEBUG: Version: " + version);
 				
-				//Check for the "version" field
-				int version = myFile.intFromFile(cPos);
-				if (version != 2) version = 1;
-				
-				//Get genome build UID and confirm with desired build (v2+)
-				boolean namematch = false;
-				if (version >= 2)
-				{
-					cPos += 4;
-					int gbuid = myFile.intFromFile(cPos);
-					int mybuilduid = gb.getUIDEnum().getUID();
-					namematch = (gbuid == mybuilduid);
-				}
-				else
-				{
-					//Get genome build name and confirm it with desired build (v1)
-					String gbName = myFile.getASCII_string(cPos, 12); cPos += 12;
-					//System.err.println("GeneSet.parseGBDB || Build name: " + gbName);
-					namematch = gbName.equals(gb.getBuildName());
-					//System.err.println("GeneSet.parseGBDB || Namematch = " + namematch);
-					if (strictBuildMatch && !namematch) throw new UnsupportedFileTypeException();
-					if (namematch) genome = gb;
-					else genome = new GenomeBuild("unknown", gbName, null);
-				}
+		//Get genome build UID and confirm with desired build (v2+)
+		boolean namematch = false;
+		String gbName = "UNKGENOME";
+		if (version >= 2)
+		{
+			cPos += 4;
+			int gbuid = myFile.intFromFile(cPos); cPos += 4;
+			int mybuilduid = gb.getUIDEnum().getUID();
+			namematch = (gbuid == mybuilduid);
+			//System.err.println("GeneSet.parseGBGD || DEBUG: Build Match? " + namematch);
+		}
+		else
+		{
+			//Get genome build name and confirm it with desired build (v1)
+			gbName = myFile.getASCII_string(cPos, 12); cPos += 12;
+			//System.err.println("GeneSet.parseGBDB || Build name: " + gbName);
+			namematch = gbName.equals(gb.getBuildName());
+			//System.err.println("GeneSet.parseGBDB || Namematch = " + namematch);
+			if (strictBuildMatch && !namematch) throw new UnsupportedFileTypeException();
+		}
+		if (namematch) genome = gb;
+		else genome = new GenomeBuild("unknown", gbName, null);
 				
 				
-				//Get database name
-				name = myFile.getASCII_string(cPos, 16); cPos += 16;
-				//System.err.println("GeneSet.parseGBDB || Database Name: " + name);
+		//Get database name
+		name = myFile.getASCII_string(cPos, 16); cPos += 16;
+		//System.err.println("GeneSet.parseGBDB || Database Name: " + name);
 				
-				//--- Contig Table
-				//System.err.println("GeneSet.parseGBDB || Parsing Contig Table ---");
-				Map<Integer, Contig> contigUIDmap = new HashMap<Integer, Contig>();
-				int cCount = myFile.intFromFile(cPos); cPos += 4;
-				//System.err.println("GeneSet.parseGBDB || \tContig Count: " + cCount);
-				for (int i = 0; i < cCount; i++)
-				{
-					int UID = myFile.intFromFile(cPos); cPos += 4;
-					String cName = myFile.getASCII_string(cPos, 40); cPos += 40;
-					cPos += 4; //This int is the offset of the contig's CHRM block from this value. 
-								//Used if you don't want to/ can't read file into memory in one go (ie. indexing)
-					//System.err.println("GeneSet.parseGBDB || \tContig 0x" + Integer.toHexString(UID));
-					//System.err.println("GeneSet.parseGBDB || \t\tName: " + cName);
-					Contig c = genome.getContig(cName);
-					//if (c!= null) System.err.println("GeneSet.parseGBDB || \t\tMatched to build contig " + c.getUDPName());
-					if ((c == null) && !namematch){
-						//System.err.println("GeneSet.parseGBDB || \t\tContig not found in build. Creating...");
-						c = new Contig();
-						c.setUCSCName(cName);
-						c.setUDPName(cName);
-						c.setType(Contig.SORTCLASS_UNKNOWN);
-						//Length estimated from block readings...
-						genome.addContig(c);
-					}
-					else if (c == null && namematch) throw new UnsupportedFileTypeException();
+		//--- Contig Table
+		//System.err.println("GeneSet.parseGBDB || Parsing Contig Table ---");
+		Map<Integer, Contig> contigUIDmap = new HashMap<Integer, Contig>();
+		int cCount = myFile.intFromFile(cPos); cPos += 4;
+		//System.err.println("GeneSet.parseGBDB || \tContig Count: " + cCount);
+		for (int i = 0; i < cCount; i++)
+		{
+			int UID = myFile.intFromFile(cPos); cPos += 4;
+			String cName = myFile.getASCII_string(cPos, 40); cPos += 40;
+			cPos += 4; //This int is the offset of the contig's CHRM block from this value. 
+						//Used if you don't want to/ can't read file into memory in one go (ie. indexing)
+			//System.err.println("GeneSet.parseGBDB || \tContig 0x" + Integer.toHexString(UID));
+			//System.err.println("GeneSet.parseGBDB || \t\tName: " + cName);
+			Contig c = genome.getContig(cName);
+			//if (c!= null) System.err.println("GeneSet.parseGBDB || \t\tMatched to build contig " + c.getUDPName());
+			if ((c == null) && !namematch)
+			{
+				//System.err.println("GeneSet.parseGBDB || \t\tContig not found in build. Creating...");
+				c = new Contig();
+				c.setUCSCName(cName);
+				c.setUDPName(cName);
+				c.setType(Contig.SORTCLASS_UNKNOWN);
+				//Length estimated from block readings...
+				genome.addContig(c);
+			}
+			else if (c == null && namematch) throw new UnsupportedFileTypeException();
 					
-					contigUIDmap.put(UID, c);
-				}
+			contigUIDmap.put(UID, c);
+		}
 				
-				//--- Chrom blocks
-				//System.err.println("GeneSet.parseGBDB || Parsing CHRM Blocks ---");
-				for (int i = 0; i < cCount; i++)
-				{
-					List<Gene> glist = new LinkedList<Gene>();
-					cPos = myFile.findString(cPos, cPos + 0x10, MAGIC_CHROMBLOCK);
-					if (cPos < 0) throw new UnsupportedFileTypeException();
-					else cPos += 4;
-					//System.err.println("GeneSet.parseGBDB || \tCHRM block found at 0x" + Long.toHexString(cPos));
-					//int chunkSize = myFile.intFromFile(cPos); cPos += 4;
-					cPos += 4; //Skip chunk size
-					int cUID = myFile.intFromFile(cPos); cPos += 4; //Chrom UID
-					//System.err.println("GeneSet.parseGBDB || \tContig 0x" + Integer.toHexString(cUID));
-					Contig c = contigUIDmap.get(cUID);
-					//if (c!= null) System.err.println("GeneSet.parseGBDB || \t\tMatched to build contig " + c.getUDPName());
-					if (c == null) throw new UnsupportedFileTypeException();
-					int geneCount = myFile.intFromFile(cPos); cPos += 4;
-					//System.err.println("GeneSet.parseGBDB || \t\tGene Count: " + geneCount);
-					int idxEntries = myFile.intFromFile(cPos); cPos += 4;
-					//System.err.println("GeneSet.parseGBDB || \t\tIndex Entries: " + idxEntries);
-					//We'll actually skip the index table, since that is for reading off disk...
-					cPos += (idxEntries * 4);
+			//--- Chrom blocks
+		//System.err.println("GeneSet.parseGBDB || Parsing CHRM Blocks ---");
+		for (int i = 0; i < cCount; i++)
+		{
+			List<Gene> glist = new LinkedList<Gene>();
+			cPos = myFile.findString(cPos, cPos + 0x10, MAGIC_CHROMBLOCK);
+			if (cPos < 0) throw new UnsupportedFileTypeException();
+			else cPos += 4;
+			//System.err.println("GeneSet.parseGBDB || \tCHRM block found at 0x" + Long.toHexString(cPos));
+			//int chunkSize = myFile.intFromFile(cPos); cPos += 4;
+			cPos += 4; //Skip chunk size
+			int cUID = myFile.intFromFile(cPos); cPos += 4; //Chrom UID
+			//System.err.println("GeneSet.parseGBDB || \tContig 0x" + Integer.toHexString(cUID));
+			Contig c = contigUIDmap.get(cUID);
+			//if (c!= null) System.err.println("GeneSet.parseGBDB || \t\tMatched to build contig " + c.getUDPName());
+			if (c == null) throw new UnsupportedFileTypeException();
+			int geneCount = myFile.intFromFile(cPos); cPos += 4;
+			//System.err.println("GeneSet.parseGBDB || \t\tGene Count: " + geneCount);
+			int idxEntries = myFile.intFromFile(cPos); cPos += 4;
+			//System.err.println("GeneSet.parseGBDB || \t\tIndex Entries: " + idxEntries);
+			//We'll actually skip the index table, since that is for reading off disk...
+			cPos += (idxEntries * 4);
 					
-					for (int j = 0; j < geneCount; j++)
-					{
-						int gSt = myFile.intFromFile(cPos); cPos += 4;
-						int gEd = myFile.intFromFile(cPos); cPos += 4;
-						int tSt = myFile.intFromFile(cPos); cPos += 4;
-						int tEd = myFile.intFromFile(cPos); cPos += 4;
-						int flags = Byte.toUnsignedInt(myFile.getByte(cPos)); cPos += 2;
-						//There is one byte of flags, and one byte "0" padding, so skip ahead 2.
-						int nExons = Short.toUnsignedInt(myFile.shortFromFile(cPos)); cPos += 2;
-						List<Exon> eList = new LinkedList<Exon>();
-						for (int k = 0; k < nExons; k++)
-						{
-							int eSt = myFile.intFromFile(cPos); cPos += 4;
-							int eEd = myFile.intFromFile(cPos); cPos += 4;
-							eList.add(new Exon(eSt, eEd));
-						}
-						String gID = myFile.getASCII_string(cPos, '\0');
-						cPos += gID.length() + 1;
-						//Skip padding, if needed...
-						if (gID.length() % 2 == 0) cPos++;
-						String gName = myFile.getASCII_string(cPos, '\0');
-						cPos += gName.length() + 1;
-						if (gName.length() % 2 == 0) cPos++;
+			for (int j = 0; j < geneCount; j++)
+			{
+				int gSt = myFile.intFromFile(cPos); cPos += 4;
+				int gEd = myFile.intFromFile(cPos); cPos += 4;
+				int tSt = myFile.intFromFile(cPos); cPos += 4;
+				int tEd = myFile.intFromFile(cPos); cPos += 4;
+				int flags = Byte.toUnsignedInt(myFile.getByte(cPos)); cPos += 2;
+				//There is one byte of flags, and one byte "0" padding, so skip ahead 2.
+				int nExons = Short.toUnsignedInt(myFile.shortFromFile(cPos)); cPos += 2;
+				List<Exon> eList = new LinkedList<Exon>();
+				for (int k = 0; k < nExons; k++)
+				{
+					int eSt = myFile.intFromFile(cPos); cPos += 4;
+					int eEd = myFile.intFromFile(cPos); cPos += 4;
+					eList.add(new Exon(eSt, eEd));
+				}
+				String gID = myFile.getASCII_string(cPos, '\0');
+				cPos += gID.length() + 1;
+				//Skip padding, if needed...
+				if (gID.length() % 2 == 0) cPos++;
+				String gName = myFile.getASCII_string(cPos, '\0');
+				cPos += gName.length() + 1;
+				if (gName.length() % 2 == 0) cPos++;
 						
-						Gene g = new Gene(nExons);
-						g.setChromosome(c);
-						g.setStart(gSt);
-						g.setEnd(gEd);
-						g.setTranslationStart(tSt);
-						g.setTranslationEnd(tEd);
-						g.setID(gID);
-						g.setName(gName);
-						g.setStrand((flags & 0x1) != 0);
-						g.setNCRNA((flags & 0x2) != 0);
-						g.addExons(eList);
+				Gene g = new Gene(nExons);
+				g.setChromosome(c);
+				g.setStart(gSt);
+				g.setEnd(gEd);
+				g.setTranslationStart(tSt);
+				g.setTranslationEnd(tEd);
+				g.setID(gID);
+				g.setName(gName);
+				g.setStrand((flags & 0x1) != 0);
+				g.setNCRNA((flags & 0x2) != 0);
+				g.addExons(eList);
 						
-						glist.add(g);
-					}
+				glist.add(g);
+			}
 					
-					ChromSet chr = null;
-					if (namematch) chr = new ChromSet(c.getLength());
-					else chr = new ChromSet(geneCount);
+			ChromSet chr = null;
+			if (namematch) chr = new ChromSet(c.getLength());
+			else chr = new ChromSet(geneCount);
 					
-					chr.addGenes(glist);
+			chr.addGenes(glist);
 					
-					genemap.put(c, chr);
-				}
+			genemap.put(c, chr);
+		}
 	}
 	
 	/**
@@ -1966,13 +2106,32 @@ public class GeneSet
 	
 	public List<Gene> getGenesInRegion(Contig c, int stPos, int edPos)
 	{
+		//System.err.println("GeneSet.getGenesInRegion || DEBUG: Method entered...");
 		if (c == null) return null;
 		if (stPos < 0) stPos = 0;
+		
+		//System.err.println("GeneSet.getGenesInRegion || DEBUG: Contig: " + c.getUDPName());
+		//System.err.println("GeneSet.getGenesInRegion || DEBUG: Start: " + stPos);
+		//System.err.println("GeneSet.getGenesInRegion || DEBUG: End: " + edPos);
+		
+		ChromSet cs = genemap.get(c);
+		if(cs == null) return null;
+		//System.err.println("GeneSet.getGenesInRegion || DEBUG: Data for contig found!");
+		//System.err.println("GeneSet.getGenesInRegion || DEBUG: Gene Dump!!!");
+		//cs.printGenes();
+		
+		return cs.getGenesInRegion(stPos, edPos);
+	}
+	
+	public List<Gene> getGenesAtPosition(Contig c, int pos)
+	{
+		if (c == null) return null;
+		if (pos < 0) pos = 0;
 		
 		ChromSet cs = genemap.get(c);
 		if(cs == null) return null;
 		
-		return cs.getGenesInRegion(stPos, edPos);
+		return cs.getGenesAtPosition(pos);
 	}
 	
 	/* --- Greylists --- */

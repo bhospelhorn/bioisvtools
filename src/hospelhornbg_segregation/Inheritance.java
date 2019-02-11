@@ -12,9 +12,19 @@ public enum Inheritance {
 	DENOVO_DOM("DeNovo Dominant"),
 	DENOVO_HET("DeNovo Het"),
 	DENOVO_HET_SV("DeNovo Het (CNV)"),
-	DENOVO_REC("DeNovo Recessive"),
+	DENOVO_REC("DeNovo Recessive (MV)"),
 	UNRESOLVED("Inheritance Unresolved"),
-	MVIOL("Medelian Violation");
+	MVIOL("Mendelian Violation"),
+	X_LINKED_REC("X-Linked Recessive"),
+	X_LINKED_DOM("X-Linked Dominant"),
+	X_LINKED_DN("X-Linked De Novo"),
+	X_LINKED_MV("X-Linked Mendelian Violation"),
+	X_PATIMPRINT_HH("X-Linked Half-Het (Imprint Rescue)"),
+	X_PATIMPRINT_DOM("X-Linked Dominant (Imprint Rescue)"),
+	Y_LINKED_REC("Y-Linked Recessive"),
+	Y_LINKED_DOM("Y-Linked Dominant"),
+	Y_LINKED_DN("Y-Linked De Novo"),
+	Y_LINKED_MV("Y-Linked Mendelian Violation"),;
 	
 	public static final int HALFHET_PHASE_NONE = 0;
 	public static final int HALFHET_PHASE_PARENT1 = 1;
@@ -63,6 +73,8 @@ public enum Inheritance {
 			return false;
 		case UNRESOLVED:
 			return false;
+		case X_PATIMPRINT_HH:
+			return true;
 		default:
 			return false;
 		}

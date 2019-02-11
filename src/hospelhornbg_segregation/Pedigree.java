@@ -18,6 +18,7 @@ import hospelhornbg_bioinformatics.AffectedStatus;
 import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.Sex;
 import hospelhornbg_bioinformatics.Variant;
+import hospelhornbg_genomeBuild.Contig;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
@@ -185,6 +186,66 @@ public class Pedigree {
 	
 	/* --- Inheritance Patterns --- */
 	
+	private void adjustSexChromGenotypes(Collection<Variant> variants)
+	{
+		List<Individual> ilist = getAllMembers();
+		for(Variant v : variants)
+		{
+			Contig c = v.getChromosome();
+			if (c.getType() == Contig.SORTCLASS_SEXCHROM)
+			{
+				for(Individual i : ilist)
+				{
+					Genotype g = v.getSampleGenotype(i.getName());
+					if (g != null)
+					{
+						int exCN = 2;
+						if (c.getUDPName().contains("X"))
+						{
+							exCN = i.getExpectedXCount();
+						}
+						else if (c.getUDPName().contains("Y"))
+						{
+							exCN = i.getExpectedYCount();
+						}
+						switch (exCN)
+						{
+						case 0:
+							//Take out all alleles, mark CN0
+							int[] all0 = {-1, -1};
+							g.setAlleles(all0);
+							g.setCopyNumber(0);
+							break;
+						case 1:
+							//Determine which allele, mark CN1
+							int[] myall = g.getAlleles();
+							int a = -1;
+							for (int ia : myall) if (ia > a) a = ia;
+							int[] all1 = {a};
+							g.setAlleles(all1);
+							g.setCopyNumber(1);
+							break;
+						case 2:
+							//Leave alone
+							break;
+						case 3:
+							//Add a -1 allele, mark CN3
+							int[] myall3 = g.getAlleles();
+							if (myall3.length < 3)
+							{
+								int[] all3 = {-1, -1, -1};
+								if (myall3.length >= 1) all3[0] = myall3[0];
+								if (myall3.length >= 2) all3[1] = myall3[1];
+							}
+							g.setCopyNumber(3);
+							break;
+						}
+					}
+				}	
+			}
+		}
+	}
+	
 	private void annotateCandidate(Map<Individual, Genotype> genomap, Individual pb, Candidate c)
 	{
 		Genotype g = genomap.get(pb);
@@ -199,6 +260,9 @@ public class Pedigree {
 	public List<Candidate> toCandidates(Variant v)
 	{
 		List<Candidate> clist = new LinkedList<Candidate>();
+		
+		//TODO: Handle XY variants differently
+		//Genotypes need to be edited to reflect expected copy number!
 		
 		//Get all alleles
 		List<Individual> affected = getAllAffected();

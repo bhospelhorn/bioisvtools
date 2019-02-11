@@ -65,6 +65,9 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 1.3.1 -> 1.3.2 | January 22, 2019
  * 	Added optional candidate flags map
  * 
+ * 1.3.2 -> 1.3.3 | February 1, 2019
+ * 	Support data is now mapped by individual...
+ * 
  */
 
 /*
@@ -80,8 +83,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * <br>Providing InfoDefinition instances allows for parsing of these INFO annotations into 
  * integers, floats, and flags. By default, they are all stored as either strings or flags.
  * @author Blythe Hospelhorn
- * @version 1.3.2
- * @since January 22, 2019
+ * @version 1.3.3
+ * @since February 1, 2019
  *
  */
 public class Variant implements Comparable<Variant>{
@@ -202,7 +205,7 @@ public class Variant implements Comparable<Variant>{
 	 * filled automatically from VCF parsing. It can be filled
 	 * manually, though.
 	 */
-	private Set<String> support_set;
+	private Map<String, Set<String>> support_map;
 	
 	/**
 	 * Candidate flags map for optional use.
@@ -1030,14 +1033,17 @@ public class Variant implements Comparable<Variant>{
 	/**
 	 * Check whether the provided string matches a field
 	 * marked as "supporting" this variant.
-	 * @param s String to check support
+	 * @param sample Sample name of individual to check support for.
+	 * @param suppStr String to check support
 	 * @return True if this variant has a support record denoted
-	 * by the provided string. False otherwise.
+	 * by the provided string for the specified sample. False otherwise.
 	 */
-	public boolean supportMarked(String s)
+	public boolean supportMarked(String sample, String suppStr)
 	{
-		if(support_set == null) return false;
-		return support_set.contains(s);
+		if(support_map == null) return false;
+		Set<String> support_set = support_map.get(sample);
+		if (support_set == null) return false;
+		return support_set.contains(suppStr);
 	}
 	
 	/**
@@ -1455,24 +1461,42 @@ public class Variant implements Comparable<Variant>{
 	
 	/**
 	 * Add a "support" mark correlated to the provided string.
+	 * @param sampleName Sample to add mark for.
 	 * @param supportString String to mark as supporting evidence for
 	 * this variant.
 	 */
-	public void addSupportMark(String supportString)
+	public void addSupportMark(String sampleName, String supportString)
 	{
-		if (this.support_set == null) this.support_set = new HashSet<String>();
-		this.support_set.add(supportString);
+		if (this.support_map == null) support_map = new HashMap<String, Set<String>>();
+		Set<String> support_set = support_map.get(sampleName);
+		if (support_set == null)
+		{
+			support_set = new HashSet<String>();
+			support_map.put(sampleName, support_set);
+		}
+		support_set.add(supportString);
 	}
 	
 	/**
 	 * Remove the "support" mark correlated to the provided string.
+	 * @param sampleName Sample to remove mark from.
 	 * @param supportString String to remove as supporting evidence for
 	 * this variant.
 	 */
-	public void removeSupportMark(String supportString)
+	public void removeSupportMark(String sampleName, String supportString)
 	{
-		if (this.support_set == null) return;
-		this.support_set.remove(supportString);
+		if (this.support_map == null) return;
+		Set<String> support_set = support_map.get(sampleName);
+		if (support_set != null) support_set.remove(supportString);
+	}
+	
+	/**
+	 * Delete the supporting evidence string map for samples, if present.
+	 */
+	public void clearSupportMap()
+	{
+		if (support_map != null) support_map.clear();
+		support_map = null;
 	}
 	
 	/**

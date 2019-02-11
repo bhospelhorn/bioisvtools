@@ -352,5 +352,4 @@ public class CandidateFlags {
 		this.bLarge = b;
 	}
 	
-	
 }

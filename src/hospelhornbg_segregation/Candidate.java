@@ -415,4 +415,9 @@ public class Candidate implements Comparable<Candidate>{
 		iFlags = CandidateFlags.readVCFBitField(bitstring);
 	}
 	
+	public void setFlags(CandidateFlags cf)
+	{
+		iFlags = cf;
+	}
+	
 }

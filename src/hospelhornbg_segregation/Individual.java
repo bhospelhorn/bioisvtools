@@ -22,6 +22,9 @@ public class Individual implements Comparable<Individual>{
 	private Sex eSex;
 	private AffectedStatus eAffected;
 	
+	private int custom_x;
+	private int custom_y;
+	
 	private Map<Individual, Integer> iAncestors;
 	
 	public Individual(String name)
@@ -33,6 +36,8 @@ public class Individual implements Comparable<Individual>{
 		iChildren = new HashMap<String, Individual>();
 		eSex = Sex.UNKNOWN;
 		eAffected = AffectedStatus.UNKNOWN;
+		custom_x = 2;
+		custom_y = 1;
 	}
 	
 	protected Individual (Individual source)
@@ -45,6 +50,8 @@ public class Individual implements Comparable<Individual>{
 		iChildren = new HashMap<String, Individual>();
 		Set<String> keyset = source.iChildren.keySet();
 		for (String k : keyset) iChildren.put(k, source.iChildren.get(k));
+		custom_x = source.custom_x;
+		custom_y = source.custom_y;
 	}
 	
 	public String getName()
@@ -337,6 +344,26 @@ public class Individual implements Comparable<Individual>{
 		Set<Individual> rset = new HashSet<Individual>();
 		this.dumpRelativesIntoSet(rset);
 		return rset;
+	}
+	
+	public void setSexChromCount(int X, int Y)
+	{
+		this.custom_x = X;
+		this.custom_y = Y;
+	}
+	
+	public int getExpectedXCount()
+	{
+		if (eSex == Sex.FEMALE) return 2;
+		if (eSex == Sex.MALE) return 1;
+		return custom_x;
+	}
+	
+	public int getExpectedYCount()
+	{
+		if (eSex == Sex.FEMALE) return 0;
+		if (eSex == Sex.MALE) return 1;
+		return custom_y;
 	}
 	
 }
