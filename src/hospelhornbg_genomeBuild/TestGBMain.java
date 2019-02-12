@@ -17,31 +17,39 @@ public class TestGBMain {
 		//gb37.printMe();
 		
 		//For converting files
-		String ingb = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\NCBI36.gbdh";
-		String outgb = "C:\\Users\\Blythe\\Desktop\\NCBI36.gbdh";
+		String ingb = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\GRCh38.gbdh";
+		String outgb = "C:\\Users\\Blythe\\Desktop\\GRCh38.gbdh";
 		
-		String ings = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\ncbi36_refSeq.gbgd";
-		String outgs = "C:\\Users\\Blythe\\Desktop\\ncbi36_refSeq.gbgd";
+		//String ings = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\ncbi36_refSeq.gbgd";
+		//String outgs = "C:\\Users\\Blythe\\Desktop\\ncbi36_refSeq.gbgd";
 		//String outtbli = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_in.out";
 		//String outtblo = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_out.out";
 		
 		try 
 		{
 			GenomeBuild gb = new GenomeBuild(ingb);
+			Contig X = gb.getContig("X");
+			Contig Y = gb.getContig("Y");
+			
+			gb.addPARMapping(0, X, 10001, 2781479);
+			gb.addPARMapping(0, Y, 10001, 2781479);
+			gb.addPARMapping(1, X, 155701383, 156030895);
+			gb.addPARMapping(1, Y, 56887903, 57217415);
+			
 			gb.printMe();
-			gb.setUID(GenomeBuildUID.NCBI36);
+			//gb.setUID(GenomeBuildUID.NCBI36);
 			gb.saveGLBD(outgb, true);
 			
-			GeneSet gs = new GeneSet(ings, gb, true);
+			//GeneSet gs = new GeneSet(ings, gb, true);
 			//gs.outputTable(outtbli);
-			gs.serializeGBGD(outgs);
+			//gs.serializeGBGD(outgs);
 			
 			//Read back in
 			gb = new GenomeBuild(outgb);
 			System.err.println("\nReading back in...");
 			gb.printMe();
 			
-			gs = new GeneSet(ings, gb, true);
+			//gs = new GeneSet(ings, gb, true);
 			//gs.outputTable(outtblo);
 		} 
 		catch (IOException e) 

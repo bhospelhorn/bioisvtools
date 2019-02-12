@@ -205,6 +205,25 @@ public class SexChromInheritor {
 				else
 				{
 					//No unaff have this allele
+					if (!allhave)
+					{
+						c.setInheritancePattern(pb, Inheritance.UNRESOLVED);
+					}
+					else
+					{
+						if(allhom)
+						{
+							//Call homrec
+							if (checkXDeNovo(genomap, pb, allele)) c.setInheritancePattern(pb, Inheritance.X_LINKED_MV);
+							else c.setInheritancePattern(pb, Inheritance.X_LINKED_REC);
+						}
+						else
+						{
+							//Call dom
+							if (checkXDeNovo(genomap, pb, allele)) c.setInheritancePattern(pb, Inheritance.X_LINKED_DN);
+							else c.setInheritancePattern(pb, Inheritance.X_LINKED_DOM);
+						}
+					}
 				}
 			}
 		}

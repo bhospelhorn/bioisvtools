@@ -1,5 +1,6 @@
 package hospelhornbg_genomeBuild;
 
+import java.awt.Point;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -95,6 +96,25 @@ public class Contig implements Comparable<Contig>{
 	
 	public FileBuffer serialize()
 	{
+		return serializeWithPARs(null);
+	}
+	
+	public FileBuffer serializeWithPARs(Point[] pars)
+	{
+		FileBuffer spars = null;
+		int psz = 0;
+		if (pars != null)
+		{
+			psz = 4 + (8 * pars.length);
+			spars = new FileBuffer(psz, true);
+			spars.addToFile(pars.length);
+			for (int i = 0; i < pars.length; i++)
+			{
+				spars.addToFile(pars[i].x);
+				spars.addToFile(pars[i].y);
+			}
+		}
+		
 		FileBuffer altNames = new FileBuffer(names.size() * 32, true);
 		
 		for (String n : names)
@@ -108,10 +128,12 @@ public class Contig implements Comparable<Contig>{
 		int namesSize = (int)altNames.getFileSize();
 		FileBuffer myContig = new FileBuffer(100 + namesSize, true);
 		
-		myContig.addToFile(96 + namesSize); //Contig block size excluding actual size record
+		int bsz = 96 + namesSize + psz;
+		myContig.addToFile(bsz); //Contig block size excluding actual size record
 		myContig.addToFile(length); //Contig length
 		myContig.addToFile(sortClass); //Type
 		//myContig.addToFile(localUID); //Contig ID
+		if (spars != null) myContig.addToFile(spars);
 		
 		String name = UCSC_name;
 		if (name != null)
