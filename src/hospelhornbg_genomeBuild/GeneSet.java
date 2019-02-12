@@ -747,6 +747,7 @@ public class GeneSet
 		{
 			//Get overlaps
 			List<Integer> ilist = overlapMap.get(rawIndex);
+			if (ilist == null || ilist.isEmpty()) return rawIndex;
 			int lowest = rawIndex;
 			for (Integer i : ilist)
 			{
