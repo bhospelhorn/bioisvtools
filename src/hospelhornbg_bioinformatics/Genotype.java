@@ -51,6 +51,9 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 1.1.7 -> 1.1.8 | August 1, 2018
  * 	Added "hasAllele" function
  * 
+ * 1.1.8 -> 1.1.9 | February 12, 2019
+ * 	Added "countAlleleOccurrences" function
+ * 
  */
 
 /*
@@ -62,8 +65,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * Class to contain information on a genotype - usually for a given 
  * sample and variant.
  * @author Blythe Hospelhorn (blythe.hospelhorn@nih.gov)
- * @version 1.1.8
- * @since August 1, 2018
+ * @version 1.1.9
+ * @since February 12, 2019
  */
 public class Genotype {
 	
@@ -1569,6 +1572,21 @@ public class Genotype {
 		Field f = fieldMap.get(fieldKey);
 		if (f == null) return null;
 		return f.get();
+	}
+	
+	/**
+	 * Count the number of times a particular allele appears in this genotype.
+	 * @param allele Allele to count.
+	 * @return Number of times allele appears (number of copies of allele present).
+	 */
+	public int countAlleleOccurrences(int allele)
+	{
+		int ct = 0;
+		for(int i = 0; i < alleles.length; i++)
+		{
+			if (alleles[i] == allele) ct++;
+		}
+		return ct;
 	}
 	
 	/* --- Setters --- */

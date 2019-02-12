@@ -19,6 +19,8 @@ import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.Sex;
 import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_genomeBuild.Contig;
+import hospelhornbg_genomeBuild.GenomeBuild;
+import hospelhornbg_genomeBuild.TwoSexChromSegModel;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
@@ -186,8 +188,11 @@ public class Pedigree {
 	
 	/* --- Inheritance Patterns --- */
 	
-	private void adjustSexChromGenotypes(Collection<Variant> variants)
+	private void adjustSexChromGenotypes(Collection<Variant> variants, TwoSexChromSegModel sxm)
 	{
+		//TODO: Rewrite this method
+		//Need to move Y PAR -> X remapping per VARIANT, not indiv!
+		//Also. Make copies of weird calls and store in list to return!
 		List<Individual> ilist = getAllMembers();
 		for(Variant v : variants)
 		{
@@ -202,11 +207,27 @@ public class Pedigree {
 						int exCN = 2;
 						if (c.getUDPName().contains("X"))
 						{
-							exCN = i.getExpectedXCount();
+							//Check if PAR
+							if (!sxm.inHomChromPAR(v.getPosition()))
+							{
+								exCN = i.getExpectedXCount();	
+							}
 						}
 						else if (c.getUDPName().contains("Y"))
 						{
-							exCN = i.getExpectedYCount();
+							//Check PAR
+							if (!sxm.inHetChromPAR(v.getPosition()))
+							{
+								exCN = i.getExpectedYCount();
+							}
+							else
+							{
+								//Remap to X
+								exCN = 2;	
+								int xcoord = sxm.mapHetPosToHom(v.getPosition());
+								v.setChromosome(sxm.getHomogameticChrom());
+								v.setPosition(xcoord);
+							}
 						}
 						switch (exCN)
 						{

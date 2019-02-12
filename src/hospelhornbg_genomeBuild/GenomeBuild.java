@@ -40,14 +40,18 @@ import waffleoRai_Compression.huffman.Huffman;
  * 	!!IMPORTANT!! Fields added to file format (will have to regen existing files!)
  * 	Now stores Contig UIDs in file and GenomeBuild object
  * 
+ * 1.5.0 | February 12, 2019
+ * 	!!IMPORTANT!! Fields added to file format (will have to regen existing files!)
+ * 	Added pseudoautosomal regions
+ * 
  */
 
 /**
  * A container for information about a genome build, such as the contigs present, their
  * various aliases, and their lengths.
  * @author Blythe Hospelhorn
- * @version 1.4.0
- * @since January 18, 2019
+ * @version 1.5.0
+ * @since February 12, 2019
  *
  */
 public class GenomeBuild {
@@ -346,6 +350,19 @@ public class GenomeBuild {
 			if(PAR.inPAR(c, position)) return true;
 		}
 		return false;
+	}
+	
+	public List<Point> getPARsForContig(Contig c)
+	{
+		List<Point> plist = new LinkedList<Point>();
+		for(PseudoAutosomalRegion PAR : parList)
+		{
+			if (PAR != null)
+			{
+				plist.add(new Point(PAR.getPARStart(c), PAR.getPAREnd(c)));
+			}
+		}
+		return plist;
 	}
 	
 	public void addContig(Contig c)

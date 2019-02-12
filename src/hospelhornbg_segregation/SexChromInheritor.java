@@ -6,7 +6,6 @@ import java.util.Map;
 
 import hospelhornbg_bioinformatics.Genotype;
 
-//TODO: What about pseudo autosomal regions and regions that pair up between X and Y?
 public class SexChromInheritor {
 	
 	public void checkMammalXCandidate(Map<Individual, Genotype> genomap, Individual pb, Candidate c)
@@ -266,7 +265,50 @@ public class SexChromInheritor {
 	
 	private boolean checkXDeNovo(Map<Individual, Genotype> genomap, Individual pb, int allele)
 	{
-		//TODO: Write
+		//Get parents and genotypes
+		Individual mother = pb.getMother();
+		Individual father = pb.getFather();
+		
+		Genotype pbgeno = genomap.get(pb);
+		Genotype mgeno = null;
+		Genotype pgeno = null;
+		
+		if (mother != null) mgeno = genomap.get(mother);
+		if (father != null) pgeno = genomap.get(father);
+		
+		int pbcn = pb.getExpectedXCount();
+		switch(pbcn)
+		{
+		case 0:
+			//Should not happen
+			if (mgeno == null) return false;
+			return (mgeno.getAlleleCallCount() > 0);
+		case 1:
+			if (mgeno == null) return false;
+			return (!mgeno.hasAllele(allele));
+		case 2:
+			int acount = pbgeno.countAlleleOccurrences(allele);
+			if (acount < 2)
+			{
+				//Only need one parent
+				if (mgeno == null || pgeno == null) return false;
+				if (mgeno.hasAllele(allele)) return false;
+				if (pgeno.hasAllele(allele)) return false;
+				return true;
+			}
+			else
+			{
+				//Both parents must have
+				boolean mhas = true;
+				boolean fhas = true;
+				if (mgeno != null) mhas = mgeno.hasAllele(allele);
+				if (pgeno != null) fhas = pgeno.hasAllele(allele);
+				return !(mhas && fhas);
+			}
+		default:
+			break;
+		}
+		
 		return false;
 	}
 	
