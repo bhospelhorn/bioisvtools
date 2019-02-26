@@ -548,4 +548,9 @@ public class BreakendPair extends StructuralVariant{
 		this.orientation2 = o;
 	}
 	
+	public void setEndChromosome(Contig c)
+	{
+		var2.setChromosome(c);
+	}
+	
 }

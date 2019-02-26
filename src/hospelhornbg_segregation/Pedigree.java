@@ -17,14 +17,18 @@ import java.util.Set;
 import hospelhornbg_bioinformatics.AffectedStatus;
 import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.Sex;
+import hospelhornbg_bioinformatics.StructuralVariant;
 import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_genomeBuild.Contig;
-import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_genomeBuild.TwoSexChromSegModel;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
-public class Pedigree {
+public class Pedigree{
+	
+	public static final int SC_GENO_TYPE_AUTO = 0;
+	public static final int SC_GENO_TYPE_X = 1;
+	public static final int SC_GENO_TYPE_Y = 2;
 
 	//Can read from PED file
 	
@@ -190,81 +194,131 @@ public class Pedigree {
 	
 	private void adjustSexChromGenotypes(Collection<Variant> variants, TwoSexChromSegModel sxm)
 	{
-		//TODO: Rewrite this method
-		//Need to move Y PAR -> X remapping per VARIANT, not indiv!
-		//Also. Make copies of weird calls and store in list to return!
+		//Get indiv list
 		List<Individual> ilist = getAllMembers();
 		for(Variant v : variants)
 		{
-			Contig c = v.getChromosome();
-			if (c.getType() == Contig.SORTCLASS_SEXCHROM)
+			int treatAs = adjustSexChromCall(v, sxm);
+			if (treatAs == Pedigree.SC_GENO_TYPE_AUTO) continue;
+			for(Individual indiv : ilist)
 			{
-				for(Individual i : ilist)
+				int cn = 2;
+				Genotype g = v.getSampleGenotype(indiv.getName());
+				if (g == null) 
 				{
-					Genotype g = v.getSampleGenotype(i.getName());
-					if (g != null)
+					g = new Genotype();
+					v.addGenotype(indiv.getName(), g);
+				}
+				//Determine new CN...
+				if(treatAs == Pedigree.SC_GENO_TYPE_X) cn = indiv.getExpectedXCount();
+				else if (treatAs == Pedigree.SC_GENO_TYPE_Y) cn = indiv.getExpectedYCount();
+				//Alter genotype to match expected CN
+				switch(cn)
+				{
+				case 0: 
+					//Delete genotype from variant?
+					//For now, I'll set CN0 and make one -1 allele...
+					g.setCopyNumber(0);
+					int[] a0 = {-1};
+					g.setAlleles(a0);
+					break;
+				case 1: 
+					//Delete all alleles but one, prioritizing alt alleles
+					int[] a1 = g.getAlleles();
+					g.setCopyNumber(1);
+					int all1 = 0;
+					for (int a : a1)
 					{
-						int exCN = 2;
-						if (c.getUDPName().contains("X"))
-						{
-							//Check if PAR
-							if (!sxm.inHomChromPAR(v.getPosition()))
-							{
-								exCN = i.getExpectedXCount();	
-							}
-						}
-						else if (c.getUDPName().contains("Y"))
-						{
-							//Check PAR
-							if (!sxm.inHetChromPAR(v.getPosition()))
-							{
-								exCN = i.getExpectedYCount();
-							}
-							else
-							{
-								//Remap to X
-								exCN = 2;	
-								int xcoord = sxm.mapHetPosToHom(v.getPosition());
-								v.setChromosome(sxm.getHomogameticChrom());
-								v.setPosition(xcoord);
-							}
-						}
-						switch (exCN)
-						{
-						case 0:
-							//Take out all alleles, mark CN0
-							int[] all0 = {-1, -1};
-							g.setAlleles(all0);
-							g.setCopyNumber(0);
-							break;
-						case 1:
-							//Determine which allele, mark CN1
-							int[] myall = g.getAlleles();
-							int a = -1;
-							for (int ia : myall) if (ia > a) a = ia;
-							int[] all1 = {a};
-							g.setAlleles(all1);
-							g.setCopyNumber(1);
-							break;
-						case 2:
-							//Leave alone
-							break;
-						case 3:
-							//Add a -1 allele, mark CN3
-							int[] myall3 = g.getAlleles();
-							if (myall3.length < 3)
-							{
-								int[] all3 = {-1, -1, -1};
-								if (myall3.length >= 1) all3[0] = myall3[0];
-								if (myall3.length >= 2) all3[1] = myall3[1];
-							}
-							g.setCopyNumber(3);
-							break;
-						}
+						if (a > all1) all1 = a;
 					}
+					int[] a1_1 = {all1};
+					g.setAlleles(a1_1);
+					break;
+				case 2: 
+					//Do nothing, should be CN2 by default!
+					break;
+				case 3: 
+					//Add a new ref allele?
+					int[] a3 = g.getAlleles();
+					int a3_1 = 0;
+					int a3_2 = 0;
+					int a3_3 = 0;
+					if (a3.length >= 1) a3_1 = a3[0];
+					if (a3.length >= 2) a3_2 = a3[1];
+					g.setCopyNumber(3);
+					int[] a3_new = {a3_1, a3_2, a3_3};
+					g.setAlleles(a3_new);
+					break;
+				}
+			}
+		}
+	}
+	
+	private int adjustSexChromCall(Variant v, TwoSexChromSegModel sxm)
+	{
+		//Get chrom
+		int pval = Pedigree.SC_GENO_TYPE_AUTO;
+		Contig c = v.getChromosome();
+		if (c == sxm.getHomogameticChrom())
+		{
+			//Must be same object
+			//See if pseudoautosomal
+			int pos = v.getPosition();
+			if(!sxm.inHomChromPAR(pos)) pval = Pedigree.SC_GENO_TYPE_X;
+			//If not, mark as X
+		}
+		else if (c == sxm.getHeterogameticChrom())
+		{
+			//See if pseudoautosomal
+			//If so, remap variant to X
+			//If not, mark as Y
+			int pos = v.getPosition();
+			if(sxm.inHetChromPAR(pos))
+			{
+				int xpos = sxm.mapHetPosToHom(pos);
+				v.setChromosome(sxm.getHomogameticChrom());
+				v.setPosition(xpos);
+			}
+			else pval = Pedigree.SC_GENO_TYPE_Y;
+		}
+		
+		//Repeat with end if variant is a structural variant...
+		int eval = Pedigree.SC_GENO_TYPE_AUTO;
+		if (v instanceof StructuralVariant)
+		{
+			StructuralVariant sv = (StructuralVariant) v;
+			Contig endChrom = sv.getEndChromosome();
+			if (endChrom != null && endChrom != c)
+			{
+				int endpos = sv.getEndPosition();
+				if (endChrom == sxm.getHomogameticChrom())
+				{
+					if(!sxm.inHomChromPAR(endpos)) eval = Pedigree.SC_GENO_TYPE_X;
+				}
+				else if (endChrom == sxm.getHeterogameticChrom())
+				{
+					if(sxm.inHetChromPAR(endpos))
+					{
+						int xpos = sxm.mapHetPosToHom(endpos);
+						sv.setEndChromosome(sxm.getHomogameticChrom());
+						sv.setEndPosition(xpos);
+					}
+					else eval = Pedigree.SC_GENO_TYPE_Y;
 				}	
 			}
 		}
+		else return pval;
+		
+		//If equal...
+		if (pval == eval) return pval;
+		//X or Y over Auto
+		if (pval == Pedigree.SC_GENO_TYPE_AUTO) return eval;
+		if (eval == Pedigree.SC_GENO_TYPE_AUTO) return pval;
+		//X vs. Y? Treat like Y?
+		if (pval == Pedigree.SC_GENO_TYPE_X) return eval;
+		if (eval == Pedigree.SC_GENO_TYPE_X) return pval;
+		
+		return Pedigree.SC_GENO_TYPE_AUTO;
 	}
 	
 	private void annotateCandidate(Map<Individual, Genotype> genomap, Individual pb, Candidate c)

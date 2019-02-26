@@ -89,6 +89,9 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 
  * 1.5.0 -> 1.5.1 | August 17, 2018
  *  Setting end to value lower than start flips a flag
+ *  
+ * 1.5.2 -> 1.5.3 | February 26, 2019
+ *  Added set end chrom method
  * 
  */
 
@@ -102,8 +105,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * Container object extending the standard Variant to include information and methods
  * for easier processing of Structural Variants.
  * @author Blythe Hospelhorn
- * @version 1.5.2
- * @since August 31, 2018
+ * @version 1.5.3
+ * @since February 26, 2019
  *
  */
 public class StructuralVariant extends Variant implements Comparable<Variant>{
@@ -1486,6 +1489,11 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	{
 		super.clearAltAlleles();
 		for (int i = 0; i < SVlen.length; i++) SVlen[i] = 0;
+	}
+	
+	public void setEndChromosome(Contig c)
+	{
+		//Vanilla does nothing...
 	}
 	
 	/* --- Comparing --- */

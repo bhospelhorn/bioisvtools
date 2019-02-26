@@ -258,4 +258,9 @@ public class Translocation extends StructuralVariant{
 		return chrom2;
 	}
 	
+	public void setEndChromosome(Contig c)
+	{
+		chrom2 = c;
+	}
+	
 }
