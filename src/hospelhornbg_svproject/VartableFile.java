@@ -43,6 +43,8 @@ public class VartableFile {
 	public static final String MAGIC_HUFF = "VARTHUFF";
 	public static final int CURRENT_VERSION = 1;
 	
+	public static final String EXT = "vartbl";
+	
 	/** ID = CANDFLAGS
 	* <br>Number = Variable
 	* <br>Type = String

@@ -16,6 +16,8 @@ import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_bioinformatics.VariantPool;
 import hospelhornbg_genomeBuild.Gene;
 import hospelhornbg_genomeBuild.GeneSet;
+import hospelhornbg_genomeBuild.GenomeBuild;
+import hospelhornbg_genomeBuild.TwoSexChromSegModel;
 
 //TODO: Need 2 fixes:
 	// Check comphet candidate pairs against other affecteds
@@ -487,10 +489,14 @@ public class Inheritor {
 		Map<Gene, List<Candidate>> genemap = new HashMap<Gene, List<Candidate>>();
 		List<Candidate> intergenics = new LinkedList<Candidate>();
 		
+		//Get Sex Chrom Model (for PseudoAutosomal Regions)
+		GenomeBuild gb = genes.getGenomeBuild();
+		TwoSexChromSegModel sxm = new TwoSexChromSegModel(gb.getContig("X"), gb.getContig("Y"), gb);
+		
 		//Mark initial inheritance, gene annotate, generate initial candidate set
 		for (Variant v : variants)
 		{
-			List<Candidate> cinitl = family.toCandidates(v);
+			List<Candidate> cinitl = family.toCandidates(v, sxm);
 			//Match to genes...
 			List<Gene> glist = getVariantGenes(v, genes);
 			for (Candidate cinit : cinitl)

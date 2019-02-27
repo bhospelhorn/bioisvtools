@@ -2135,6 +2135,11 @@ public class GeneSet
 		return cs.getGenesAtPosition(pos);
 	}
 	
+	public GenomeBuild getGenomeBuild()
+	{
+		return genome;
+	}
+	
 	/* --- Greylists --- */
 	
 	public void importLowComplexityGreylist(String filepath, boolean verbose) throws IOException
@@ -2207,6 +2212,46 @@ public class GeneSet
 			//Line should be a transcript ID
 			Gene g = this.getGeneByTranscriptID(line);
 			if (g != null) g.flagPseudogene(true);
+			else {
+				if (verbose) System.err.println(Thread.currentThread().getName() + " || GeneSet.importPseudogeneGreylist || "
+						+ "WARNING: Transcript ID in list \"" + line 
+				+ "\" does not match to any known transcript in this build!");
+			}
+		}
+		
+		br.close();
+	}
+	
+	public void importWhitelist(String filepath, boolean verbose) throws IOException
+	{
+		BufferedReader br = new BufferedReader(new FileReader(filepath));
+		
+		String line = null;
+		while ((line = br.readLine()) != null)
+		{
+			//Line should be a transcript ID
+			Gene g = this.getGeneByTranscriptID(line);
+			if (g != null) g.flagWhitelisted(true);
+			else {
+				if (verbose) System.err.println(Thread.currentThread().getName() + " || GeneSet.importPseudogeneGreylist || "
+						+ "WARNING: Transcript ID in list \"" + line 
+				+ "\" does not match to any known transcript in this build!");
+			}
+		}
+		
+		br.close();
+	}
+	
+	public void importOMIMWhitelist(String filepath, boolean verbose) throws IOException
+	{
+		BufferedReader br = new BufferedReader(new FileReader(filepath));
+		
+		String line = null;
+		while ((line = br.readLine()) != null)
+		{
+			//Line should be a transcript ID
+			Gene g = this.getGeneByTranscriptID(line);
+			if (g != null) g.flagOMIM(true);
 			else {
 				if (verbose) System.err.println(Thread.currentThread().getName() + " || GeneSet.importPseudogeneGreylist || "
 						+ "WARNING: Transcript ID in list \"" + line 

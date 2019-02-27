@@ -8,7 +8,7 @@ import hospelhornbg_bioinformatics.Genotype;
 
 public class SexChromInheritor {
 	
-	public void checkMammalXCandidate(Map<Individual, Genotype> genomap, Individual pb, Candidate c)
+	public static void checkMammalXCandidate(Map<Individual, Genotype> genomap, Individual pb, Candidate c)
 	{
 		Genotype pbg = genomap.get(pb);
 		if (pbg == null) c.setInheritancePattern(pb, Inheritance.UNRESOLVED);
@@ -229,7 +229,7 @@ public class SexChromInheritor {
 		
 	}
 	
-	private boolean patXRescue(Map<Individual, Genotype> genomap, List<Individual> aff, Candidate c)
+	private static boolean patXRescue(Map<Individual, Genotype> genomap, List<Individual> aff, Candidate c)
 	{
 		for(Individual a : aff)
 		{
@@ -246,7 +246,7 @@ public class SexChromInheritor {
 		return true;
 	}
 	
-	private boolean patXRescueDom(Map<Individual, Genotype> genomap, List<Individual> aff, Candidate c)
+	private static boolean patXRescueDom(Map<Individual, Genotype> genomap, List<Individual> aff, Candidate c)
 	{
 		for(Individual a : aff)
 		{
@@ -263,7 +263,7 @@ public class SexChromInheritor {
 		return true;
 	}
 	
-	private boolean checkXDeNovo(Map<Individual, Genotype> genomap, Individual pb, int allele)
+	private static boolean checkXDeNovo(Map<Individual, Genotype> genomap, Individual pb, int allele)
 	{
 		//Get parents and genotypes
 		Individual mother = pb.getMother();
@@ -312,9 +312,134 @@ public class SexChromInheritor {
 		return false;
 	}
 	
-	public void checkMammalYCandidate(Map<Individual, Genotype> genomap, Individual pb, Candidate c)
+	public static void checkMammalYCandidate(Map<Individual, Genotype> genomap, Individual pb, Candidate c)
 	{
-		//TODO: Write
+		//Get expected Y count
+		int cn = pb.getExpectedYCount();
+		if (cn == 0)
+		{
+			c.setInheritancePattern(pb, Inheritance.UNRESOLVED);
+			return;
+		}
+		
+		int allele = c.getAllele();
+		List<Individual> unaff = new LinkedList<Individual>();
+		List<Individual> aff = new LinkedList<Individual>();
+		for(Individual i : genomap.keySet())
+		{
+			if(i.isAffected()) aff.add(i);
+			else unaff.add(i);
+		}
+		if (cn == 1)
+		{
+			//Do any unaff have at all?
+			boolean anyunaff = false;
+			for(Individual u : unaff)
+			{
+				if (u.getExpectedYCount() > 0)
+				{
+					Genotype g = genomap.get(u);
+					if (g.hasAllele(allele))
+					{
+						anyunaff = true;
+						break;
+					}
+				}
+			}
+			
+			if(anyunaff)
+			{
+				//At least one unaff has this allele
+				//Are any unaff CN2+?
+				boolean u2plus = false;
+				for(Individual u : unaff)
+				{
+					if (u.getExpectedYCount() >= 2)
+					{
+						u2plus = true;
+						break;
+					}
+				}
+				
+				if (u2plus)
+				{
+					//At least one unaff has 2 or more Y chroms
+					//Are any of these 2+ Y unaffs homozygous for this allele?
+					for(Individual u : unaff)
+					{
+						if (u.getExpectedYCount() >= 2)
+						{
+							Genotype g = genomap.get(u);
+							if(g.hasAllele(allele) && g.isHomozygous())
+							{
+								c.setInheritancePattern(pb, Inheritance.UNRESOLVED);
+								return;
+							}
+						}
+					}
+					c.setInheritancePattern(pb, Inheritance.Y_LINKED_SPECIAL);
+					return;
+				}
+				else
+				{
+					//DNS
+					c.setInheritancePattern(pb, Inheritance.UNRESOLVED);
+					return;
+				}
+				
+			}
+			else
+			{
+				//No unaff have this allele
+				//Do all affected have this allele?
+				for(Individual a : aff)
+				{
+					if (a.getExpectedYCount() < 1)
+					{
+						c.setInheritancePattern(pb, Inheritance.UNRESOLVED);
+						return;
+					}
+					Genotype g = genomap.get(a);
+					if(!g.hasAllele(allele))
+					{
+						c.setInheritancePattern(pb, Inheritance.UNRESOLVED);
+						return;
+					}
+				}
+				//Check if de novo
+				if(checkYDeNovo(genomap, pb, allele))
+				{
+					c.setInheritancePattern(pb, Inheritance.Y_LINKED_DN);
+					return;
+				}
+				else
+				{
+					c.setInheritancePattern(pb, Inheritance.Y_LINKED_DOM);
+					return;
+				}
+			}
+			
+		}
+		else
+		{
+			//cn >= 2
+			c.setInheritancePattern(pb, Inheritance.Y_LINKED_SPECIAL);
+			return;
+		}
+	}
+	
+	private static boolean checkYDeNovo(Map<Individual, Genotype> genomap, Individual pb, int allele)
+	{
+		if (pb.getExpectedYCount() < 1) return false;
+		Individual father = pb.getFather();
+		
+		//Genotype pbgeno = genomap.get(pb);
+		Genotype pgeno = null;
+		if (father != null) pgeno = genomap.get(father);
+		else return false;
+		
+		//Does dad have allele?
+		return !pgeno.hasAllele(allele);
 	}
 
 }

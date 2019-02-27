@@ -18,10 +18,10 @@ public class TestGBMain {
 		
 		//For converting files
 		String ingb = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\GRCh37.gbdh";
-		String outgb = "C:\\Users\\Blythe\\Desktop\\GRCh38.gbdh";
+		//String outgb = "C:\\Users\\Blythe\\Desktop\\GRCh38.gbdh";
 		
 		String ings = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\grch37_refSeq.gbgd";
-		String outgs = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq.gbgd";
+		//String outgs = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq.gbgd";
 		String outtbli = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_in.out";
 		//String outtblo = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_out.out";
 		

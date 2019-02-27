@@ -21,10 +21,9 @@ public enum Inheritance {
 	X_LINKED_MV("X-Linked Mendelian Violation"),
 	X_PATIMPRINT_HH("X-Linked Half-Het (Imprint Rescue)"),
 	X_PATIMPRINT_DOM("X-Linked Dominant (Imprint Rescue)"),
-	Y_LINKED_REC("Y-Linked Recessive"),
 	Y_LINKED_DOM("Y-Linked Dominant"),
 	Y_LINKED_DN("Y-Linked De Novo"),
-	Y_LINKED_MV("Y-Linked Mendelian Violation"),;
+	Y_LINKED_SPECIAL("Y-Linked Special Case"),;
 	
 	public static final int HALFHET_PHASE_NONE = 0;
 	public static final int HALFHET_PHASE_PARENT1 = 1;

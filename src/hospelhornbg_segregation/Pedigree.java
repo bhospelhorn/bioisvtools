@@ -192,7 +192,7 @@ public class Pedigree{
 	
 	/* --- Inheritance Patterns --- */
 	
-	private void adjustSexChromGenotypes(Collection<Variant> variants, TwoSexChromSegModel sxm)
+	public void adjustSexChromGenotypes(Collection<Variant> variants, TwoSexChromSegModel sxm)
 	{
 		//Get indiv list
 		List<Individual> ilist = getAllMembers();
@@ -321,23 +321,65 @@ public class Pedigree{
 		return Pedigree.SC_GENO_TYPE_AUTO;
 	}
 	
-	private void annotateCandidate(Map<Individual, Genotype> genomap, Individual pb, Candidate c)
+	private int getSegregationType(Variant v, TwoSexChromSegModel sxm)
+	{
+		Contig c = v.getChromosome();
+		if (c == null) return Pedigree.SC_GENO_TYPE_AUTO;
+		
+		int type = Pedigree.SC_GENO_TYPE_AUTO;
+		if(c == sxm.getHomogameticChrom()) {
+			//Check pseudoautosomal
+			if(!sxm.inHomChromPAR(v.getPosition())) type = Pedigree.SC_GENO_TYPE_X;
+		}
+		if(c == sxm.getHeterogameticChrom()) {
+			if(!sxm.inHetChromPAR(v.getPosition())) return Pedigree.SC_GENO_TYPE_Y;
+		}
+		
+		if(v instanceof StructuralVariant)
+		{
+			StructuralVariant sv = (StructuralVariant)v;
+			Contig e = sv.getEndChromosome();
+			if(e != null && e != c)
+			{
+				if(e == sxm.getHomogameticChrom()) {
+					//Check pseudoautosomal
+					if(!sxm.inHomChromPAR(sv.getEndPosition())) type = Pedigree.SC_GENO_TYPE_X;
+				}
+				if(e == sxm.getHeterogameticChrom()) {
+					if(!sxm.inHetChromPAR(sv.getEndPosition())) return Pedigree.SC_GENO_TYPE_Y;
+				}
+			}
+		}
+		
+		return type;
+	}
+	
+	private void annotateCandidate(Map<Individual, Genotype> genomap, Individual pb, Candidate c, TwoSexChromSegModel sxm)
 	{
 		Genotype g = genomap.get(pb);
 		if (!g.hasAllele(c.getAllele())) return;
-		if (g.isHomozygous()) Inheritor.checkHomozygousCandidate(genomap, pb, c);
-		else Inheritor.checkHeterozygousCandidate(genomap, pb, c);
 		
-		//Check denovo
-		Inheritor.adjustInheritance(genomap, pb, c);
+		//Check type
+		int treatAs = getSegregationType(c.getVariant(), sxm);
+		switch(treatAs)
+		{
+		case SC_GENO_TYPE_AUTO:
+			if (g.isHomozygous()) Inheritor.checkHomozygousCandidate(genomap, pb, c);
+			else Inheritor.checkHeterozygousCandidate(genomap, pb, c);
+			
+			//Check denovo
+			Inheritor.adjustInheritance(genomap, pb, c);
+			break;
+		case SC_GENO_TYPE_X:
+			SexChromInheritor.checkMammalXCandidate(genomap, pb, c);
+		case SC_GENO_TYPE_Y:
+			SexChromInheritor.checkMammalYCandidate(genomap, pb, c);
+		}
 	}
 	
-	public List<Candidate> toCandidates(Variant v)
+	public List<Candidate> toCandidates(Variant v, TwoSexChromSegModel sxm)
 	{
 		List<Candidate> clist = new LinkedList<Candidate>();
-		
-		//TODO: Handle XY variants differently
-		//Genotypes need to be edited to reflect expected copy number!
 		
 		//Get all alleles
 		List<Individual> affected = getAllAffected();
@@ -369,7 +411,7 @@ public class Pedigree{
 		{
 			for (Individual i : affected)
 			{
-				annotateCandidate(genomap, i, c);
+				annotateCandidate(genomap, i, c, sxm);
 			}
 		}
 		

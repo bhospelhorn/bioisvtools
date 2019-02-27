@@ -31,6 +31,8 @@ public class Family extends Pedigree{
 	public static final String FAMH_MAGIC = "FAMH";
 	public static final int CURRENT_FAMI_VERSION = 1;
 	
+	public static final String FAM_EXT = "fam";
+	
 	private FamilyMember iProband;
 	
 	private Map<Integer, FamilyMember> iMembers;
