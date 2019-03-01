@@ -9,8 +9,10 @@ import java.util.Calendar;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.GregorianCalendar;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 import hospelhornbg_bioinformatics.VariantPool.InfoDefinition;
@@ -58,6 +60,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 1.6.0 -> 1.6.1 | January 17, 2019
  * 	GenomeBuild format version 2.0
  *
+ * 1.6.1 -> 1.6.2 | February 28, 2019
+ * 	Static method for parsing INFO field into a key/value map
  */
 
 
@@ -65,8 +69,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * A container for reading and writing a collection of variants and annotation metadata to
  * VCF format.
  * @author Blythe Hospelhorn
- * @version 1.6.1
- * @since January 17, 2019
+ * @version 1.6.2
+ * @since February 28, 2019
  *
  */
 public class VCF {
@@ -556,6 +560,24 @@ public class VCF {
 		fields[0] = key;
 		fields[1] = desc;
 		return fields;
+	}
+	
+	public static Map<String, String[]> mapINFOValues(String INFO_field)
+	{
+		Map<String, String[]> infoMap = new HashMap<String, String[]>();
+		String[] fields = INFO_field.split(";");
+		
+		for(String s : fields)
+		{
+			String[] kv = s.split("=");
+			if (kv.length != 2) continue;
+			String key = kv[0];
+			String val = kv[1];
+			String[] vals = val.split(",");
+			infoMap.put(key, vals);
+		}
+		
+		return infoMap;
 	}
 	
 	/* --- Inner Classes --- */

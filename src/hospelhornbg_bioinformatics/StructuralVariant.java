@@ -1250,6 +1250,34 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 		return max;
 	}
 	
+	public Interval getCIPOS90()
+	{
+		int n1 = this.getCIPosition(false, false, false);
+		int n2 = this.getCIPosition(false, false, true);
+		return new Interval(n1, n2);
+	}
+	
+	public Interval getCIPOS90_difference()
+	{
+		int n1 = this.getCIDiff(false, false, false);
+		int n2 = this.getCIDiff(false, false, true);
+		return new Interval(n1, n2);
+	}
+	
+	public Interval getCIEND90()
+	{
+		int n1 = this.getCIPosition(true, false, false);
+		int n2 = this.getCIPosition(true, false, true);
+		return new Interval(n1, n2);
+	}
+	
+	public Interval getCIEND90_difference()
+	{
+		int n1 = this.getCIDiff(true, false, false);
+		int n2 = this.getCIDiff(true, false, true);
+		return new Interval(n1, n2);
+	}
+	
 	/* --- Setters --- */
 	
 	public void setPosition(int pos)
