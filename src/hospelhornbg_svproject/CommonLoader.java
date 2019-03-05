@@ -6,6 +6,8 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -49,6 +51,8 @@ public class CommonLoader {
 	
 	public static final String COMMON_DIR_FIELD_KEY = "COMMONDIR";
 	public static final String USER_DIR_FIELD_KEY = "USERDIR";
+	
+	public static final String OMIM_URL = "https://www.omim.org/static/omim/data/mim2gene.txt";
 	
 	/* --- Static Variables --- */
 	
@@ -469,7 +473,31 @@ public class CommonLoader {
 		//This will overwrite existing files in the common dir. Use with caution.
 	}
 	
-	public static void updateOMIMList(String rawTablePath, int gbUID)
+	private static void downloadOMIMList(String targetPath, OMIMUpdateListener l) throws IOException
+	{
+		URL txturl = new URL(OMIM_URL);
+		System.setProperty("http.agent", "Chrome");
+		InputStream is = txturl.openStream();
+		BufferedWriter bw = new BufferedWriter(new FileWriter(targetPath));
+		
+		int b = -1;
+		int counter = 0;
+		int sz = is.available();
+		while ((b = is.read()) >= 0)
+		{
+			bw.write(b);
+			counter++;
+			if (counter % 1000 == 0 && l != null)
+			{
+				l.onDownloadProgressUpdate(counter, sz);
+			}
+		}
+		
+		is.close();
+		bw.close();
+	}
+	
+	public static void updateOMIMList(int gbUID, OMIMUpdateListener l)
 	{
 		//TODO: Write
 	}
@@ -481,7 +509,7 @@ public class CommonLoader {
 		//TODO: Write
 	}
 	
-	public static void writeLowComplexity_Blacklist(List<Gene> flaggedGenes, int gbUID)
+	public static void writeLowComplexity_Blacklist(GeneSet genes, int gbUID)
 	{
 		//TODO: Write
 	}
