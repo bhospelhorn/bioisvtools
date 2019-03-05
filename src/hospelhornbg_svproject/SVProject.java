@@ -14,7 +14,9 @@ import java.util.Map;
 
 import hospelhornbg_bioinformatics.LiteSV;
 import hospelhornbg_bioinformatics.SVType;
+import hospelhornbg_bioinformatics.StructuralVariant;
 import hospelhornbg_bioinformatics.VCF;
+import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_bioinformatics.VariantPool;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
@@ -178,6 +180,43 @@ public class SVProject {
 	}
 	
 	/* --- Getters --- */
+	
+	public List<StructuralVariant> getSVs()
+	{
+		LinkedList<StructuralVariant> svlist = new LinkedList<StructuralVariant>();
+		for (Candidate c : lCandidates)
+		{
+			Variant v = c.getVariant();
+			//Cast as structural variant
+			if (v instanceof StructuralVariant)
+			{
+				StructuralVariant sv = (StructuralVariant)v;
+				//Check to see if already in list
+				boolean has = false;
+				for (StructuralVariant i : svlist)
+				{
+					if (i == sv)
+					{
+						has = true;
+						break;
+					}
+				}
+				if (!has)
+				{
+					//Push.
+					//Candidate list is by default sorted by variant
+					//So, candidates with the same variant are more likely to be
+					//	next to each other.
+					//Iterating through the list normally starts at the head.
+					//That way, if we check the head first, we check what was
+					//	added most recently.
+					svlist.push(sv);
+				}
+			}
+		}
+		Collections.sort(svlist);
+		return svlist;
+	}
 	
 	/* --- Setters --- */
 	
