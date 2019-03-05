@@ -204,6 +204,20 @@ public class LiteSV implements Comparable<LiteSV>{
 		return this.bndPartner;
 	}
 
+	public boolean equals(Object o)
+	{
+		if (o == null) return false;
+		if (o == this) return true;
+		if (!(o instanceof LiteSV)) return false;
+		
+		return this.compareTo((LiteSV)o) == 0;
+	}
+	
+	public int hashCode()
+	{
+		return sName.hashCode();
+	}
+	
 	@Override
 	public int compareTo(LiteSV other) 
 	{

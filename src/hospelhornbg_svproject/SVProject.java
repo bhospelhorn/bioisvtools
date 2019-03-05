@@ -1,8 +1,10 @@
 package hospelhornbg_svproject;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -18,11 +20,13 @@ import hospelhornbg_bioinformatics.StructuralVariant;
 import hospelhornbg_bioinformatics.VCF;
 import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_bioinformatics.VariantPool;
+import hospelhornbg_genomeBuild.Contig;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_genomeBuild.TwoSexChromSegModel;
 import hospelhornbg_segregation.Candidate;
 import hospelhornbg_segregation.Family;
+import hospelhornbg_segregation.Individual;
 import hospelhornbg_segregation.Inheritor;
 import hospelhornbg_svproject.VartableFile.GenomeBuildMismatchException;
 import waffleoRai_Utils.FileBuffer;
@@ -241,18 +245,102 @@ public class SVProject {
 		lCandidates = nlist;
 	}
 	
-	public void readEvidenceVCF(String vcfPath, String evidenceKey, String indivSampleName, int leeway, String reportPath)
+	public void readEvidenceVCF(String vcfPath, String evidenceKey, String indivSampleName, int leeway, boolean typeMatch, String reportPath) throws IOException
 	{
-		//TODO: Write
 		//Reads in a call set for an individual from a caller like lumpy or manta
 		//Scans through project variants to see if there is a match in input callset.
 		//If so, flags that var as having evidence from that set
 		//The leeway arg is the number of bases beyond the CI90 that should be considered for merging
 		
+		List<LiteSV> evlist = readEvidenceVCF(vcfPath);
+		List<StructuralVariant> svlist = getSVs();
+		
+		//Index evlist by chrom1 (evlist is an ArrayList)
+		int evcount = evlist.size();
+		Map<Contig, Integer> evIndex = new HashMap<Contig, Integer>();
+		List<Contig> clist = genomeBuild.getChromosomes();
+		for (Contig c : clist)
+		{
+			for (int i = 0; i < evcount; i++)
+			{
+				LiteSV esv = evlist.get(i);
+				if (esv.getChrom1().equals(c))
+				{
+					evIndex.put(c, i);
+					break;
+				}
+			}
+		}
+		
+		//Open report stream if path is provided
+		BufferedWriter bw = null;
+		if (reportPath != null)
+		{
+			bw = new BufferedWriter(new FileWriter(reportPath));
+			bw.write("#Leeway=" + leeway + "bp\n");
+			bw.write("#TypeMatch=" + typeMatch + "\n");
+			bw.write("#ProjectSV\tEvidenceSV\n");
+		}
+		
+		//Scan project svs
+		for(StructuralVariant sv : svlist)
+		{
+			Contig c1 = sv.getChromosome();
+			int stIndex = evIndex.get(c1);
+			if (stIndex < 0) stIndex = 0;
+			for(int i = stIndex; i < evcount; i++)
+			{
+				//Shouldn't hit list end; breaks when it finds a mismatch...
+				LiteSV comp = evlist.get(i);
+				if (comp.getChrom1() != c1) break; //Change to .equals if causing issues
+				boolean match = comp.svIsEquivalent(sv, leeway, typeMatch);
+				if(match)
+				{
+					//Note in variant
+					sv.addSupportMark(indivSampleName, evidenceKey);
+					//Note in report (if stream open)
+					if (bw != null)
+					{
+						bw.write(c1.getUDPName() + ":");
+						bw.write(sv.getPosition() + "-");
+						Contig c2 = sv.getEndChromosome();
+						if (c2 == null || c2 == c1)
+						{
+							bw.write(sv.getEndPosition() + ";");
+						}
+						else
+						{
+							bw.write(c2.getUDPName() + ":");
+							bw.write(sv.getEndPosition() + ";");
+						}
+						bw.write(sv.getVarID() + "\t");
+						
+						Contig e1 = comp.getChrom1();
+						bw.write(e1.getUDPName() + ":");
+						bw.write(comp.getPosition() + "-");
+						Contig e2 = comp.getChrom2();
+						if (e2 == null || e2 == c1)
+						{
+							bw.write(comp.getEndPosition() + ";");
+						}
+						else
+						{
+							bw.write(e2.getUDPName() + ":");
+							bw.write(comp.getEndPosition() + ";");
+						}
+						bw.write(comp.getVariantID() + "\t");
+						
+					}
+					break; //Only record first match
+				}
+			}
+		}
+		
+		if(bw != null) bw.close();
 		
 	}
 	
-	private List<LiteSV> readEvidenceVCF(String path) throws IOException
+	private static List<LiteSV> readEvidenceVCF(String path) throws IOException
 	{
 		Map<String, LiteSV> svNameMap = new HashMap<String, LiteSV>(); //For quick BND pairing
 		List<LiteSV> bnds = new LinkedList<LiteSV>();
@@ -295,14 +383,33 @@ public class SVProject {
 	
 	/* --- Export --- */
 	
+	public VariantPool getAsVariantPool()
+	{
+		List<StructuralVariant> svlist = getSVs();
+		VariantPool pool = new VariantPool(iFamily.countMembers());
+		
+		//Add infodefs...
+		StructuralVariant.addStandardDefs(pool, true);
+		//Add samples
+		List<Individual> ilist = iFamily.getAllMembers();
+		for (Individual i : ilist) pool.addSample(i.getName());
+		
+		//Add variants
+		//(Have to loop manually - won't take list of SVs, picky bastard
+		for (StructuralVariant sv : svlist) pool.addVariant(sv);
+		
+		return pool;
+	}
+	
 	public void exportFamilyToPED(String pedPath) throws IOException
 	{
 		Family.writeToPED(iFamily, pedPath);
 	}
 	
-	public void exportVariantsToVCF(String vcfPath)
+	public void exportVariantsToVCF(String vcfPath) throws IOException
 	{
-		//TODO: Write
+		VariantPool pool = getAsVariantPool();
+		VCF.writeVCF(pool, "bioi_svAnalyze", vcfPath);
 	}
 
 }

@@ -139,6 +139,12 @@ public class Pedigree{
 		return ilist;
 	}
 	
+	public int countMembers()
+	{
+		if (indivMap == null) return 0;
+		return indivMap.size();
+	}
+	
 	/* --- Setters --- */
 	
 	public boolean setProband(String pbID)
