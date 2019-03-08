@@ -6,12 +6,18 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import hospelhornbg_genomeBuild.Gene;
 import hospelhornbg_genomeBuild.GeneSet;
@@ -49,6 +55,8 @@ public class CommonLoader {
 	
 	public static final String COMMON_DIR_FIELD_KEY = "COMMONDIR";
 	public static final String USER_DIR_FIELD_KEY = "USERDIR";
+	
+	public static final String OMIM_URL = "https://www.omim.org/static/omim/data/mim2gene.txt";
 	
 	/* --- Static Variables --- */
 	
@@ -469,9 +477,99 @@ public class CommonLoader {
 		//This will overwrite existing files in the common dir. Use with caution.
 	}
 	
-	public static void updateOMIMList(String rawTablePath, int gbUID)
+	private static void downloadOMIMList(String targetPath, OMIMUpdateListener l) throws IOException
 	{
-		//TODO: Write
+		URL txturl = new URL(OMIM_URL);
+		System.setProperty("http.agent", "Chrome");
+		if(l != null) l.onDownloadStart();
+		InputStream is = txturl.openStream();
+		BufferedWriter bw = new BufferedWriter(new FileWriter(targetPath));
+		
+		int b = -1;
+		int counter = 0;
+		int sz = is.available();
+		while ((b = is.read()) >= 0)
+		{
+			bw.write(b);
+			counter++;
+			if (counter % 1000 == 0 && l != null)
+			{
+				l.onDownloadProgressUpdate(counter, sz);
+			}
+		}
+		
+		is.close();
+		bw.close();
+		if (l != null) l.onDownloadComplete();
+	}
+	
+	public static void updateOMIMList(GeneSet gs, OMIMUpdateListener l) throws IOException
+	{
+		String temppath = FileBuffer.generateTemporaryPath("bioi_omim_updater");
+		try{downloadOMIMList(temppath, l);}
+		catch(IOException e) {
+			if(l != null) l.onDownloadFail();
+			throw e;
+		}
+		
+		//Read table
+		Set<String> foundGenes = new HashSet<String>();
+		if(l != null) l.onTableReadStart();
+		BufferedReader tbl = new BufferedReader(new FileReader(temppath));
+		String line = null;
+		int lcount = 1;
+		while((line = tbl.readLine()) != null)
+		{
+			if(l != null) l.onReadTableLine(lcount);
+			lcount++;
+			if (line.isEmpty()) continue;
+			if (line.charAt(0) == '#') continue;
+			String[] fields = line.split("\t");
+			if (fields.length < 4) continue;
+			if (!fields[1].contains("gene")) continue;
+			foundGenes.add(fields[3]);
+		}
+		tbl.close();
+		if(l != null) l.onTableReadComplete();
+		
+		//Sort gene strings because it is nice
+		if(l != null) l.onWritePrepareStart();
+		List<String> sortedGenes = new ArrayList<String>(foundGenes.size() + 1);
+		sortedGenes.addAll(foundGenes);
+		Collections.sort(sortedGenes);
+		
+		//Get gene set & ID
+		int gbUID = 0;
+		try
+		{
+			gbUID = gs.getGenomeBuild().getUIDEnum().getUID();
+		}
+		catch (NullPointerException e)
+		{
+			if(l != null) l.onInvalidGeneSetFound();
+			throw e;
+		}
+		if(l != null) l.onWritePrepareComplete(sortedGenes.size());
+		
+		//Output list by grabbing transcript IDs for each gene
+		if(l != null) l.onWriteStart();
+		BufferedWriter bw = new BufferedWriter(new FileWriter(generateOMIMWhitelistFilePath(gbUID)));
+		lcount = 1;
+		for(String gname : sortedGenes)
+		{
+			if(l != null) l.onWriteGeneIDs(lcount);
+			List<Gene> genes = gs.getGeneByName(gname);
+			if (genes != null && !genes.isEmpty())
+			{
+				for(Gene g : genes)
+				{
+					bw.write(g.getID() + "\n");
+				}
+			}
+			lcount++;
+		}
+		bw.close();
+		if(l != null) l.onWriteComplete();
 	}
 	
 	/* --- Write --- */
@@ -481,7 +579,7 @@ public class CommonLoader {
 		//TODO: Write
 	}
 	
-	public static void writeLowComplexity_Blacklist(List<Gene> flaggedGenes, int gbUID)
+	public static void writeLowComplexity_Blacklist(GeneSet genes, int gbUID)
 	{
 		//TODO: Write
 	}

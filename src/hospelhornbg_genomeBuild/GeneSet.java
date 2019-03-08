@@ -1144,6 +1144,7 @@ public class GeneSet
 		{
 			cPos += 4;
 			int gbuid = myFile.intFromFile(cPos); cPos += 4;
+			//System.err.println("GeneSet.parseGBGD || -DEBUG- gb is null? " + (gb == null));
 			int mybuilduid = gb.getUIDEnum().getUID();
 			namematch = (gbuid == mybuilduid);
 			//System.err.println("GeneSet.parseGBGD || DEBUG: Build Match? " + namematch);

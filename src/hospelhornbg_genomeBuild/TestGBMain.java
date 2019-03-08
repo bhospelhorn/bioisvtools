@@ -17,12 +17,14 @@ public class TestGBMain {
 		//gb37.printMe();
 		
 		//For converting files
-		String ingb = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\GRCh37.gbdh";
+		//String ingb = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\GRCh37.gbdh";
+		String ingb = "C:\\Users\\hospelhornbg\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\GRCh37.gbdh";
 		//String outgb = "C:\\Users\\Blythe\\Desktop\\GRCh38.gbdh";
+		String outgb = "C:\\Users\\hospelhornbg\\Desktop\\GRCh37.gbdh";
 		
-		String ings = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\grch37_refSeq.gbgd";
+		//String ings = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\grch37_refSeq.gbgd";
 		//String outgs = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq.gbgd";
-		String outtbli = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_in.out";
+		//String outtbli = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_in.out";
 		//String outtblo = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_out.out";
 		
 		try 
@@ -31,17 +33,22 @@ public class TestGBMain {
 			//Contig X = gb.getContig("X");
 			//Contig Y = gb.getContig("Y");
 			
+			//gb.addPARMapping(0, X, 60001, 2699520);
+			//gb.addPARMapping(0, Y, 10001, 2649520);
+			//gb.addPARMapping(1, X, 154931044, 155260560);
+			//gb.addPARMapping(1, Y, 59034050, 59363566);
+			
 			//gb.addPARMapping(0, X, 10001, 2781479);
 			//gb.addPARMapping(0, Y, 10001, 2781479);
 			//gb.addPARMapping(1, X, 155701383, 156030895);
 			//gb.addPARMapping(1, Y, 56887903, 57217415);
 			
 			gb.printMe();
-			//gb.setUID(GenomeBuildUID.NCBI36);
-			//gb.saveGLBD(outgb, true);
+			gb.setUID(GenomeBuildUID.GRCh37);
+			gb.saveGLBD(outgb, true);
 			
-			GeneSet gs = new GeneSet(ings, gb, true);
-			gs.outputTable(outtbli);
+			//GeneSet gs = new GeneSet(ings, gb, true);
+			//gs.outputTable(outtbli);
 			//gs.serializeGBGD(outgs);
 			
 			//Read back in
