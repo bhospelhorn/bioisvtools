@@ -176,6 +176,7 @@ public class GenomeBuild {
 	
 	private void parseGLBD(String filePath) throws IOException, UnsupportedFileTypeException
 	{
+		//System.err.println("GenomeBuild.parseGBLD || DEBUG -- GBLD PATH: " + filePath);
 		FileBuffer genome = FileBuffer.createBuffer(filePath, true);
 		parseGLBD(genome);
 	}
