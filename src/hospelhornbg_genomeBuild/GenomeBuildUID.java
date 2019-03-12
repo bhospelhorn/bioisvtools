@@ -2,8 +2,8 @@ package hospelhornbg_genomeBuild;
 
 public enum GenomeBuildUID {
 	
-	GRCh37(2110496020, "grch37"),
-	GRCh38(-1237832459, "grch38"),
+	GRCh37(2110496020, "GRCh37"),
+	GRCh38(-1237832459, "GRCh38"),
 	NCBI36(3198822, "hg18");
 	
 	private int UID;

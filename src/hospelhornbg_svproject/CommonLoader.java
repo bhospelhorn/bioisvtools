@@ -36,7 +36,7 @@ public class CommonLoader {
 	public static final String HOME_INSTALL_DIR = "bioisvtools";
 	public static final String HOME_INSTALL_FILE = "svproject.cfg";
 	
-	public static final String OMIM_FILE_NAME = "omim_whitelist";
+	public static final String OMIM_FILE_NAME = "omim_genelist";
 	public static final String CALLER_TABLE_NAME = "suppcallers.tsv";
 	public static final String GENOMES_DIR = "genomes";
 	public static final String GB_PATH_TABLE = "genomes.tsv";
@@ -67,7 +67,6 @@ public class CommonLoader {
 	private static Map<Integer, String> geneset_paths;
 	
 	private static Map<Integer, String> cohort_UID_map;
-	
 	
 	/* --- Home Paths --- */
 	
@@ -422,10 +421,25 @@ public class CommonLoader {
 		return list;
 	}
 	
-	public static List<String> getSupportStrings_ordered()
+	public static List<String> getSupportStrings_ordered() throws IOException
 	{
-		//TODO: Write
-		return null;
+		String slistpath = common_dir + File.separator + CALLER_TABLE_NAME;
+		List<String> slist = new ArrayList<String>(16);
+		if(!FileBuffer.fileExists(slistpath)) return slist;
+		BufferedReader br = new BufferedReader(new FileReader(slistpath));
+		
+		String line = null;
+		while((line = br.readLine()) != null)
+		{
+			if (line.isEmpty()) continue;
+			if (line.startsWith("#")) continue;
+			String[] fields = line.split("\t");
+			if (fields == null || fields.length < 1) continue;
+			slist.add(fields[0]);
+		}
+		br.close();
+		
+		return slist;
 	}
 	
 	public static String getProjectDirectory(String projectName)
@@ -471,10 +485,21 @@ public class CommonLoader {
 		
 	}
 	
-	public static void installGenome(GenomeBuild gb, GeneSet gs, boolean verbose)
+	public static void installGenome(GenomeBuild gb, GeneSet gs, String genomeName, boolean verbose) throws IOException, UnsupportedFileTypeException
 	{
-		//TODO: Write
 		//This will overwrite existing files in the common dir. Use with caution.
+		if (gb.getUIDEnum() == null) return;
+		String gb_path = common_dir + File.separator + GENOMES_DIR + File.separator + genomeName + ".gbdh";
+		String gs_path = common_dir + File.separator + GENOMES_DIR + File.separator + genomeName + "." + GeneSet.MAGIC_GBGD;
+		
+		gb.saveGLBD(gb_path, true);
+		gs.serializeGBGD(gs_path);
+		
+		int id = gb.getUIDEnum().getUID();
+		
+		genomebuild_paths.put(id, gb_path);
+		geneset_paths.put(id, gs_path);
+		writeGenomeLists();
 	}
 	
 	private static void downloadOMIMList(String targetPath, OMIMUpdateListener l) throws IOException
@@ -574,19 +599,43 @@ public class CommonLoader {
 	
 	/* --- Write --- */
 	
-	public static void newCohort(List<String> projectpaths)
+	public static void newCohort(String name, List<String> projectpaths) throws IOException
 	{
-		//TODO: Write
+		int cid = name.hashCode();
+		cohort_UID_map.put(cid, name);
+		
+		//Write path list
+		String clistpath = user_dir + File.separator +  COHORT_PROJECT_LIST_STEM + Integer.toHexString(cid) + ".txt";
+		BufferedWriter bw = new BufferedWriter(new FileWriter(clistpath));
+		for(String s : projectpaths)
+		{
+			bw.write(s + "\n");
+		}
+		bw.close();
 	}
 	
-	public static void writeLowComplexity_Blacklist(GeneSet genes, int gbUID)
+	public static void writeLowComplexity_Blacklist(GeneSet genes, int gbUID) throws IOException
 	{
-		//TODO: Write
+		String path = generateGreylistFilePath(BLACKLIST_FILE_LC, gbUID);
+		List<Gene> glist = genes.getAllGenes();
+		BufferedWriter bw = new BufferedWriter(new FileWriter(path));
+		for (Gene g : glist)
+		{
+			if (g.flaggedLowComplexity()) bw.write(g.getID() + "\n");
+		}
+		bw.close();
 	}
 	
-	public static void writeHighlyVariable_Blacklist(List<Gene> flaggedGenes, int gbUID)
+	public static void writeHighlyVariable_Blacklist(GeneSet genes, int gbUID) throws IOException
 	{
-		//TODO: Write
+		String path = generateGreylistFilePath(BLACKLIST_FILE_VT, gbUID);
+		List<Gene> glist = genes.getAllGenes();
+		BufferedWriter bw = new BufferedWriter(new FileWriter(path));
+		for (Gene g : glist)
+		{
+			if (g.flaggedHighlyVariable()) bw.write(g.getID() + "\n");
+		}
+		bw.close();
 	}
 	
 	public static void writeManySimilar_Blacklist(List<Gene> flaggedGenes, int gbUID)
@@ -602,6 +651,26 @@ public class CommonLoader {
 	public static void writeUserWhitelist(List<Gene> flaggedGenes, int gbUID)
 	{
 		//TODO: Write
+	}
+	
+	public static void writeGenomeLists() throws IOException
+	{
+		String gb_path = common_dir + File.separator + GENOMES_DIR + File.separator + GB_PATH_TABLE;
+		String gs_path = common_dir + File.separator + GENOMES_DIR + File.separator + GS_PATH_TABLE;
+		
+		List<Integer> keys = new LinkedList<Integer>();
+		keys.addAll(genomebuild_paths.keySet());
+		Collections.sort(keys);
+		
+		BufferedWriter bgb = new BufferedWriter(new FileWriter(gb_path));
+		BufferedWriter bgs = new BufferedWriter(new FileWriter(gs_path));
+		for(Integer k : keys)
+		{
+			bgb.write(k + "\t" + genomebuild_paths.get(k) + "\n");
+			bgs.write(k + "\t" + geneset_paths.get(k) + "\n");
+		}
+		bgb.close();
+		bgs.close();
 	}
 	
 }

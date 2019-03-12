@@ -321,14 +321,14 @@ public class Inheritor {
 			if (p1 != null)
 			{
 				Genotype g1 = genomap.get(p1);
-				if (!g1.hasAllele(allele)) p1has = false;
+				if (g1 != null && !g1.hasAllele(allele)) p1has = false;
 			}
 
 			//Does parent2 have the allele?
 			if (p2 != null)
 			{
 				Genotype g2 = genomap.get(p2);
-				if (!g2.hasAllele(allele)) p2has = false;
+				if (g2 != null && !g2.hasAllele(allele)) p2has = false;
 			}
 		
 			return !(p1has && p2has);
@@ -339,14 +339,14 @@ public class Inheritor {
 			if (p1 != null)
 			{
 				Genotype g1 = genomap.get(p1);
-				if (g1.hasAllele(allele)) return false;
+				if (g1 != null && g1.hasAllele(allele)) return false;
 			}
 
 			//Does parent2 have the allele?
 			if (p2 != null)
 			{
 				Genotype g2 = genomap.get(p2);
-				if (g2.hasAllele(allele)) return false;
+				if (g2 != null && g2.hasAllele(allele)) return false;
 			}
 		
 			return true;
@@ -400,9 +400,10 @@ public class Inheritor {
 		Variant v = c.getVariant();
 		Genotype g1 = v.getSampleGenotype(p1.getName());
 		Genotype g2 = v.getSampleGenotype(p2.getName());
+		if(g1 == null || g2 == null) return true;
 		
 		int a = c.getAllele();
-		
+
 		if (g1.hasAllele(a) && g2.hasAllele(a)) return false;
 		
 		return true;
