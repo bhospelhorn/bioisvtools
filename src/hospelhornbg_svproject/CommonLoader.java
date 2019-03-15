@@ -22,6 +22,7 @@ import java.util.Set;
 import hospelhornbg_genomeBuild.Gene;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
+import hospelhornbg_genomeBuild.GenomeBuildUID;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
@@ -325,6 +326,17 @@ public class CommonLoader {
 	public static String getUserProjectDirPath()
 	{
 		return user_dir + File.separator + PROJECT_DIR;
+	}
+	
+	public static List<GenomeBuildUID> getInstalledGenomes()
+	{
+		List<GenomeBuildUID> list = new ArrayList<GenomeBuildUID>(genomebuild_paths.size() + 1);
+		for(Integer k : genomebuild_paths.keySet())
+		{
+			GenomeBuildUID id = GenomeBuildUID.getByID(k);
+			if (id != null) list.add(id);
+		}
+		return list;
 	}
 	
 	/* --- GenomeBuild & GeneSet Loaders --- */
@@ -638,19 +650,40 @@ public class CommonLoader {
 		bw.close();
 	}
 	
-	public static void writeManySimilar_Blacklist(List<Gene> flaggedGenes, int gbUID)
+	public static void writeManySimilar_Blacklist(GeneSet genes, int gbUID) throws IOException
 	{
-		//TODO: Write
+		String path = generateGreylistFilePath(BLACKLIST_FILE_SG, gbUID);
+		List<Gene> glist = genes.getAllGenes();
+		BufferedWriter bw = new BufferedWriter(new FileWriter(path));
+		for (Gene g : glist)
+		{
+			if (g.flaggedManySimilar()) bw.write(g.getID() + "\n");
+		}
+		bw.close();
 	}
 	
-	public static void writePseudogene_Blacklist(List<Gene> flaggedGenes, int gbUID)
+	public static void writePseudogene_Blacklist(GeneSet genes, int gbUID) throws IOException
 	{
-		//TODO: Write
+		String path = generateGreylistFilePath(BLACKLIST_FILE_PG, gbUID);
+		List<Gene> glist = genes.getAllGenes();
+		BufferedWriter bw = new BufferedWriter(new FileWriter(path));
+		for (Gene g : glist)
+		{
+			if (g.flaggedPseudogene()) bw.write(g.getID() + "\n");
+		}
+		bw.close();
 	}
 	
-	public static void writeUserWhitelist(List<Gene> flaggedGenes, int gbUID)
+	public static void writeUserWhitelist(GeneSet genes, int gbUID) throws IOException
 	{
-		//TODO: Write
+		String path = generateGreylistFilePath(WHITELIST_FILE, gbUID);
+		List<Gene> glist = genes.getAllGenes();
+		BufferedWriter bw = new BufferedWriter(new FileWriter(path));
+		for (Gene g : glist)
+		{
+			if (g.flaggedWhitelisted()) bw.write(g.getID() + "\n");
+		}
+		bw.close();
 	}
 	
 	public static void writeGenomeLists() throws IOException
