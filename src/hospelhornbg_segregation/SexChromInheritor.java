@@ -339,6 +339,7 @@ public class SexChromInheritor {
 				if (u.getExpectedYCount() > 0)
 				{
 					Genotype g = genomap.get(u);
+					if (g == null) continue;
 					if (g.hasAllele(allele))
 					{
 						anyunaff = true;
@@ -370,6 +371,7 @@ public class SexChromInheritor {
 						if (u.getExpectedYCount() >= 2)
 						{
 							Genotype g = genomap.get(u);
+							if (g == null) continue;
 							if(g.hasAllele(allele) && g.isHomozygous())
 							{
 								c.setInheritancePattern(pb, Inheritance.UNRESOLVED);
@@ -400,6 +402,7 @@ public class SexChromInheritor {
 						return;
 					}
 					Genotype g = genomap.get(a);
+					if (g == null) continue;
 					if(!g.hasAllele(allele))
 					{
 						c.setInheritancePattern(pb, Inheritance.UNRESOLVED);

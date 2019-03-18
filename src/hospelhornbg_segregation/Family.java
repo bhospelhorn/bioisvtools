@@ -10,6 +10,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import hospelhornbg_bioinformatics.AffectedStatus;
 import hospelhornbg_bioinformatics.Sex;
@@ -29,7 +30,7 @@ public class Family extends Pedigree{
 	
 	public static final String FAMI_MAGIC = "FAMI";
 	public static final String FAMH_MAGIC = "FAMH";
-	public static final int CURRENT_FAMI_VERSION = 1;
+	public static final int CURRENT_FAMI_VERSION = 2;
 	
 	public static final String FAM_EXT = "fam";
 	
@@ -40,7 +41,9 @@ public class Family extends Pedigree{
 	private String[] conditions;
 	private int segCond;
 	
-	protected Family()
+	private Set<Population> population_tags;
+	
+ 	protected Family()
 	{
 		super();
 		iProband = null;
@@ -48,6 +51,7 @@ public class Family extends Pedigree{
 		segCond = 0;
 		conditions = new String[MAX_CONDITIONS];
 		conditions[0] = DEFO_CONDITION;
+		population_tags = new TreeSet<Population>();
 	}
 	
 	public Family(FamilyMember proband)
@@ -131,6 +135,13 @@ public class Family extends Pedigree{
 		return null;
 	}
 	
+	public Collection<Population> getPopulationTags()
+	{
+		List<Population> list = new ArrayList<Population>(population_tags.size() + 1);
+		list.addAll(population_tags);
+		return list;
+	}
+	
 	/* --- Setters --- */
 	
 	public boolean setProband(String pbID)
@@ -203,6 +214,16 @@ public class Family extends Pedigree{
 	public void addMember(FamilyMember indiv)
 	{
 		iMembers.put(indiv.getUID(), indiv);
+	}
+	
+	public void addPopulationTag(Population p)
+	{
+		population_tags.add(p);
+	}
+	
+	public void clearPopulationTags()
+	{
+		population_tags.clear();
 	}
 	
 	/* --- Conditions --- */
@@ -387,6 +408,40 @@ public class Family extends Pedigree{
 	
 	public static Family readFromFAMI(String path) throws IOException, UnsupportedFileTypeException
 	{
+		/*
+		 * Magic [4]
+		 * Proband UID [4]
+		 * # Individuals [4]
+		 * Version [4]
+		 * Population Tags [8] (8 x 1 byte: -1 if empty) (v2+)
+		 * Family Name [48]
+		 * Condition Name Table [Variable]
+		 * 		# Condition Names [4]
+		 * 		Names... [2x2 VLS]
+		 * Individual Table [Variable]
+		 * 		Indiv UID [4]
+		 * 		Parent 1 UID [4]
+		 * 		Parent 2 UID [4]
+		 * 		Chrom Sex Enum [2]
+		 * 		Pheno Sex Enum [2]
+		 * 		Affected Flags [24]
+		 * 			Affected stat [1/2] (Up to 48 conditions, 1 nybble per condition)
+		 * 		Birthday [4]
+		 * 			Day [1]
+		 * 			Month [1]
+		 * 			Year [2]
+		 * 		Deathday [4]
+		 * 			Day [1]
+		 * 			Month [1]
+		 * 			Year [2]
+		 * 		Sample Name [2x2 VLS]
+		 * 		Last Name [2x2 VLS]
+		 * 		First Name [2x2 VLS]
+		 * 		# Middle Names [4]
+		 * 		Middle Names [2x2 VLS] x # MN
+		 */
+		
+		
 		FileBuffer myfile = FileBuffer.createBuffer(path, true);
 		long cpos = myfile.findString(0, 0x10, FAMI_MAGIC);
 		
@@ -407,11 +462,31 @@ public class Family extends Pedigree{
 		int version = myfile.intFromFile(cpos); cpos += 4;
 		if (version > CURRENT_FAMI_VERSION) throw new FileBuffer.UnsupportedFileTypeException();
 		
+		byte[] ptags = new byte[8];
+		if (version >= 2)
+		{
+			for(int i = 0; i < 8; i++)
+			{
+				ptags[i] = myfile.getByte(cpos);
+				cpos++;
+			}	
+		}
+		
 		String famName = myfile.getASCII_string(cpos, 48); cpos += 48;
 		
 		//Instantiate family...
 		Family f = new Family();
 		f.setFamilyName(famName);
+		
+		if (version >= 2)
+		{
+			for(int i = 0; i < 8; i++)
+			{
+				int pt = (int)ptags[i];
+				if (pt == -1) continue;
+				f.addPopulationTag(Population.getPopulation(pt));
+			}
+		}
 		
 		//Condition name table...
 		int ncond = myfile.intFromFile(cpos); cpos += 4;
@@ -562,7 +637,7 @@ public class Family extends Pedigree{
 	{
 		if (fam == null) return;
 		//Estimate needed size for buffer...
-		int estsz = 64 + (48 * 64); //Header
+		int estsz = 64 + (48 * 64) + 8; //Header
 		List<FamilyMember> ilist = fam.getAllFamilyMembers();
 		int nindiv = ilist.size();
 		estsz += nindiv * (48 + 64);
@@ -573,6 +648,17 @@ public class Family extends Pedigree{
 		if (fam.iProband != null) myfile.addToFile(fam.iProband.getUID());
 		else myfile.addToFile(-1);
 		myfile.addToFile(nindiv);
+		
+		//Population tags
+		int tcount = 0;
+		for(Population p : fam.population_tags)
+		{
+			if (tcount >= 8) break;
+			myfile.addToFile((byte)p.getIDNumber());
+			tcount++;
+		}
+		while (tcount < 8) myfile.addToFile((byte)-1);
+		
 		String famname = fam.getFamilyName();
 		if (famname.length() > 48) famname = famname.substring(0, 48);
 		myfile.printASCIIToFile(famname);

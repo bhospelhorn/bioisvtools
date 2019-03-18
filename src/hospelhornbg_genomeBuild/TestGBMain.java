@@ -44,8 +44,8 @@ public class TestGBMain {
 			//gb.addPARMapping(1, Y, 56887903, 57217415);
 			
 			gb.printMe();
-			gb.setUID(GenomeBuildUID.GRCh37);
-			gb.saveGLBD(outgb, true);
+			//gb.setUID(GenomeBuildUID.GRCh37);
+			//gb.saveGLBD(outgb, true);
 			
 			//GeneSet gs = new GeneSet(ings, gb, true);
 			//gs.outputTable(outtbli);

@@ -83,8 +83,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * <br>Providing InfoDefinition instances allows for parsing of these INFO annotations into 
  * integers, floats, and flags. By default, they are all stored as either strings or flags.
  * @author Blythe Hospelhorn
- * @version 1.3.3
- * @since February 1, 2019
+ * @version 1.3.4
+ * @since March 12, 2019
  *
  */
 public class Variant implements Comparable<Variant>{
@@ -2001,7 +2001,9 @@ public class Variant implements Comparable<Variant>{
 				for (int i = 0; i < orderedSamples.size(); i++)
 				{
 					String sample = orderedSamples.get(i);
-					String genotype = genotypes.get(sample).toVCFField(genoFields);
+					Genotype g = genotypes.get(sample);
+					String genotype = "./.";
+					if (g != null) genotype = g.toVCFField(genoFields);
 					//System.err.println("Variant.toVCFLine || Genotype string for " + sample + ": " + genotype);
 					if (i < orderedSamples.size() - 1) s += genotype + "\t";
 					else s += genotype;
