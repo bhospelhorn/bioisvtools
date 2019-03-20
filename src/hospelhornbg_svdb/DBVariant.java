@@ -4,6 +4,7 @@ import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -138,6 +139,7 @@ public class DBVariant implements Comparable<DBVariant>{
 		DBVariant var = new DBVariant();
 		
 		var.sID = name;
+		var.regenerateIntegerID();
 		var.eType = sv.getType();
 		var.oChrom = sv.getChromosome();
 		
@@ -379,6 +381,81 @@ public class DBVariant implements Comparable<DBVariant>{
 		if(!rangeOverlap(myEnd, svEnd)) return false;
 		
 		return true;
+	}
+	
+	public int getIntegerID()
+	{
+		return this.iID;
+	}
+	
+	public void regenerateIntegerID()
+	{
+		Random r = new Random();
+		if(sID == null) iID = r.nextInt();
+		else iID = sID.hashCode() ^ r.nextInt();
+	}
+	
+	public void setTotalCount(int total)
+	{
+		this.iCohortTotalCount = total;
+	}
+	
+	public void setTotalCount(int total, Population p)
+	{
+		this.mPopTotalCounts.put(p, total);
+	}
+	
+	public void incrementTotalCount()
+	{
+		iCohortTotalCount++;
+	}
+	
+	public void incrementTotalCount(Population p)
+	{
+		Integer i = this.mPopTotalCounts.get(p);
+		if (i == null) mPopTotalCounts.put(p, 0);
+		else this.mPopTotalCounts.put(p, i+1);
+	}
+	
+	public void setHomozygoteCount(int homCount)
+	{
+		this.iCohortHomCount = homCount;
+	}
+	
+	public void setHomozygoteCount(int homCount, Population p)
+	{
+		this.mPopHomCounts.put(p, homCount);
+	}
+	
+	public void incrementHomozygoteCount()
+	{
+		iCohortHomCount++;
+	}
+	
+	public void incrementHomozygoteCount(Population p)
+	{
+		Integer i = this.mPopHomCounts.get(p);
+		if (i == null) mPopHomCounts.put(p, 0);
+		else this.mPopHomCounts.put(p, i+1);
+	}
+	
+	public void adjustPopulationFrequency(int totalIndividuals)
+	{
+		this.fCohortPopFreq = (double)iCohortTotalCount/(double)totalIndividuals;
+	}
+	
+	public void adjustPopulationFrequency(int popIndividuals, Population p)
+	{
+		Integer nowcount = this.mPopTotalCounts.get(p);
+		if (nowcount == null) nowcount = 0;
+		double freq = (double)nowcount/(double)popIndividuals;
+		this.mPopFreqs.put(p, freq);
+	}
+
+	public StructuralVariant toStructuralVariant()
+	{
+		//TODO: Write
+		return null;
 	}
 	
 	

@@ -161,6 +161,14 @@ public class Pedigree{
 		this.familyName = name;
 	}
 	
+	public void changeSampleName(String oldname, String newname)
+	{
+		Individual i = indivMap.remove(oldname);
+		if (i == null) return;
+		i.setSampleName(newname);
+		indivMap.put(newname, i);
+	}
+	
 	/* --- Lists --- */
 	
 	public void regenerateAffectedLists()
