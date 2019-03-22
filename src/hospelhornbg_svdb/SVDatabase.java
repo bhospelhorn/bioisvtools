@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.SVType;
@@ -37,6 +38,7 @@ import waffleoRai_Utils.CompositeBuffer;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Utils.SerializedString;
+import waffleoRai_Utils.StreamBuffer;
 
 public class SVDatabase {
 	
@@ -261,22 +263,77 @@ public class SVDatabase {
 		
 	}
 	
-	public Map<Integer, VarIndexRecord> readMasterVariantIndex()
+	public Map<Integer, VarIndexRecord> readMasterVariantIndex() throws IOException
 	{
-		//TODO: Write
+		//VarID [4]
+		//SVType [1]
+		//Line [3] (Unsigned)
+		
+		//Change this if it's likely files will exceed 16.7 million lines...
+		Map<Integer, VarIndexRecord> map = new TreeMap<Integer, VarIndexRecord>();
+		String path = getMasterVariantIndexPath();
+		if (!FileBuffer.fileExists(path)) return map;
+		
+		long fsz = (FileBuffer.fileSize(path));
+		long cpos = 0;
+		StreamBuffer file = new StreamBuffer(path, true);
+		while(cpos < fsz)
+		{
+			int varid = file.intFromFile(cpos); cpos += 4;
+			byte btype = file.getByte(cpos); cpos++;
+			int line = file.shortishFromFile(cpos); cpos += 3;
+			
+			SVType t = SVType.getTypeByID(Byte.toUnsignedInt(btype));
+			VarIndexRecord r = new VarIndexRecord(t, line);
+			map.put(varid, r);
+		}
+		
+		return map;
+	}
+	
+	public VarIndexRecord lookupVariant(int varUID) throws IOException
+	{
+		String path = getMasterVariantIndexPath();
+		if (!FileBuffer.fileExists(path)) return null;
+		
+		long fsz = (FileBuffer.fileSize(path));
+		long cpos = 0;
+		StreamBuffer file = new StreamBuffer(path, true);
+		while(cpos < fsz)
+		{
+			int varid = file.intFromFile(cpos); cpos += 4;
+			if (varid == varUID)
+			{
+				byte btype = file.getByte(cpos); cpos++;
+				int line = file.shortishFromFile(cpos); cpos += 3;
+				
+				SVType t = SVType.getTypeByID(Byte.toUnsignedInt(btype));
+				VarIndexRecord r = new VarIndexRecord(t, line);
+				return r;
+			}
+			cpos += 4;
+		}
+		
 		return null;
 	}
 	
-	public VarIndexRecord lookupVariant(int varUID)
+	public Set<Integer> getAllVariantUIDs() throws IOException
 	{
-		//TODO: Write
-		return null;
-	}
-	
-	public Set<Integer> getAllVariantUIDs()
-	{
-		//TODO: write
-		return null;
+		Set<Integer> idset = new TreeSet<Integer>();
+		String path = getMasterVariantIndexPath();
+		if (!FileBuffer.fileExists(path)) return idset;
+		
+		long fsz = (FileBuffer.fileSize(path));
+		long cpos = 0;
+		StreamBuffer file = new StreamBuffer(path, true);
+		while(cpos < fsz)
+		{
+			int varid = file.intFromFile(cpos); cpos += 8;
+			idset.add(varid);
+		}
+		
+		
+		return idset;
 	}
 	
 	/* --- Write --- */

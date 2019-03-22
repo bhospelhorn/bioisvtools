@@ -642,6 +642,7 @@ public class SamFixer {
 
 	public static void runSamFixer(String[] args, GenomeBuild gb, boolean verbose)
 	{
+		Contig.setSortMode(Contig.SORTMODE_NORMAL_CTGLEN);
 		if (gb == null)
 		{
 			System.err.println("ERROR: Genome Build must be non-null!");
