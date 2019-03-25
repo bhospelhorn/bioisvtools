@@ -7,7 +7,9 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -26,7 +28,6 @@ import hospelhornbg_bioinformatics.StructuralVariant;
 import hospelhornbg_bioinformatics.VCF;
 import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_bioinformatics.VariantPool;
-import hospelhornbg_genomeBuild.Contig;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_segregation.Family;
@@ -354,9 +355,53 @@ public class SVDatabase {
 		}
 	}
 	
-	public void indexVariants()
+	public void indexVariants() throws IOException
 	{
-		//TODO: Write
+		//It doesn't look like varIDs NEED to be sorted for now, so
+		//I guess I'll just stream out the records? Hm.
+		String ipath = this.getMasterVariantIndexPath();
+		Path p = Paths.get(ipath);
+		Files.deleteIfExists(p); //We will be appending.
+		Files.createFile(p);
+		for(SVType t : SVType.values())
+		{
+			String tblPath = this.getVariantTablePath(t);
+			if (!FileBuffer.fileExists(tblPath)) continue;
+			int lineNumber = 0;
+			String line = null;
+			BufferedReader br = new BufferedReader(new FileReader(tblPath));
+			while((line = br.readLine()) != null)
+			{
+				lineNumber++;
+				if (line.isEmpty()) continue;
+				if (line.startsWith("#")) continue;
+				//Nab the ID number from the record
+				String[] fields = line.split("\t");
+				if (fields.length < 2) continue;
+				try
+				{
+					int id = Integer.parseUnsignedInt(fields[1], 16);
+					byte[] rec = new byte[8];
+					rec[0] = (byte)((id >>> 24) & 0xFF);
+					rec[1] = (byte)((id >>> 16) & 0xFF);
+					rec[2] = (byte)((id >>> 8) & 0xFF);
+					rec[3] = (byte)(id & 0xFF);
+					rec[4] = (byte)t.getID();
+					rec[5] = (byte)((lineNumber >>> 16) & 0xFF);
+					rec[6] = (byte)((lineNumber >>> 8) & 0xFF);
+					rec[7] = (byte)(lineNumber & 0xFF);
+					
+					Files.write(p, rec, StandardOpenOption.APPEND);
+					
+				}
+				catch(NumberFormatException e)
+				{
+					System.err.println("SVDatabase.indexVariants || Variant table line " + lineNumber + " could not be read!");
+				}
+			}
+			br.close();
+		}
+		
 	}
 	
 	public void writeInfoFile() throws IOException
@@ -707,9 +752,31 @@ public class SVDatabase {
 		
 	}
 	
-	private void combineTempTables(String oldvars, String newvars, String targetPath)
+	private void combineTempTables(String oldvars, String newvars, String targetPath) throws IOException
 	{
 		//TODO: Write
+		if (!FileBuffer.fileExists(oldvars))
+		{
+			Files.move(Paths.get(newvars), Paths.get(targetPath));
+			return;
+		}
+		if (!FileBuffer.fileExists(newvars))
+		{
+			Files.move(Paths.get(oldvars), Paths.get(targetPath));
+			return;
+		}
+		
+		
+		BufferedReader or = new BufferedReader(new FileReader(oldvars));
+		BufferedReader nr = new BufferedReader(new FileReader(newvars));
+		BufferedWriter bw = new BufferedWriter(new FileWriter(targetPath));
+		
+		
+		
+		bw.close();
+		or.close();
+		nr.close();
+		
 	}
 	
 	/* --- Variant Query --- */
