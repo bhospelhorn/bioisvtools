@@ -104,12 +104,25 @@ public class DellyCleaner {
 			try {end = Integer.parseInt(info.substring(ECHAR + 4, nextsemi));}
 			catch (NumberFormatException e) {br.close(); bw.close(); fw.close(); fr.close(); throw new FileBuffer.UnsupportedFileTypeException();}
 			int svlen = end - pos;
+			
+			int TCHAR = info.indexOf("SVTYPE=");
+			if (TCHAR < 0)
+			{
+				bw.close();
+				fw.close();
+				br.close();
+				fr.close();
+				throw new FileBuffer.UnsupportedFileTypeException();
+			}
+			nextsemi = info.indexOf(';', TCHAR);
+			String type = fields[7].substring(TCHAR+7, nextsemi);
+			
 			if (Math.abs(svlen) > MAXSIZE) {
 				if(verbose) System.err.println("DellyCleaner.cleanDelly || Variant tossed: " + fields[2] + " | Reason: Too large (Size = " + svlen + " bp)");
 				tosscount++;
 				continue;
 			}
-			if (Math.abs(svlen) < MINSIZE) {
+			if ((!type.contains("INS")) && Math.abs(svlen) < MINSIZE) {
 				if(verbose) System.err.println("DellyCleaner.cleanDelly || Variant tossed: " + fields[2] + " | Reason: Too small (Size = " + svlen + " bp)");
 				tosscount++;
 				continue;
