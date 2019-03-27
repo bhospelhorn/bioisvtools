@@ -374,13 +374,24 @@ public class SamFixer {
 			
 			//Check for positions and mate positions that are off end of contig...
 			Contig rcontig = sr.getReferenceContig();
-			if(sr.getPosition() >= rcontig.getLength())
+			if (rcontig == null)
+			{
+				System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || Ref contig is null! InputString:");
+				System.err.println(input);
+			}
+			else if(sr.getPosition() >= rcontig.getLength())
 			{
 				counter.incrementBadPosition();
 				return;
 			}
+			
 			Contig ncontig = sr.getNextReferenceContig();
-			if(sr.getNextPosition() >= ncontig.getLength())
+			if (ncontig == null)
+			{
+				System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || Next ref contig is null! InputString:");
+				System.err.println(input);
+			}
+			else if(sr.getNextPosition() >= ncontig.getLength())
 			{
 				counter.incrementBadNextPosition();
 				return;
