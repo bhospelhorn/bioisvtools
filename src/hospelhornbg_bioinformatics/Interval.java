@@ -51,4 +51,9 @@ public class Interval implements Comparable<Interval>{
 		return iStart ^ iEnd;
 	}
 
+	public int getCenter()
+	{
+		return (iEnd + iStart)/2;
+	}
+	
 }

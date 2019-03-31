@@ -294,4 +294,16 @@ public class Contig implements Comparable<Contig>{
 		SORTMODE = sortModeEnum;
 	}
 	
+	public boolean hasName(String name)
+	{
+		if(name == null || name.isEmpty()) return false;
+		if (name.equals(UDP_name)) return true;
+		if (name.equals(UCSC_name)) return true;
+		for(String s : names)
+		{
+			if(name.equals(s)) return true;
+		}
+		return false;
+	}
+	
 }

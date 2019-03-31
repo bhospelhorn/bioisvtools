@@ -21,6 +21,8 @@ import hospelhornbg_segregation.Population;
 
 public class DBVariant implements Comparable<DBVariant>{
 	
+	public static final String ID_INFO_KEY = "SVDBid";
+	
 	private String sID;
 	private int iID;
 	private SVType eType;
@@ -41,6 +43,9 @@ public class DBVariant implements Comparable<DBVariant>{
 	private GeneFunc ePosEff;
 	private String sValidationNotes;
 	
+	private Contig oChrom2; //TRA only
+	private String sAlt; //INS and INS:ME only
+	
 	private DBVariant()
 	{
 		mPopTotalCounts = new TreeMap<Population, Integer>();
@@ -57,7 +62,13 @@ public class DBVariant implements Comparable<DBVariant>{
 		String[] fields = record.split("\t");
 		
 		//ID	ID(HexInt)	Type	Chrom	Start	End	UDPTotal	UDPHom	UDPPopFreq (Repeat for each pop...)
-		//GeneList	PosEff	OMIM?	ValidationNotes
+		//GeneList	PosEff	OMIM?	ValidationNotes	[Type specific]
+		
+		//Type Specific Fields...
+		//TRA
+		//	Chrom 2
+		//INS & INS:ME
+		//	InsertionSeq
 		
 		try
 		{
@@ -116,6 +127,25 @@ public class DBVariant implements Comparable<DBVariant>{
 			
 			if (j < fields.length) var.sValidationNotes = fields[j];
 			
+			//Read type specific...
+			if(var.eType == SVType.TRA)
+			{
+				j++;
+				if(fields.length >= j+1)
+				{
+					String cstr = fields[j];
+					var.oChrom2 = gb.getContig(cstr);
+				}
+			}
+			else if (var.eType == SVType.INS || var.eType == SVType.INSME)
+			{
+				j++;
+				if(fields.length >= j+1)
+				{
+					var.sAlt = fields[j];
+				}
+			}
+			
 		}
 		catch(ArrayIndexOutOfBoundsException e)
 		{
@@ -153,6 +183,15 @@ public class DBVariant implements Comparable<DBVariant>{
 		{
 			var.iStart = new Interval(sv.getPosition(), sv.getPosition());
 			var.iEnd = new Interval (sv.getEndPosition(), sv.getEndPosition());
+		}
+		
+		if(var.eType == SVType.TRA)
+		{
+			var.oChrom2 = sv.getEndChromosome();
+		}
+		else if (var.eType == SVType.INS || var.eType == SVType.INSME)
+		{
+			var.sAlt = sv.getAltAllele(0);
 		}
 		
 		return var;
@@ -288,6 +327,18 @@ public class DBVariant implements Comparable<DBVariant>{
 		
 		if(this.sValidationNotes != null) sb.append(sValidationNotes);
 		
+		if(eType == SVType.TRA)
+		{
+			sb.append("\t");
+			if(oChrom2 == null) sb.append(oChrom.getUDPName());
+			else sb.append(oChrom2.getUDPName());
+		}
+		else if (eType == SVType.INS || eType == SVType.INSME)
+		{
+			sb.append("\t");
+			sb.append(sAlt);
+		}
+		
 		return sb.toString();
 	}
 
@@ -361,10 +412,52 @@ public class DBVariant implements Comparable<DBVariant>{
 		return true;
 	}
 	
-	public boolean svIsEquivalent(StructuralVariant sv, int bpLeeway)
+	public boolean svIsEquivalent(StructuralVariant sv, double percLeeway)
 	{
 		//First, do type match
 		if(eType != sv.getType()) return false;
+		
+		//Check chrom 1
+		Contig c1 = sv.getChromosome();
+		if (oChrom == null && c1 != null) return false;
+		if (oChrom != null && c1 == null) return false;
+		if (oChrom != null && c1 != null)
+		{
+			if (!oChrom.equals(c1)) return false;
+		}
+		
+		int bpLeeway = 0;
+		if(eType == SVType.INS || eType == SVType.INSME)
+		{
+			//Start, end and alt allele must be IDENTICAL!
+			//Leeway is 0
+			//Check alt allele
+			String alt = sv.getAltAllele(0);
+			if(sAlt == null && alt != null) return false;
+			if(sAlt != null && alt == null) return false;
+			if (sAlt != null && alt != null)
+			{
+				if(!sAlt.equals(alt)) return false;
+			}
+		}
+		else if (eType == SVType.TRA || eType == SVType.BND)
+		{
+			//Also need to check chrom2
+			Contig c2 = sv.getEndChromosome();
+			if (oChrom2 == null && c2 != null) return false;
+			if (oChrom2 != null && c2 == null) return false;
+			if (oChrom2 != null && c2 != null)
+			{
+				if (!oChrom2.equals(c2)) return false;
+			}
+			//bpLeeway is constant
+			bpLeeway = (int)Math.round(percLeeway * 1000.0);
+		}
+		else
+		{
+			int sz = iEnd.getEnd() - iStart.getStart();
+			bpLeeway = (int)Math.round(percLeeway * (double)sz);
+		}
 		
 		//Check POS
 		int v1 = iStart.getStart() - bpLeeway;
@@ -454,8 +547,97 @@ public class DBVariant implements Comparable<DBVariant>{
 
 	public StructuralVariant toStructuralVariant()
 	{
-		//TODO: Write
-		return null;
+		StructuralVariant sv = new StructuralVariant();
+		sv.setChromosome(oChrom);
+		int st = iStart.getCenter();
+		int ed = iEnd.getCenter();
+		sv.setPosition(st);
+		sv.setEndPosition(ed);
+		sv.setVariantName(sID);
+		
+		sv.setRefAllele("N");
+		sv.addAltAllele("<" + eType.name() + ">");
+		sv.setType(eType);
+		sv.setSVLength(ed-st);
+		
+		sv.setCIPOS(iStart);
+		sv.setCIEND(iEnd);
+		
+		sv.addInfoField(ID_INFO_KEY, iID);
+		
+		return sv;
+	}
+	
+	public Contig getChrom()
+	{
+		return oChrom;
+	}
+	
+	public boolean inRange(int stPos, int edPos)
+	{
+		if (stPos >= iEnd.getEnd()) return false;
+		if (edPos <= iStart.getStart()) return false;
+		return true;
+	}
+	
+	public Interval getStartPosition()
+	{
+		return iStart;
+	}
+	
+	public Interval getEndPosition()
+	{
+		return iEnd;
+	}
+	
+	public Contig getEndChrom()
+	{
+		return oChrom2;
+	}
+	
+	public String getName()
+	{
+		return sID;
+	}
+	
+	public SVType getType()
+	{
+		return eType;
+	}
+	
+	public String getAltAlleleString()
+	{
+		return sAlt;
+	}
+	
+	public int getIndividualCount()
+	{
+		return this.iCohortTotalCount;
+	}
+	
+	public int getIndividualCount(Population p)
+	{
+		return this.mPopTotalCounts.get(p);
+	}
+	
+	public int getHomozygoteCount()
+	{
+		return this.iCohortHomCount;
+	}
+	
+	public int getHomozygoteCount(Population p)
+	{
+		return this.mPopHomCounts.get(p);
+	}
+	
+	public double getCohortFreq()
+	{
+		return this.fCohortPopFreq;
+	}
+	
+	public double getCohortFreq(Population p)
+	{
+		return this.mPopFreqs.get(p);
 	}
 	
 	

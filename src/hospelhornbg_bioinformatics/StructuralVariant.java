@@ -1524,6 +1524,18 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 		//Vanilla does nothing...
 	}
 	
+	public void setCIPOS(Interval i)
+	{
+		CIPosHi = i.getEnd();
+		CIPosLow = i.getStart();
+	}
+	
+	public void setCIEND(Interval i)
+	{
+		CIEndHi = i.getEnd();
+		CIEndLow = i.getStart();
+	}
+	
 	/* --- Comparing --- */
 	
 	public boolean equals(Object o)

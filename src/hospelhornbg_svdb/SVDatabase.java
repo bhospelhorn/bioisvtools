@@ -13,6 +13,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -23,15 +24,25 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import hospelhornbg_bioinformatics.Genotype;
+import hospelhornbg_bioinformatics.Interval;
 import hospelhornbg_bioinformatics.SVType;
 import hospelhornbg_bioinformatics.StructuralVariant;
 import hospelhornbg_bioinformatics.VCF;
 import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_bioinformatics.VariantPool;
+import hospelhornbg_genomeBuild.Contig;
+import hospelhornbg_genomeBuild.Gene;
+import hospelhornbg_genomeBuild.GeneFunc;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
+import hospelhornbg_genomeBuild.GenomeBuildUID;
+import hospelhornbg_genomeBuild.TwoSexChromSegModel;
+import hospelhornbg_segregation.Candidate;
 import hospelhornbg_segregation.Family;
 import hospelhornbg_segregation.FamilyMember;
+import hospelhornbg_segregation.Individual;
+import hospelhornbg_segregation.Inheritance;
+import hospelhornbg_segregation.Inheritor;
 import hospelhornbg_segregation.Population;
 import hospelhornbg_svdb.SVDBGenotype.SVDBAllele;
 import waffleoRai_Utils.BinFieldSize;
@@ -62,6 +73,10 @@ public class SVDatabase {
 	
 	public static final String FAMILY_DIRECTORY = "fam";
 	
+	public static final int POPFREQ_CUTOFF_G2 = 50; //Out of 1000
+	public static final int POPFREQ_CUTOFF_G3 = 20; //Out of 1000
+	public static final int POPFREQ_CUTOFF_G4 = 10; //Out of 1000
+	
 	/* --- Instance Variables --- */
 	
 	private String dirPath;
@@ -69,7 +84,7 @@ public class SVDatabase {
 	private GenomeBuild genomeBuild;
 	private GeneSet geneSet;
 	
-	private int bpLeeway;
+	private int leeway; //0-1000
 	
 	private int indivCount;
 	//private int famCount;
@@ -127,7 +142,7 @@ public class SVDatabase {
 		String gbName = ss.getString();
 		svdb.genomeBuild = GenomeBuild.loadStandardBuild(gbName);
 		svdb.geneSet = GeneSet.loadRefGene(svdb.genomeBuild);
-		svdb.bpLeeway = file.intFromFile(cpos);
+		svdb.leeway = file.intFromFile(cpos);
 		
 		//Load sample table...
 		svdb.readSampleTable();
@@ -151,7 +166,7 @@ public class SVDatabase {
 		if (!FileBuffer.directoryExists(dbdir)) Files.createDirectories(Paths.get(dbdir));
 		String famdir = dbdir + File.separator + FAMILY_DIRECTORY;
 		if (!FileBuffer.directoryExists(famdir)) Files.createDirectory(Paths.get(famdir));
-		svdb.bpLeeway = leeway;
+		svdb.leeway = leeway;
 		
 		//Generate info file
 		svdb.writeInfoFile();
@@ -337,6 +352,111 @@ public class SVDatabase {
 		return idset;
 	}
 	
+	public List<SVDBGenotype> getGenotypesForVariant(int varUID)
+	{
+		if(genoTable == null) return null;
+		try {
+		return genoTable.getGenotypesForVariant(varUID);
+		}
+		catch (IOException e) {return null;}
+	}
+	
+	public DBVariant getVariant(int varUID) throws IOException
+	{
+		VarIndexRecord location = lookupVariant(varUID);
+		if (location == null) return null;
+		
+		SVType t = location.getType();
+		int ln = location.getLine();
+		
+		String tblPath = this.getVariantTablePath(t);
+		if (!FileBuffer.fileExists(tblPath)) return null;
+		
+		int lctr = 0;
+		BufferedReader br = new BufferedReader(new FileReader(tblPath));
+		String line = null;
+		while((line = br.readLine()) != null)
+		{
+			lctr++;
+			if(lctr == ln)
+			{
+				br.close();
+				return DBVariant.getFromDBRecord(line, this.genomeBuild, this.geneSet);
+			}
+		}
+		br.close();
+		
+		return null;
+	}
+	
+	public List<DBVariant> getVariantsInRange(Contig chrom, int start, int end) throws IOException
+	{
+		List<DBVariant> found = new LinkedList<DBVariant>();
+		for(SVType t : SVType.values())
+		{
+			String tblPath = this.getVariantTablePath(t);
+			if(!FileBuffer.fileExists(tblPath)) continue;
+			
+			int firstLine = 1;
+			if (t != SVType.TRA)
+			{
+				String idxPath = tblPath + INDEX_EXTENSION;
+				
+				if(FileBuffer.fileExists(idxPath))
+				{
+					VariantIndex idx = VariantIndex.buildIndexFromTable(tblPath, genomeBuild);
+					firstLine = idx.getFirstLineOfContig(chrom);
+				}	
+			}
+			
+			//Open & Fast forward
+			BufferedReader br = new BufferedReader(new FileReader(tblPath));
+			String line = null;
+			int ln = 0;
+			while((line = br.readLine()) != null)
+			{
+				ln++;
+				if(ln < firstLine) continue;
+				if(line.isEmpty()) continue;
+				if(line.startsWith("#")) continue;
+				
+				DBVariant var = DBVariant.getFromDBRecord(line, genomeBuild, geneSet);
+				if (t == SVType.TRA)
+				{
+					//Check for either end
+					if(chrom.equals(var.getChrom()))
+					{
+						Interval st = var.getStartPosition();
+						if(start < st.getEnd() && end > st.getStart()) found.add(var);
+					}
+					else if (chrom.equals(var.getEndChrom()))
+					{
+						Interval ed = var.getEndPosition();
+						if(start < ed.getEnd() && end > ed.getStart()) found.add(var);
+					}
+				}
+				else
+				{
+					if(!chrom.equals(var.getChrom())) break; //Break if next chrom
+					if(var.inRange(start, end)) found.add(var);	
+				}
+			}
+			
+			br.close();
+		}
+		
+		return found;
+	}
+	
+	public List<DBVariant> getVariantsInGene(Gene g) throws IOException
+	{
+		if (g == null) return null;
+		Contig c = g.getChromosome();
+		int st = g.getTranscriptStart();
+		int ed = g.getTranscriptEnd();
+		return getVariantsInRange(c, st, ed);
+	}
+	
 	/* --- Write --- */
 	
 	public void indexVariantTable(SVType type)
@@ -411,7 +531,7 @@ public class SVDatabase {
 		FileBuffer outfile = new FileBuffer(8 + bname.length() + 3 + 4, true);
 		outfile.printASCIIToFile(DBINFO_MAGIC);
 		outfile.addVariableLengthString(bname, BinFieldSize.WORD, 2);
-		outfile.addToFile(bpLeeway);
+		outfile.addToFile(leeway);
 		outfile.writeFile(path);
 	}
 	
@@ -598,6 +718,7 @@ public class SVDatabase {
 				BufferedWriter otemp = new BufferedWriter(new FileWriter(tempold));
 				String line = null;
 				int stind = 0;
+				double pLeeway = (double)leeway/1000.0;
 				while((line = br.readLine()) != null)
 				{
 					if (line.isEmpty()) continue;
@@ -616,7 +737,7 @@ public class SVDatabase {
 						i++;
 						if (i < stind) continue; //Sorting allows us to skip checking over and over again
 						//Compare
-						if(var.svIsEquivalent(sv, bpLeeway))
+						if(var.svIsEquivalent(sv, pLeeway))
 						{
 							remi = i;
 							break;
@@ -754,7 +875,6 @@ public class SVDatabase {
 	
 	private void combineTempTables(String oldvars, String newvars, String targetPath) throws IOException
 	{
-		//TODO: Write
 		if (!FileBuffer.fileExists(oldvars))
 		{
 			Files.move(Paths.get(newvars), Paths.get(targetPath));
@@ -771,7 +891,117 @@ public class SVDatabase {
 		BufferedReader nr = new BufferedReader(new FileReader(newvars));
 		BufferedWriter bw = new BufferedWriter(new FileWriter(targetPath));
 		
+		//First, dump all header lines
+		String oline = null;
+		String nline = null;
+		DBVariant ov = null;
+		DBVariant nv = null;
+		while((oline = or.readLine()) != null)
+		{
+			if (oline.startsWith("#")) bw.write(oline + "\n");
+			else {
+				ov = DBVariant.getFromDBRecord(oline, genomeBuild, geneSet);
+				break;
+			}
+		}
+		while((nline = nr.readLine()) != null)
+		{
+			if (nline.startsWith("#")) bw.write(nline + "\n");
+			else {
+				nv = DBVariant.getFromDBRecord(nline, genomeBuild, geneSet);
+				break;
+			}
+		}
 		
+		boolean odone = (ov == null);
+		boolean ndone = (nv == null);
+		while(!(odone && ndone))
+		{
+			if(odone)
+			{
+				//Just write next new
+				if (nv != null)
+				{
+					//A line leftover from last pass
+					bw.write(nv.toDBRecord() + "\n");
+					nv = null;
+				}
+				else
+				{
+					//No leftover lines, read next line
+					nline = nr.readLine();
+					if (nline == null) ndone = true;
+					else bw.write(nline + "\n");	
+				}
+			}
+			else if (ndone)
+			{
+				//Just write next old
+				if (ov != null)
+				{
+					bw.write(ov.toDBRecord() + "\n");
+					ov = null;
+				}
+				else
+				{
+					oline = or.readLine();
+					if (oline == null) odone = true;
+					else bw.write(oline + "\n");	
+				}
+			}
+			else
+			{
+				//Compare
+				//Neither should be null...
+				int compare = ov.compareTo(nv);
+				if(compare > 0)
+				{
+					//ov is greater, so nv goes next
+					bw.write(nv.toDBRecord() + "\n");
+					nline = nr.readLine();
+					if(nline == null)
+					{
+						nv = null;
+						ndone = true;
+					}
+					else nv = DBVariant.getFromDBRecord(nline, genomeBuild, geneSet);
+				}
+				else if (compare < 0)
+				{
+					//nv is greater, so ov goes next
+					bw.write(ov.toDBRecord() + "\n");
+					oline = or.readLine();
+					if(oline == null)
+					{
+						ov = null;
+						odone = true;
+					}
+					else ov = DBVariant.getFromDBRecord(oline, genomeBuild, geneSet);
+				}
+				else
+				{
+					//Write both
+					bw.write(ov.toDBRecord() + "\n");
+					bw.write(nv.toDBRecord() + "\n");
+					
+					nline = nr.readLine();
+					if(nline == null)
+					{
+						nv = null;
+						ndone = true;
+					}
+					else nv = DBVariant.getFromDBRecord(nline, genomeBuild, geneSet);
+				
+					oline = or.readLine();
+					if(oline == null)
+					{
+						ov = null;
+						odone = true;
+					}
+					else ov = DBVariant.getFromDBRecord(oline, genomeBuild, geneSet);
+				}
+			}
+		}
 		
 		bw.close();
 		or.close();
@@ -781,10 +1011,650 @@ public class SVDatabase {
 	
 	/* --- Variant Query --- */
 	
-	public List<String> queryForRecords(Collection<QueryCondition> conditions)
+	public List<DBVariant> queryForVariants(Collection<QueryCondition> conditions) throws IOException
+	{
+		return this.queryForVariants(conditions, SVType.allTypes());
+	}
+	
+	public List<DBVariant> queryForVariants(Collection<QueryCondition> conditions, Collection<SVType> includeTypes) throws IOException
+	{
+		List<DBVariant> list = new LinkedList<DBVariant>();
+		if(includeTypes == null) return list;
+		
+		for(SVType t : includeTypes)
+		{
+			String vtblpath = this.getVariantTablePath(t);
+			if(!FileBuffer.fileExists(vtblpath)) continue;
+			BufferedReader br = new BufferedReader(new FileReader(vtblpath));
+			String line = null;
+			while((line = br.readLine()) != null)
+			{
+				if (line.isEmpty()) continue;
+				if (line.startsWith("#")) continue;
+				DBVariant var = DBVariant.getFromDBRecord(line, genomeBuild, geneSet);
+				if(var == null) continue;
+				boolean passes = true;
+				if(conditions != null)
+				{
+					for(QueryCondition c : conditions)
+					{
+						if(!c.passes(var))
+						{
+							passes = false;
+							break;
+						}
+					}
+				}
+				if(passes) list.add(var);
+			}
+			br.close();
+		}
+		
+		return list;
+	}
+	
+	private Map<Integer, List<SVDBGenotype>> getFamilyGenotypes(Family fam)
+	{
+		if (fam == null) return null;
+		
+		Map<Integer, List<SVDBGenotype>> map = new TreeMap<Integer, List<SVDBGenotype>>();
+		List<FamilyMember> members = fam.getAllFamilyMembers();
+		
+		for (FamilyMember m : members)
+		{
+			Map<Integer, SVDBGenotype> indivMap = genoTable.getGenotypesForSample(m.getUID());
+			if (indivMap == null) continue;
+			List<Integer> klist = new ArrayList<Integer>(indivMap.size() + 1);
+			klist.addAll(indivMap.keySet());
+			for(Integer k : klist)
+			{
+				List<SVDBGenotype> l = map.get(k);
+				if (l == null)
+				{
+					l = new LinkedList<SVDBGenotype>();
+					map.put(k, l);
+				}
+				l.add(indivMap.get(k));
+			}
+		}
+		
+		
+		return map;
+	}
+	
+	public Map<DBVariant, List<SVDBGenotype>> getFamilyVariants(Family fam) throws IOException
+	{
+		if (fam == null) return null;
+		Map<DBVariant, List<SVDBGenotype>> map = new HashMap<DBVariant, List<SVDBGenotype>>();
+		Map<Integer, List<SVDBGenotype>> idmap = getFamilyGenotypes(fam);
+		
+		List<Integer> klist = new ArrayList<Integer>(idmap.size() + 1);
+		klist.addAll(idmap.keySet());
+		for(Integer varID : klist)
+		{
+			DBVariant var = this.getVariant(varID);
+			if(var == null) continue;
+			map.put(var, idmap.get(varID));
+		}
+		
+		return map;
+	}
+	
+	public List<Candidate> getCandidates(Map<DBVariant, List<SVDBGenotype>> varset, Family fam)
+	{
+		if (fam == null) return null;
+		if (varset == null) return null;
+		
+		List<DBVariant> keys = new ArrayList<DBVariant>(varset.size() + 1);
+		keys.addAll(varset.keySet());
+		
+		List<FamilyMember> members = fam.getAllFamilyMembers();
+		
+		List<Variant> vlist = new ArrayList<Variant>(varset.size() + 1);
+		for(DBVariant var : keys)
+		{
+			StructuralVariant sv = var.toStructuralVariant();
+			//Add genotypes
+			List<SVDBGenotype> glist = varset.get(var);
+			for(FamilyMember m : members)
+			{
+				//See if there is a genotype for this person
+				SVDBGenotype geno = null;
+				if (glist != null && !glist.isEmpty())
+				{
+					for (SVDBGenotype g : glist)
+					{
+						if (g.getIndividualUID() == m.getUID())
+						{
+							geno = g;
+							break;
+						}
+					}
+				}
+				
+				Genotype gt = new Genotype();
+				if(geno != null)
+				{
+					//Copy allele data
+					Collection<SVDBAllele> alleles = geno.getAlleles();
+					List<Integer> alist = new LinkedList<Integer>();
+					int aind = 1;
+					for(SVDBAllele a : alleles)
+					{
+						for(int i = 0; i < a.getAlleleCount(); i++) alist.add(aind);
+						aind++;
+					}
+					while(alist.size() < 2)
+					{
+						//Add some refs
+						alist.add(0);
+					}
+					//Convert to an array and dump in genotype
+					int acount = alist.size();
+					int[] allarr = new int[acount];
+					int i = 0;
+					for(Integer a : alist)
+					{
+						allarr[i] = a;
+						i++;
+					}
+					gt.setAlleles(allarr);
+				}
+				else
+				{
+					//Make ref/ref
+					gt.setAlleles("0/0");
+				}
+				sv.addGenotype(m.getName(), gt);
+			}
+			vlist.add(sv);
+		}
+		
+		//Re-genotype XY variants
+		fam.adjustSexChromGenotypes(vlist, new TwoSexChromSegModel(genomeBuild.getContig("X"), genomeBuild.getContig("Y"), genomeBuild));
+		
+		//Change to variant pool
+		VariantPool pool = new VariantPool(members.size());
+		pool.addVariants(vlist);
+		
+		//Candidates
+		List<Candidate> clist = Inheritor.getCandidates(pool, fam, geneSet);
+		
+		return clist;
+	}
+	
+	private boolean prioritizeCandidate(Candidate c, DBVariant dbv, List<Individual> affected)
+	{
+		//TODO
+		if (c == null) return false;
+		if (affected == null) return false;
+		
+		Variant v = c.getVariant();
+		if (v == null) return false;
+		if(!(v instanceof StructuralVariant)) return false;
+		StructuralVariant sv = (StructuralVariant)v;
+		SVType t = sv.getType();
+		if (t == null) return false;
+		if (t == SVType.TRA) return false;
+		if (t == SVType.BND) return false;
+		if (t == SVType.INV) return false;
+		
+		//Must segregate or be halfhet for at least one affected
+		boolean pass = false;
+		for(Individual a : affected)
+		{
+			Inheritance i = c.getInheritancePattern(a);
+			if (i != null && i != Inheritance.UNRESOLVED)
+			{
+				pass = true;
+				break;
+			}
+		}
+		if(!pass) return false;
+		
+		//Position Effect
+		GeneFunc eff = c.getPositionEffect();
+		if (eff == null) return false;
+		//Only prioritize rare vars for some effects
+		/*
+		 * Tier 1:
+		 * 	Exonic, Splicing
+		 * Tier 2:
+		 * 	UTR5, ncRNA, Upstream
+		 * Tier 3:
+		 * 	UTR3, Intronic
+		 * Tier 4:
+		 * 	Downstream, Intergenic
+		 */
+		switch(eff)
+		{
+		case DOWNSTREAM:
+			break;
+		case EXONIC:
+			return true; //Always prioritize
+		case INTERGENIC:
+			break;
+		case INTRONIC:
+			break;
+		case NCRNA:
+			break;
+		case SPLICING:
+			return true; //Always prioritize
+		case UPSTREAM:
+			break;
+		case UTR3:
+			break;
+		case UTR5:
+			break;
+		}
+		
+		return true;
+	}
+	
+	public void writeFamilyTable(String famname, String outputDir) throws IOException
+	{
+		//Prioritize variants that are...
+		//	Exonic and splicing del/dup/ins that are half-hets or segregating (ANY)
+		//	Rare del/dup/ins (HH or seg) that are ncRNA, UTR, intronic, or upstream/downstream
+		// The only inv or tra that should be prioritized are those called as comp het partners
+		
+		/*
+		 * Table Fields ----- (CSV)
+		 * 		Var Name
+		 * 		Var ID (Hex)
+		 * 		Chrom 1
+		 * 		Chrom 2 (Empty if not TRA)
+		 * 		Pos (Range)
+		 * 		End (Range)
+		 * 		Insertion Sequence (Empty if not INS/INS:ME)
+		 * 		SVType
+		 * 		Size
+		 * 		PosEff
+		 * 		Gene Name
+		 * 		Transcript ID
+		 * 		OMIM Info (Blank if none found)
+		 * 		DECIPHER Score (Blank if none found)
+		 * 		UDP Cohort Total Indivs with variant
+		 * 		UDP Cohort Hom Count
+		 * 		UDP Cohort Pop Freq
+		 * 		UDP Cohort Gene Hit Count (Variant)
+		 * 		UDP Cohort Gene Hit Count (Indivs)
+		 * 		UDP Cohort Exon Hit Count (Variant)
+		 * 		UDP Cohort Exon Hit Count (Indivs)
+		 * 		[Population] Allele Count
+		 * 		[Population] Hom Count
+		 * 		[Population] Pop Freq
+		 * 			...
+		 * 		[Seg Patterns]
+		 * 			Per affected...
+		 * 		CompHet Partners (String IDs(HexID))
+		 * 		[Genotypes] #Occurrences of allele
+		 * 		[Genotypes]	Start Position
+		 * 		[Genotypes]	End Position
+		 * 			...
+		 */
+		
+		//Check output directory
+		if(!FileBuffer.directoryExists(outputDir)) Files.createDirectories(Paths.get(outputDir));
+		
+		//Write db Summary
+		String dbInfoPath = outputDir + File.separator + "databaseInfo.txt";
+		BufferedWriter bw = new BufferedWriter(new FileWriter(dbInfoPath));
+		bw.write("Database Name: " + dbName + "\n");
+		GenomeBuildUID gbid = genomeBuild.getUIDEnum();
+		if (gbid != null) bw.write("Genome Build: " + gbid.toString() + "\n");
+		else bw.write("Genome Build: " + genomeBuild.getBuildName() + " (" + genomeBuild.getSpeciesID() + ")" + "\n");
+		bw.write("Leeway Value: " + leeway + "\n");
+		bw.write("Total Families: " + familyMap.size() + "\n");
+		bw.write("Total Individuals: " + indivCount + "\n");
+		bw.write("Individuals by Population: \n");
+		for(Population p : Population.values())
+		{
+			int ct = this.popIndivCount.get(p);
+			bw.write("\t" + p.getShortString() + " (" + p.toString() + "): " + ct + "\n");
+		}
+		bw.close();
+		
+		//Write family summary
+		Family f = familyMap.get(famname);
+		if (f == null)
+		{
+			System.err.println("SVDatabase.writeFamilyTable || ERROR: Family \"" + famname + "\" not found in database!");
+			return;
+		}
+		String faminfopath = outputDir + File.separator + "family_" + famname + ".txt";
+		bw = new BufferedWriter(new FileWriter(faminfopath));
+		bw.write("Family Name: " + f.getFamilyName() + "\n");
+		Individual proband = f.getProband();
+		if(proband != null) bw.write("Family Proband: " + proband.getName() + "\n");
+		bw.write("Number of Members: " + f.countMembers() + "\n");
+		List<FamilyMember> members = f.getAllFamilyMembers();
+		bw.write("SampleName\tSex\tAffectedStatus\tRelationToProband\tPopulationTags\tMother\tFather\n");
+		for(FamilyMember m : members)
+		{
+			bw.write(m.getName() + "\t");
+			bw.write(m.getSex().name() + "\t");
+			bw.write(m.getAffectedStatus().name() + "\t");
+			if(proband != null) bw.write(f.getRelationshipString_ENG(m) + "\t");
+			else bw.write("unknown\t");
+			Collection<Population> ptags = m.getPopulationTags();
+			boolean first = true;
+			for (Population p : ptags)
+			{
+				if (!first) bw.write(";");
+				bw.write(p.getShortString());
+				first = false;
+			}
+			bw.write("\t");
+			Individual mom = m.getMother();
+			if (mom != null) bw.write(mom.getName() + "\t");
+			else bw.write("unknown\t");
+			Individual dad = m.getFather();
+			if (dad != null) bw.write(dad.getName() + "\t");
+			else bw.write("unknown\t");
+		}
+		bw.close();
+		
+		//Now, retrieve variants....
+		Map<DBVariant, List<SVDBGenotype>> vmap = this.getFamilyVariants(f);
+		List<Candidate> rawlist = this.getCandidates(vmap, f);
+		
+		//Dump allele 0 candidates
+		List<Candidate> clist = new LinkedList<Candidate>();
+		for(Candidate c : rawlist)
+		{
+			if (c.getAllele() != 0) clist.add(c);
+		}
+		
+		//Remap the variants for faster lookup
+		Map<Integer, DBVariant> idmap = new TreeMap<Integer, DBVariant>();
+		Map<Integer, List<SVDBGenotype>> gmap = new TreeMap<Integer, List<SVDBGenotype>>();
+		
+		List<DBVariant> alist = new ArrayList<DBVariant>(vmap.size() + 1);
+		alist.addAll(vmap.keySet());
+		for(DBVariant v : alist)
+		{
+			int id = v.getIntegerID();
+			idmap.put(id, v);
+			gmap.put(id, vmap.get(v));
+		}
+		
+		List<Individual> aff = f.getAllAffected();
+		
+		//Prepare table headers
+		StringBuilder sb = new StringBuilder(2048);
+		sb.append("VariantName\t");
+		sb.append("VariantUID\t");
+		sb.append("Chrom\t");
+		sb.append("Chrom2(TRA)\t");
+		sb.append("StartPosition\t");
+		sb.append("EndPosition\t");
+		sb.append("InsertionSequence(INS)\t");
+		sb.append("SVType\t");
+		sb.append("SVLen\t");
+		sb.append("PositionEffect\t");
+		sb.append("Gene\t");
+		sb.append("TranscriptID\t");
+		sb.append("OMIM_Morbidity\t");
+		sb.append("DECIPHER\t");
+		sb.append("Cohort_Count\t");
+		sb.append("Cohort_HomCount\t");
+		sb.append("Cohort_Freq\t");
+		sb.append("Cohort_GeneHits_Var\t");
+		sb.append("Cohort_GeneHits_Indiv\t");
+		sb.append("Cohort_GeneHitsExon_Var\t");
+		sb.append("Cohort_GeneHitsExon_Indiv\t");
+		Population[] pall = Population.values();
+		for(Population p : pall)
+		{
+			sb.append(p.getShortString() + "_Count\t");
+			sb.append(p.getShortString() + "_HomCount\t");
+			sb.append(p.getShortString() + "_Freq\t");
+		}
+		for(Individual a : aff) sb.append("SEG_" + a.getName() + "\t");
+		sb.append("COMPHET_PARTNERS\t");
+		for(FamilyMember m : members)
+		{
+			sb.append(m.getName() + "_GENO_ACNT\t");
+			sb.append(m.getName() + "_GENO_START\t");
+			sb.append(m.getName() + "_GENO_END\t");
+		}
+		String hraw = sb.toString();
+		String header = hraw.substring(0, hraw.length() - 1); //Chop off last tab
+
+		//Open output streams
+		String fullPath = outputDir + File.separator + f.getFamilyName() + "_fullTable.tsv";
+		String priPath = outputDir + File.separator + f.getFamilyName() + "_prioritized.tsv";
+		BufferedWriter ftbl = new BufferedWriter(new FileWriter(fullPath));
+		BufferedWriter ptbl = new BufferedWriter(new FileWriter(priPath));
+		ftbl.write(header + "\n");
+		ptbl.write(header + "\n");
+		
+		//Go down list of candidates
+		Collections.sort(clist);
+		for(Candidate c : clist)
+		{
+			//Prepare record
+			Variant v = c.getVariant();
+			if(v == null)
+			{
+				System.err.println("SVDatabase.writeFamilyTable || ERROR: Candidate lacks linked variant! Skipping...");
+				continue;
+			}
+			
+			int id = v.getSingleIntInfoEntry(DBVariant.ID_INFO_KEY);
+			DBVariant dbv = idmap.get(id);
+			if(dbv == null)
+			{
+				System.err.println("SVDatabase.writeFamilyTable || ERROR: Variant database UID is invalid: " + Integer.toHexString(id));
+				continue;
+			}
+			List<SVDBGenotype> dbgenos = gmap.get(id);
+			
+			
+			sb = new StringBuilder(4096);
+			//IDs
+			sb.append(dbv.getName() + "\t");
+			sb.append(Integer.toHexString(dbv.getIntegerID()) + "\t");
+			//Chroms
+			Contig c1 = dbv.getChrom();
+			if (c1 != null) sb.append(c1.getUDPName() + "\t");
+			else sb.append("*\t");
+			if(dbv.getType() == SVType.TRA)
+			{
+				Contig c2 = dbv.getEndChrom();
+				if (c2 == null)
+				{
+					if (c1 != null) sb.append(c1.getUDPName() + "\t");
+					else sb.append("*\t");
+				}
+				else sb.append(c2.getUDPName() + "\t");
+			}
+			else sb.append("\t"); //Empty
+			//Positions
+			Interval stpos = dbv.getStartPosition();
+			Interval edpos = dbv.getEndPosition();
+			int st1 = stpos.getStart();
+			int st2 = stpos.getEnd();
+			int ed1 = edpos.getStart();
+			int ed2 = edpos.getEnd();
+			if (st1 == st2) sb.append(st1 + "\t");
+			else sb.append(st1 + "-" + st2 + "\t");
+			if (ed1 == ed2) sb.append(ed1 + "\t");
+			else sb.append(ed1 + "-" + ed2 + "\t");
+			//Insertion Sequence
+			SVType t = dbv.getType();
+			if (t == SVType.INS || t == SVType.INSME)
+			{
+				String iseq = dbv.getAltAlleleString();
+				if (iseq == null || iseq.isEmpty()) sb.append("<UNKNOWN>\t");
+				else sb.append(iseq + "\t");
+			}
+			else sb.append("<N/A>\t");
+			//Other SV Data
+			sb.append(t.getString() + "\t");
+			int len = ed2 - st1;
+			sb.append(len + "bp\t");
+			//Gene stuff
+			GeneFunc poseff = c.getPositionEffect();
+			sb.append(poseff.toString() + "\t");
+			Gene gene = c.getGene();
+			if (gene == null) sb.append("<N/A>\t<N/A>\t");
+			else
+			{
+				sb.append(gene.getName() + "\t");
+				sb.append(gene.getID() + "\t");
+			}
+			//TODO: Insert OMIM annotation here when ready!
+			sb.append("(TBI)\t");
+			//TODO: Insert DECIPHER annotation here when ready!
+			sb.append("(TBI)\t");
+			//Cohort Counts
+			sb.append(dbv.getIndividualCount() + "\t");
+			sb.append(dbv.getHomozygoteCount() + "\t");
+			sb.append(dbv.getCohortFreq() + "\t");
+			//Cohort Gene Hits
+			if (gene != null)
+			{
+				List<DBVariant> vhits = this.getVariantsInGene(gene);	
+				if (vhits == null) sb.append("0\t0\t0\t0\t");
+				else
+				{
+					sb.append(vhits.size() + "\t");
+					int tot = 0;
+					for (DBVariant h : vhits) tot += h.getIndividualCount();
+					sb.append(tot + "\t");
+					//Isolate exonic hits
+					int vcount = 0;
+					tot = 0;
+					for (DBVariant h : vhits)
+					{
+						GeneFunc eff = null;
+						if (h.getType() == SVType.INV)
+						{
+							//Check ends
+							eff = gene.getRelativeRegionLocationEffect(h.getStartPosition().getStart(), h.getStartPosition().getEnd());
+							GeneFunc e2 = gene.getRelativeRegionLocationEffect(h.getEndPosition().getStart(), h.getEndPosition().getEnd());
+							if(e2.getPriority() < eff.getPriority()) eff = e2;
+						}
+						else if (h.getType() == SVType.INS || h.getType() == SVType.INSME)
+						{
+							//Only check the position
+							eff = gene.getRelativeLocationEffect(h.getStartPosition().getCenter());
+						}
+						else if(h.getType() == SVType.TRA)
+						{
+							//Have to check which chrom it is
+							eff = GeneFunc.INTERGENIC;
+							Contig hc1 = h.getChrom();
+							if (gene.getChromosome().equals(hc1))
+							{
+								eff = gene.getRelativeRegionLocationEffect(h.getStartPosition().getStart(), h.getStartPosition().getEnd());
+							}
+							Contig hc2 = h.getEndChrom();
+							if (hc2 == null) hc2 = hc1;
+							if (gene.getChromosome().equals(hc2))
+							{
+								GeneFunc e2 = gene.getRelativeRegionLocationEffect(h.getEndPosition().getStart(), h.getEndPosition().getEnd());
+								if(e2.getPriority() < eff.getPriority()) eff = e2;
+							}
+						}
+						else
+						{
+							eff = gene.getRelativeRegionLocationEffect(h.getStartPosition().getStart(), h.getEndPosition().getEnd());
+						}
+					
+						//Determine if exonic
+						if (eff == GeneFunc.EXONIC)
+						{
+							vcount++;
+							tot += h.getIndividualCount();
+						}
+					}//End for
+					sb.append(vcount + "\t");
+					sb.append(tot + "\t");
+				}
+			}
+			else sb.append("<N/A>\t<N/A>\t<N/A>\t<N/A>\t");
+			//Population Counts
+			for(Population p : pall)
+			{
+				sb.append(dbv.getIndividualCount(p) + "\t");
+				sb.append(dbv.getHomozygoteCount(p) + "\t");
+				sb.append(dbv.getCohortFreq(p) + "\t");
+			}
+			//Segregation
+			for(Individual ai : aff)
+			{
+				Inheritance inh = c.getInheritancePattern(ai);
+				if (inh != null) sb.append(inh.toString() + "\t");
+				else sb.append("Undetermined\t");
+			}
+			//Comphet Partners
+			Collection<Variant> plist = c.getAllPartnerVariants();
+			if (plist != null && !plist.isEmpty())
+			{
+				boolean first = true;
+				for(Variant p : plist)
+				{
+					if (!first) sb.append(";");
+					sb.append(p.getVarID());
+					int pid = p.getSingleIntInfoEntry(DBVariant.ID_INFO_KEY);
+					sb.append("(" + Integer.toHexString(pid) + ")");
+					first = false;
+				}
+				sb.append("\t");
+			}
+			else sb.append("<N/A>\t");
+			//Genotypes
+			for(FamilyMember mem : members)
+			{
+				SVDBGenotype mg = null;
+				//Search
+				for(SVDBGenotype sg : dbgenos)
+				{
+					if (sg.getIndividualUID() == mem.getUID())
+					{
+						mg = sg;
+						break;
+					}
+				}
+				if (mg == null) sb.append("0\t<N/A>\t<N/A>\t");
+				else
+				{
+					//Just first allele...
+					Collection<SVDBAllele> gall = mg.getAlleles();
+					for(SVDBAllele a : gall)
+					{
+						sb.append(a.getAlleleCount() + "\t");
+						sb.append(a.getAllele().getStart() + "\t");
+						sb.append(a.getAllele().getEnd() + "\t");
+					}
+					if (gall.size() > 1)
+					{
+						System.err.println("SVDatabase.writeFamilyTable || WARNING: Family Member " + mem.getName() + " has multiple unique alleles for variant " + dbv.getName() + ". Only first allele info will be tabled.");
+					}
+				}
+			}
+			int rlen = sb.length();
+			//Trim last tab
+			sb.deleteCharAt(rlen-1);
+
+			//Write!
+			String recLine = sb.toString();
+			ftbl.write(recLine + "\n");
+			//Prioritize variant?
+			if(prioritizeCandidate(c, dbv, aff)) ptbl.write(recLine + "\n");
+		}
+		
+		//Close streams
+		ftbl.close();
+		ptbl.close();
+	}
+	
+	public void writeBED(List<DBVariant> vars, String path)
 	{
 		//TODO: Write
-		return null;
 	}
 	
 	/* --- Management of Totals --- */
