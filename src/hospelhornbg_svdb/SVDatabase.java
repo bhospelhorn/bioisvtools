@@ -1009,6 +1009,18 @@ public class SVDatabase {
 		
 	}
 	
+	public boolean updateFamily(Family fam, String newVCF)
+	{
+		//TODO
+		return false;
+	}
+	
+	public boolean removeFamily(Family fam)
+	{
+		//TODO
+		return false;
+	}
+	
 	/* --- Variant Query --- */
 	
 	private static double calculateUpperLimit(int hits, int total)

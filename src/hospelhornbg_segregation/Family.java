@@ -497,6 +497,9 @@ public class Family extends Pedigree{
 			cpos = myfile.findString(0, 0x10, FAMI_MAGIC);
 			if (cpos != 0) throw new FileBuffer.UnsupportedFileTypeException();
 		}
+		//DEBUG!!!
+		String debugPath = path + "_DECOMP.bin";
+		myfile.writeFile(debugPath);
 		
 		cpos += 4; //Skip magic now
 		int pbid = myfile.intFromFile(cpos); cpos += 4;
