@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -32,7 +33,8 @@ public class FamilyMember extends Individual{
 	public FamilyMember(String samplename)
 	{
 		super(samplename);
-		uid = samplename.hashCode();
+		Random r = new Random();
+		uid = samplename.hashCode() ^ r.nextInt();
 		affected = new HashMap<String, AffectedStatus>();
 		birthYear = -1;
 		deathYear = -1;
