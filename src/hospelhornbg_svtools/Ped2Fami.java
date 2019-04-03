@@ -76,7 +76,7 @@ public class Ped2Fami {
 		System.out.println("--------------------------------------------------------------------------------------------------------------");
 	}
 	
-	public void runPed2Fami(String[] args)
+	public static void runPed2Fami(String[] args)
 	{
 		String pedPath = null;
 		String tblPath = null;

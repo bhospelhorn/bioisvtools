@@ -142,7 +142,7 @@ public class VariantPool {
 	 */
 	public void castStructuralVariants()
 	{
-		System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Method entered... ");
+		//System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Method entered... ");
 		List<Variant> nonSV = new LinkedList<Variant>();
 		List<StructuralVariant> SV = new LinkedList<StructuralVariant>();
 		
@@ -155,8 +155,8 @@ public class VariantPool {
 			}
 			else nonSV.add(v);
 		}
-		System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || SVs found: " + SV.size());
-		System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || non-SVs found: " + nonSV.size());
+		//System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || SVs found: " + SV.size());
+		//System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || non-SVs found: " + nonSV.size());
 		//Pair breakends
 		List<StructuralVariant> bnd = new LinkedList<StructuralVariant>();
 		List<StructuralVariant> otherSV = new LinkedList<StructuralVariant>();
@@ -183,10 +183,10 @@ public class VariantPool {
 			}
 			
 		}
-		System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Standard SVs found: " + otherSV.size());
-		System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || BND pairs found: " + bnd.size());
+		//System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Standard SVs found: " + otherSV.size());
+		//System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || BND pairs found: " + bnd.size());
 		
-		System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Casting TRA type SVs... ");
+		//System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Casting TRA type SVs... ");
 		List<Translocation> tra = new LinkedList<Translocation>();
 		List<StructuralVariant> stdSV = new LinkedList<StructuralVariant>();
 		for (StructuralVariant sv : otherSV)
@@ -202,17 +202,17 @@ public class VariantPool {
 			}
 		}
 		
-		System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Non-TRA/BND SVs found: " + stdSV.size());
-		System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Translocations found: " + tra.size());
+		//System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Non-TRA/BND SVs found: " + stdSV.size());
+		//System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Translocations found: " + tra.size());
 		
 		varList.clear();
 		varList.addAll(nonSV);
 		varList.addAll(stdSV);
 		varList.addAll(tra);
 		varList.addAll(bnd);
-		System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Resorting variants... ");
+		//System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Resorting variants... ");
 		Collections.sort(varList);
-		System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Method returning... ");
+		//System.err.println(Thread.currentThread().getName() + " || VariantPool.castStructuralVariants || Method returning... ");
 	}
 	
 	/* --- Inner Classes --- */

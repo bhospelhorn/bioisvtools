@@ -73,9 +73,9 @@ public class SVDatabase {
 	
 	public static final String FAMILY_DIRECTORY = "fam";
 	
-	public static final int POPFREQ_CUTOFF_G2 = 50; //Out of 1000
-	public static final int POPFREQ_CUTOFF_G3 = 20; //Out of 1000
-	public static final int POPFREQ_CUTOFF_G4 = 10; //Out of 1000
+	public static final double POPFREQ_CUTOFF_G2 = 0.05;
+	public static final double POPFREQ_CUTOFF_G3 = 0.02;
+	public static final double POPFREQ_CUTOFF_G4 = 0.01;
 	
 	/* --- Instance Variables --- */
 	
@@ -1011,6 +1011,41 @@ public class SVDatabase {
 	
 	/* --- Variant Query --- */
 	
+	private static double calculateUpperLimit(int hits, int total)
+	{
+		//http://sphweb.bumc.bu.edu/otlt/MPH-Modules/QuantCore/PH717_ConfidenceIntervals-OneSample/PH717_ConfidenceIntervals-OneSample5.html
+		final double z = 1.96; //95% CI
+		double pfreq = (double)hits/(double)total;
+		
+		double factor = pfreq * (1.0 - pfreq);
+		factor /= (double)total;
+		factor = Math.sqrt(factor);
+		factor *= z;
+		
+		return pfreq + factor;
+	}
+	
+	private boolean variantBelowPopThreshold(DBVariant var, double threshold)
+	{
+		//Fails if the frequency is too high for ANY population
+		if (var == null) return false;
+		
+		//Total
+		double maxFreq = calculateUpperLimit(var.getIndividualCount(), indivCount);
+		if (maxFreq > threshold) return false;
+		
+		//By population
+		for (Population p : Population.values())
+		{
+			int hits = var.getIndividualCount(p);
+			int total = this.popIndivCount.get(p);
+			maxFreq = calculateUpperLimit(hits, total);
+			if (maxFreq > threshold) return false;
+		}
+		
+		return true;
+	}
+	
 	public List<DBVariant> queryForVariants(Collection<QueryCondition> conditions) throws IOException
 	{
 		return this.queryForVariants(conditions, SVType.allTypes());
@@ -1185,7 +1220,6 @@ public class SVDatabase {
 	
 	private boolean prioritizeCandidate(Candidate c, DBVariant dbv, List<Individual> affected)
 	{
-		//TODO
 		if (c == null) return false;
 		if (affected == null) return false;
 		
@@ -1229,23 +1263,23 @@ public class SVDatabase {
 		switch(eff)
 		{
 		case DOWNSTREAM:
-			break;
+			return variantBelowPopThreshold(dbv, POPFREQ_CUTOFF_G4);
 		case EXONIC:
 			return true; //Always prioritize
 		case INTERGENIC:
-			break;
+			return variantBelowPopThreshold(dbv, POPFREQ_CUTOFF_G4);
 		case INTRONIC:
-			break;
+			return variantBelowPopThreshold(dbv, POPFREQ_CUTOFF_G3);
 		case NCRNA:
-			break;
+			return variantBelowPopThreshold(dbv, POPFREQ_CUTOFF_G2);
 		case SPLICING:
 			return true; //Always prioritize
 		case UPSTREAM:
-			break;
+			return variantBelowPopThreshold(dbv, POPFREQ_CUTOFF_G2);
 		case UTR3:
-			break;
+			return variantBelowPopThreshold(dbv, POPFREQ_CUTOFF_G3);
 		case UTR5:
-			break;
+			return variantBelowPopThreshold(dbv, POPFREQ_CUTOFF_G2);
 		}
 		
 		return true;

@@ -16,6 +16,7 @@ import java.util.Set;
 
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
+import hospelhornbg_svdb.ConsoleFrontEnd;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
@@ -42,6 +43,9 @@ public class ConsoleMain {
 	public static final String TOOL_SVGENEHITTALLY = "svght";
 	public static final String TOOL_SCANSAM = "scansam";
 	public static final String TOOL_FIXSAM = "fixsam";
+	public static final String TOOL_PEDTOFAMI = "ped2fami";
+	public static final String TOOL_VIEWFAMI = "viewfami";
+	public static final String TOOL_SVDB = "svdb";
 
 	public static final String OP_GENOMEBUILD = "-g";
 	public static final String OP_VERBOSE = "-v";
@@ -732,6 +736,37 @@ public class ConsoleMain {
 				System.exit(1);
 			}
 			SamFixer.runSamFixer(args, gb, verbose);
+		}
+		else if (program.equals(TOOL_PEDTOFAMI))
+		{
+			if (verbose){
+				System.err.println("Tool Selected: " + TOOL_PEDTOFAMI);
+				System.err.println();
+			}
+			Ped2Fami.runPed2Fami(args);
+		}
+		else if (program.equals(TOOL_VIEWFAMI))
+		{
+			if (verbose){
+				System.err.println("Tool Selected: " + TOOL_VIEWFAMI);
+				System.err.println();
+			}
+			ViewFami.runViewFami(args);
+		}
+		else if (program.equals(TOOL_SVDB))
+		{
+			if (verbose){
+				System.err.println("Tool Selected: " + TOOL_SVDB);
+				System.err.println();
+			}
+			GenomeBuild gb = loadBuild(homedir, genome, verbose);
+			if(gb == null)
+			{
+				System.err.println("Genome build for \"" + genome + "\" could not be loaded!");
+				printUsage();
+				System.exit(1);
+			}
+			ConsoleFrontEnd.runSVDB(args, gb, verbose);
 		}
 		else
 		{

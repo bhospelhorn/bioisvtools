@@ -435,7 +435,7 @@ public class VCF {
 				}
 				c++;
 			}
-			if (c % 5000 == 0 && c != 0)
+			/*if (c % 5000 == 0 && c != 0)
 			{
 				System.err.println("VCF.parseVCF || Variants read: " + c);
 				int tot = 0;
@@ -446,7 +446,7 @@ public class VCF {
 				tot += t1.countRejected();
 				tot += t2.countRejected();
 				System.err.println("VCF.parseVCF || Variants rejected: " + tot);
-			}
+			}*/
 			try {line = reader.readLine();}
 			catch(IOException e) {
 				reader.close();
