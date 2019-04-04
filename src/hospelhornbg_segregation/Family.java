@@ -148,6 +148,7 @@ public class Family extends Pedigree{
 				if (i instanceof FamilyMember)
 				{
 					iProband = (FamilyMember)i;
+					super.setProband(i);
 					return true;
 				}
 			}
@@ -160,6 +161,7 @@ public class Family extends Pedigree{
 		FamilyMember fm = iMembers.get(pbID);
 		if (fm == null) return false;
 		iProband = fm;
+		super.setProband(iProband);
 		return true;
 	}
 	
@@ -521,8 +523,8 @@ public class Family extends Pedigree{
 			if (cpos != 0) throw new FileBuffer.UnsupportedFileTypeException();
 		}
 		//DEBUG!!!
-		String debugPath = path + "_DECOMP.bin";
-		myfile.writeFile(debugPath);
+		//String debugPath = path + "_DECOMP.bin";
+		//myfile.writeFile(debugPath);
 		
 		cpos += 4; //Skip magic now
 		int pbid = myfile.intFromFile(cpos); cpos += 4;
@@ -530,7 +532,8 @@ public class Family extends Pedigree{
 		int version = myfile.intFromFile(cpos); cpos += 4;
 		if (version > CURRENT_FAMI_VERSION) throw new FileBuffer.UnsupportedFileTypeException();
 		
-		byte[] ptags = new byte[8];
+		//Obsolete
+		/*byte[] ptags = new byte[8];
 		if (version >= 2)
 		{
 			for(int i = 0; i < 8; i++)
@@ -538,7 +541,7 @@ public class Family extends Pedigree{
 				ptags[i] = myfile.getByte(cpos);
 				cpos++;
 			}	
-		}
+		}*/
 		
 		String famName = myfile.getASCII_string(cpos, 48); cpos += 48;
 		
@@ -589,6 +592,11 @@ public class Family extends Pedigree{
 				aff[j] = (n >>> 4) & 0xF;
 				aff[j+1] = n & 0xF;
 			}
+			//DEBUG
+			//System.err.print("-DEBUG- AFF TABLE READ: ");
+			//for(int j = 0; j < MAX_CONDITIONS; j += 2) System.err.print(aff[j] + " ");
+			//System.err.println();
+			
 			//Skip next two bytes
 			cpos += 2;
 			int byear = myfile.getValueAsInt(cpos, BinFieldSize.WORD); cpos += 2;
@@ -629,13 +637,19 @@ public class Family extends Pedigree{
 			FamilyMember fm = new FamilyMember(samplename);
 			fm.setUID(uid);
 			if(p1id != -1) p1map.put(uid, p1id);
+			//System.err.println("-DEBUG- p1UID: " + Integer.toHexString(p1id));
 			if(p2id != -1) p2map.put(uid, p2id);
+			//System.err.println("-DEBUG- p2UID: " + Integer.toHexString(p2id));
 			fm.setSex(getFAMISexEnum(csx));
 			fm.setPhenotypicSex(getFAMISexEnum(psx));
 			for (Population p : pset) fm.addPopulationTag(p);
 			for (int j = 0; j < ncond; j++)
 			{
-				fm.setAffectedStatus(f.getCondition(j), Family.getFAMIAffectedEnum(aff[j]));
+				//System.err.println("-DEBUG- Condition " + j + ": " + f.getCondition(j));
+				//System.err.println("-DEBUG- Enum Value: " + aff[j]);
+				AffectedStatus as = Family.getFAMIAffectedEnum(aff[j]);
+				//System.err.println("-DEBUG- Affected Status: " + as);
+				fm.setAffectedStatus(f.getCondition(j), as);
 			}
 			fm.setFirstName(firstname);
 			fm.setLastName(lastname);
@@ -668,12 +682,15 @@ public class Family extends Pedigree{
 			if (p2 != null)
 			{
 				FamilyMember child = f.getMember(i);
-				if(child != null) child.setParent1(p2);
+				if(child != null) child.setParent2(p2);
 			}
 		}
 		
 		//Set proband
 		f.setProband(pbid);
+		
+		//Default seg condition to 0
+		f.setSegregatingCondition(0);
 		
 		return f;
 	}
@@ -778,7 +795,6 @@ public class Family extends Pedigree{
 				myfile.addToFile(FileBuffer.ZERO_BYTE);
 			}
 		}
-		myfile.addToFile(CURRENT_FAMI_VERSION);
 		
 		//Affected condition string table
 		String[] ctbl = new String[MAX_CONDITIONS];
@@ -833,14 +849,18 @@ public class Family extends Pedigree{
 				int wbyte = 0;
 				if(c1 != null)
 				{
+					//System.err.println("-DEBUG- Condition found: " + c1);
 					AffectedStatus as = m.getAffectedStatus(c1);
+					//System.err.println("-DEBUG- Affected status: " + as);
 					int asi = getFAMIAffectedEnum(as);
 					asi = asi << 4;
 					wbyte |= asi;
 				}
 				if (c2 != null)
 				{
+					//System.err.println("-DEBUG- Condition found: " + c2);
 					AffectedStatus as = m.getAffectedStatus(c2);
+					//System.err.println("-DEBUG- Affected status: " + as);
 					int asi = getFAMIAffectedEnum(as);
 					wbyte |= asi;
 				}
@@ -850,9 +870,9 @@ public class Family extends Pedigree{
 			
 			//Dates (Month and day unused, set to 1/1)
 			myfile.addToFile((short)0x0101);
-			myfile.addToFile(m.getBirthYear());
+			myfile.addToFile((short)m.getBirthYear());
 			myfile.addToFile((short)0x0101);
-			myfile.addToFile(m.getDeathYear());
+			myfile.addToFile((short)m.getDeathYear());
 			//Sample name
 			myfile.addVariableLengthString(m.getName(), BinFieldSize.WORD, 2);
 			//Last name
@@ -877,8 +897,8 @@ public class Family extends Pedigree{
 		}
 		
 		//DEBUG
-		String decompPath = path + "DECOMPOUT.bin";
-		myfile.writeFile(decompPath);
+		//String decompPath = path + "DECOMPOUT.bin";
+		//myfile.writeFile(decompPath);
 		
 		//Compress if needed
 		if(huff)

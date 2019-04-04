@@ -169,6 +169,11 @@ public class Pedigree{
 		indivMap.put(newname, i);
 	}
 	
+	protected void setProband(Individual pb)
+	{
+		proband = pb;
+	}
+	
 	/* --- Lists --- */
 	
 	public void regenerateAffectedLists()

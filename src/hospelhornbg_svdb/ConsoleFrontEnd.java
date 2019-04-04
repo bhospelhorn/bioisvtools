@@ -16,6 +16,8 @@ public class ConsoleFrontEnd {
 	public static final String PROG_REMOVEFAM = "removefam";
 	public static final String PROG_DUMPFAM = "famvardump";
 	
+	public static final String PROG_VARINFO = "varinfo"; //Dumps all info on a single variant, including all genotypes!
+	
 	public static final String OP_GENOME = "-g";
 	public static final String OP_FAMILY = "-f";
 	
@@ -28,8 +30,15 @@ public class ConsoleFrontEnd {
 	public static final String OP_OUTPUTPATH = "-o";
 	
 	public static final String OP_LEEWAY = "-l";
+	
+	public static final String OP_UID = "-I"; //Can be used for sample or variant IDs
 
 	/* ----- Usage Message ----- */
+	
+	public void printUsage()
+	{
+		//TODO
+	}
 	
 	/* ----- Helper Methods ----- */
 	
@@ -120,12 +129,89 @@ public class ConsoleFrontEnd {
 
 	public static void updateFam(String dbName, String dbDir, String famName, String newVCF)
 	{
-		//TODO
+		//Open DB
+		System.err.println("Opening database...");
+		SVDatabase db = null;
+		try {db = SVDatabase.readDatabase(dbDir, dbName);} 
+		catch (IOException e) 
+		{
+			System.err.println("ConsoleFrontEnd.updateFam || ERROR: Database could not be opened!");
+			System.err.println("DB Name: " + dbName);
+			System.err.println("DB Location: " + dbDir);
+			e.printStackTrace();
+			System.exit(1);
+		}
+		
+		//Get family
+		Family f = db.getFamily(famName);
+		if (f == null)
+		{
+			System.err.println("ConsoleFrontEnd.updateFam || ERROR: Family not found in database!");
+			System.err.println("Family Name: " + famName);
+			System.exit(1);
+		}
+		
+		try 
+		{
+			boolean b = db.updateFamily(f, newVCF);
+			if(b) System.err.println("ConsoleFrontEnd.updateFam || Update Succeeded!");
+			else System.err.println("ConsoleFrontEnd.updateFam || Update Failed!");
+		} 
+		catch (IOException e) 
+		{
+			System.err.println("ConsoleFrontEnd.updateFam || ERROR: One or more db files could not be read/written to!");
+			System.err.println("ConsoleFrontEnd.updateFam || Update Failed!");
+			e.printStackTrace();
+			System.exit(1);
+		} 
+		catch (UnsupportedFileTypeException e) 
+		{
+			System.err.println("ConsoleFrontEnd.updateFam || ERROR: Input VCF could not be read!");
+			System.err.println("ConsoleFrontEnd.updateFam || Update Failed!");
+			e.printStackTrace();
+			System.exit(1);
+		}
+		
 	}
 	
 	public static void removeFam(String dbName, String dbDir, String famName)
 	{
-		//TODO
+		//Open DB
+		System.err.println("Opening database...");
+		SVDatabase db = null;
+		try {db = SVDatabase.readDatabase(dbDir, dbName);} 
+		catch (IOException e) 
+		{
+			System.err.println("ConsoleFrontEnd.removeFam || ERROR: Database could not be opened!");
+			System.err.println("DB Name: " + dbName);
+			System.err.println("DB Location: " + dbDir);
+			e.printStackTrace();
+			System.exit(1);
+		}
+		
+		//Get family
+		Family f = db.getFamily(famName);
+		if (f == null)
+		{
+			System.err.println("ConsoleFrontEnd.removeFam || ERROR: Family not found in database!");
+			System.err.println("Family Name: " + famName);
+			System.exit(1);
+		}
+		
+		try 
+		{
+			boolean b = db.removeFamily(f);
+			if(b) System.err.println("ConsoleFrontEnd.removeFam || Update Succeeded!");
+			else System.err.println("ConsoleFrontEnd.removeFam || Update Failed!");
+		} 
+		catch (IOException e) 
+		{
+			System.err.println("ConsoleFrontEnd.removeFam || ERROR: One or more db files could not be read/written to!");
+			System.err.println("ConsoleFrontEnd.removeFam || Update Failed!");
+			e.printStackTrace();
+			System.exit(1);
+		} 
+
 	}
 	
 	public static void dumpFam(String dbName, String dbDir, String famName, String outpath)
@@ -138,6 +224,12 @@ public class ConsoleFrontEnd {
 	public static void runSVDB(String[] args, GenomeBuild gb, boolean verbose)
 	{
 		//TODO
+		
+		//Expects svdb mode name to be after program name
+		// ie. should be args[1]
+		
+		
+		
 	}
 	
 }

@@ -22,6 +22,8 @@ public enum Population {
 	private Population(int i, String str, String shortStr)
 	{
 		desc = str;
+		shrt = shortStr;
+		eid = i;
 	}
 	
 	public int getIDNumber()

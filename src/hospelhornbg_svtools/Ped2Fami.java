@@ -23,7 +23,7 @@ public class Ped2Fami {
 	public static final String TBLOP_LASTNAME = "FAMNAME"; 
 	public static final String TBLOP_BYEAR = "BIRTHYEAR"; 
 	public static final String TBLOP_DYEAR = "DEATHYEAR"; 
-	public static final String TBLOP_ETHLIST = "ETHNICITY_TAGS"; 
+	public static final String TBLOP_ETHLIST = "ETHLIST"; 
 	
 	/*
 	 * Input Table Information...
@@ -258,13 +258,19 @@ public class Ped2Fami {
 			val = smap.get(TBLOP_ETHLIST);
 			if(val != null)
 			{
+				//System.err.println("-DEBUG- Population Tag List Detected! ");
+				//System.err.println("-DEBUG-\t" + val);
 				String[] groups = val.split(",");
 				if (groups.length > 0)
 				{
 					for(String g : groups)
 					{
+						//System.err.println("-DEBUG-\t\t\"" + g+"\"");
 						Population p = Population.getPopulation(g);
-						if (p != null) m.addPopulationTag(p);
+						if (p != null) {
+							//System.err.println("-DEBUG-\t\tTag matched to: " + p.getShortString());
+							m.addPopulationTag(p);
+						}
 					}
 				}
 			}

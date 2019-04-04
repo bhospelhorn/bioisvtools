@@ -52,6 +52,9 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Utils.SerializedString;
 import waffleoRai_Utils.StreamBuffer;
 
+//TODO: I think the DBSample is a bit redundant with the family information?
+//Maybe just get rid of the DBSample altogether and just map FamilyMember objects to UIDs/Sample IDs?
+
 public class SVDatabase {
 	
 	/*
@@ -564,7 +567,7 @@ public class SVDatabase {
 		}
 	}
 	
-	/* --- Variant Addition --- */
+	/* --- Variant Addition/Deletion --- */
 	
 	public boolean addFamily(String vcfpath, Family fam) throws IOException, UnsupportedFileTypeException
 	{
@@ -1009,16 +1012,89 @@ public class SVDatabase {
 		
 	}
 	
-	public boolean updateFamily(Family fam, String newVCF)
+	public boolean updateFamily(Family fam, String newVCF) throws IOException, UnsupportedFileTypeException
 	{
-		//TODO
-		return false;
+		if (fam == null) return false;
+		if (newVCF == null || newVCF.isEmpty()) return false;
+		
+		//Remove all variants and genotypes for the family, then re-add
+		
+		if(!removeFamily(fam)) return false;
+		if(!addFamily(newVCF, fam)) return false;
+		
+		return true;
 	}
 	
-	public boolean removeFamily(Family fam)
+	public boolean removeFamily(Family fam) throws IOException
 	{
-		//TODO
-		return false;
+		if (fam == null) return false;
+		
+		List<FamilyMember> members = fam.getAllFamilyMembers();
+		Set<Integer> remVars = new TreeSet<Integer>();
+		for(FamilyMember mem : members)
+		{
+			int uid = mem.getUID();
+			List<Integer> varids = genoTable.removeSampleFromGenotypeTable(uid);
+			remVars.addAll(varids);
+			//removeVariants(varids);
+		}
+		
+		removeVariants(remVars);
+		return true;
+	}
+	
+	private void removeVariants(Collection<Integer> varIDList) throws IOException
+	{
+		if(varIDList == null || varIDList.isEmpty()) return;
+		
+		SVType[] types = SVType.values();
+		for(SVType t : types)
+		{
+			String tpath = this.getVariantTablePath(t);
+			if (!FileBuffer.fileExists(tpath)) continue;
+			
+			String temppath = FileBuffer.generateTemporaryPath("svdbtemptbl");
+			BufferedReader br = new BufferedReader(new FileReader(tpath));
+			BufferedWriter temp = new BufferedWriter(new FileWriter(temppath));
+			
+			String line = null;
+			while((line = br.readLine()) != null)
+			{
+				if(line.isEmpty()) continue;
+				if (line.startsWith("#")) {
+					temp.write(line + "\n");
+					continue;
+				}
+				//Read the hex id, which is field 2
+				String[] fields = line.split("\t");
+				if (fields.length < 2) continue;
+				try
+				{
+					int id = Integer.parseUnsignedInt(fields[1], 16);
+					if(varIDList.contains(id)) continue; //This line will not be written
+				}
+				catch(NumberFormatException e) {continue;}
+				temp.write(line + "\n");
+			}
+			
+			temp.close();
+			br.close();
+			
+			//Move temp back...
+			Files.delete(Paths.get(tpath));
+			Files.move(Paths.get(temppath), Paths.get(tpath));
+			
+			indexVariantTable(t);
+		}
+		
+		indexVariants();
+	}
+	
+	/* --- Sample Query --- */
+	
+	public Family getFamily(String familyName)
+	{
+		return familyMap.get(familyName);
 	}
 	
 	/* --- Variant Query --- */
