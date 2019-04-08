@@ -232,7 +232,7 @@ public class Contig implements Comparable<Contig>{
 		}
 		
 		//Check sort mode
-		if(SORTMODE == SORTMODE_NORMAL_CTGLEN)
+		if(sortClass == SORTCLASS_CONTIG && SORTMODE == SORTMODE_NORMAL_CTGLEN)
 		{
 			return (int)(this.length - o.length);
 		}
