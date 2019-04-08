@@ -46,6 +46,7 @@ public class ConsoleMain {
 	public static final String TOOL_PEDTOFAMI = "ped2fami";
 	public static final String TOOL_VIEWFAMI = "viewfami";
 	public static final String TOOL_SVDB = "svdb";
+	public static final String TOOL_LRGMRG = "lrgmrg";
 
 	public static final String OP_GENOMEBUILD = "-g";
 	public static final String OP_VERBOSE = "-v";
@@ -767,6 +768,21 @@ public class ConsoleMain {
 				System.exit(1);
 			}
 			ConsoleFrontEnd.runSVDB(args, gb, verbose);
+		}
+		else if (program.equals(TOOL_LRGMRG))
+		{
+			if (verbose){
+				System.err.println("Tool Selected: " + TOOL_LRGMRG);
+				System.err.println();
+			}
+			GenomeBuild gb = loadBuild(homedir, genome, verbose);
+			if(gb == null)
+			{
+				System.err.println("Genome build for \"" + genome + "\" could not be loaded!");
+				printUsage();
+				System.exit(1);
+			}
+			LargeMerger.runMerger(args, gb);
 		}
 		else
 		{
