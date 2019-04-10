@@ -113,6 +113,12 @@ public class LargeMerger {
 				continue;
 			}
 			List<StructuralVariant> svlist = map.get(c1);
+			if(svlist == null)
+			{
+				System.err.println("LargeMerge.mergeLargeVariants || No variants mapped to contig " + c1.getUDPName() + " found in source set...");
+				missed.add(lsv);
+				continue;
+			}
 			boolean matched = false;
 			for(StructuralVariant sv: svlist)
 			{
@@ -121,6 +127,7 @@ public class LargeMerger {
 				if(matched)
 				{
 					sv.addInfoFlag(INFODEF_INFO_SNPARRVIS.getKey());
+					System.err.println("LargeMerge.mergeLargeVariants || -DEBUG- Variants matched: " + lsv.getVariantID() + " to " + sv.getVarID());
 					break;
 				}
 			}
@@ -162,6 +169,12 @@ public class LargeMerger {
 				continue;
 			}
 			List<StructuralVariant> svlist = map.get(c1);
+			if(svlist == null)
+			{
+				System.err.println("LargeMerge.rescueFromVCF || No variants mapped to contig " + c1.getUDPName() + " found in rescue set...");
+				missed.add(lsv);
+				continue;
+			}
 			boolean matched = false;
 			for(StructuralVariant sv: svlist)
 			{
@@ -171,6 +184,7 @@ public class LargeMerger {
 				{
 					sv.addInfoFlag(INFODEF_INFO_SNPARRVIS.getKey());
 					mainPool.addVariant(sv);
+					System.err.println("LargeMerge.rescueFromVCF || -DEBUG- Variants matched: " + lsv.getVariantID() + " to " + sv.getVarID());
 					break;
 				}
 			}
@@ -289,16 +303,18 @@ public class LargeMerger {
 			e.printStackTrace();
 			System.exit(1);
 		}
+		System.err.println("LargeMerge.runMerger || -DEBUG- Input Variants (Large): " + largeList.size());
 		
 		//Run initial merge
 		List<LiteSV> rejects = mergeLargeVariants(main, largeList);
+		System.err.println("LargeMerge.runMerger || -DEBUG- Unmatched variants (First pass): " + rejects.size());
 		
 		//Run rescues
 		for(String p : rescuePaths)
 		{
 			if (rejects == null || rejects.isEmpty()) break;
 			VariantPool rpool = null;
-			try {rpool = VCF.readVCF(p, true);}
+			try {rpool = VCF.readVCF(p, gb, true);}
 			catch (IOException e) 
 			{
 				System.err.println("ERROR! Rescue vcf \"" + p + "\" could not be opened!");
@@ -314,6 +330,7 @@ public class LargeMerger {
 			
 			Collection<Variant> rescues = rpool.getVariants();
 			rejects = rescueFromVCF(main, rejects, rescues);
+			System.err.println("LargeMerge.runMerger || -DEBUG- Unmatched variants (Rescue): " + rejects.size());
 		}
 		
 		//If any rejects remain, print to stdout

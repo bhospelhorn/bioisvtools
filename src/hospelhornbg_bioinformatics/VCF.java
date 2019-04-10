@@ -464,14 +464,14 @@ public class VCF {
 		
 		while(t1.isAlive() || t2.isAlive())
 		{
-			int tot = 0;
-			tot += t1.countParsed();
-			tot += t2.countParsed();
-			System.err.println("VCF.parseVCF || Variants parsed: " + tot);
-			tot = 0;
-			tot += t1.countRejected();
-			tot += t2.countRejected();
-			System.err.println("VCF.parseVCF || Variants rejected: " + tot);
+			//int tot = 0;
+			//tot += t1.countParsed();
+			//tot += t2.countParsed();
+			//System.err.println("VCF.parseVCF || Variants parsed: " + tot);
+			//tot = 0;
+			//tot += t1.countRejected();
+			//tot += t2.countRejected();
+			//System.err.println("VCF.parseVCF || Variants rejected: " + tot);
 			try {
 				Thread.sleep(5000);
 			} catch (InterruptedException e) {

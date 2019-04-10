@@ -234,8 +234,10 @@ public class PennToVCF {
 		VariantPool pool = spawnPool(g, samplename);
 		int tSize = SNPtable.size();
 		
+		int i = 0;
 		for (SNPCNV v : myVars)
 		{
+			i++;
 			//Find start SNP (and flanking)
 			String sn = v.getStartSNPName();
 			int si = getTableIndex(SNPtable, sn);
@@ -323,6 +325,7 @@ public class PennToVCF {
 				sv.setCIDiff(edCIHi - edPos, true, true, true);
 				sv.setImprecise(true);
 				sv.addGenotype(samplename, gt);
+				sv.setVariantName("PENNCNV" + String.format("%03d", i));
 				
 				//Add to pool
 				pool.addVariant(sv);
