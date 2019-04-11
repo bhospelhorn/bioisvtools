@@ -374,27 +374,42 @@ public class SamFixer {
 			
 			//Check for positions and mate positions that are off end of contig...
 			Contig rcontig = sr.getReferenceContig();
-			if (rcontig == null)
+			/*if (rcontig == null)
 			{
-				System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || Ref contig is null! InputString:");
-				System.err.println(input);
-			}
-			else if(sr.getPosition() >= rcontig.getLength())
+				//NOOOOOOOO! This is printing all unmapped contigs!!!!
+				//System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || Ref contig is null! InputString:");
+				//System.err.println(input);
+			}*/
+			if (rcontig != null)
 			{
-				counter.incrementBadPosition();
-				return;
+				if(sr.getPosition() >= rcontig.getLength())
+				{
+					counter.incrementBadPosition();
+					if(keep_bad_contig) {
+						sr.flagSegmentUnmapped(true);
+						sr.setPosition(0);
+					}
+					else return;
+				}
 			}
 			
 			Contig ncontig = sr.getNextReferenceContig();
-			if (ncontig == null)
+			/*if (ncontig == null)
 			{
 				System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || Next ref contig is null! InputString:");
 				System.err.println(input);
-			}
-			else if(sr.getNextPosition() >= ncontig.getLength())
+			}*/
+			if (ncontig != null)
 			{
-				counter.incrementBadNextPosition();
-				return;
+				if(sr.getNextPosition() >= ncontig.getLength())
+				{
+					counter.incrementBadNextPosition();
+					if(keep_bad_contig) {
+						sr.flagNextSegmentUnmapped(true);
+						sr.setNextPosition(0);
+					}
+					else return;
+				}
 			}
 			
 			//Add read group if needed...
