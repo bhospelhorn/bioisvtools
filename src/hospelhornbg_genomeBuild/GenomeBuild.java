@@ -12,6 +12,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import waffleoRai_Utils.CompositeBuffer;
 import waffleoRai_Utils.FileBuffer;
@@ -44,14 +46,17 @@ import waffleoRai_Compression.huffman.Huffman;
  * 	!!IMPORTANT!! Fields added to file format (will have to regen existing files!)
  * 	Added pseudoautosomal regions
  * 
+ * 1.5.1 | April 15, 2019
+ * 	Contigs now held in threadsafe map objects
+ * 
  */
 
 /**
  * A container for information about a genome build, such as the contigs present, their
  * various aliases, and their lengths.
  * @author Blythe Hospelhorn
- * @version 1.5.0
- * @since February 12, 2019
+ * @version 1.5.1
+ * @since April 15, 2019
  *
  */
 public class GenomeBuild {
@@ -80,8 +85,8 @@ public class GenomeBuild {
 	private String buildName;
 	private GenomeBuildUID uid_enum;
 	
-	private Map<String, Contig> contigMap;
-	private Map<Integer, Contig> UIDMap;
+	private ConcurrentMap<String, Contig> contigMap;
+	private ConcurrentMap<Integer, Contig> UIDMap;
 	
 	private List<PseudoAutosomalRegion> parList;
 	
@@ -139,8 +144,8 @@ public class GenomeBuild {
 	
 	public GenomeBuild(String speciesID, String buildID, GenomeBuildUID uide)
 	{
-		contigMap = new HashMap<String, Contig>();
-		UIDMap = new HashMap<Integer, Contig>();
+		contigMap = new ConcurrentHashMap<String, Contig>();
+		UIDMap = new ConcurrentHashMap<Integer, Contig>();
 		parList = new ArrayList<PseudoAutosomalRegion>();
 		species = speciesID;
 		buildName = buildID;
@@ -149,8 +154,8 @@ public class GenomeBuild {
 	
 	public GenomeBuild(String filePath) throws IOException, UnsupportedFileTypeException
 	{
-		contigMap = new HashMap<String, Contig>();
-		UIDMap = new HashMap<Integer, Contig>();
+		contigMap = new ConcurrentHashMap<String, Contig>();
+		UIDMap = new ConcurrentHashMap<Integer, Contig>();
 		parList = new ArrayList<PseudoAutosomalRegion>();
 		parseGLBD(filePath);
 	}
@@ -158,8 +163,8 @@ public class GenomeBuild {
 	public GenomeBuild(InputStream stream) throws IOException, UnsupportedFileTypeException
 	{
 		FileBuffer myFile = new FileBuffer(1024 * 500); //500KB
-		contigMap = new HashMap<String, Contig>();
-		UIDMap = new HashMap<Integer, Contig>();
+		contigMap = new ConcurrentHashMap<String, Contig>();
+		UIDMap = new ConcurrentHashMap<Integer, Contig>();
 		parList = new ArrayList<PseudoAutosomalRegion>();
 	//	int sz = 0;
 		int b = stream.read();

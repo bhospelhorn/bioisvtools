@@ -16,10 +16,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import hospelhornbg_bioinformatics.SAMField;
 import hospelhornbg_bioinformatics.SAMHeaderLine;
 import hospelhornbg_bioinformatics.SAMRecord;
 import hospelhornbg_bioinformatics.SAMRecord.InvalidSAMRecordException;
 import hospelhornbg_bioinformatics.SAMRecord.WarningFlags;
+import hospelhornbg_bioinformatics.SAMStringField;
 import hospelhornbg_genomeBuild.Contig;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -36,6 +38,78 @@ public class SamFixer {
 	public static final String OP_SAMPLE_NAME = "-s"; 
 	
 	public static final int MAX_QUEUESIZE = 1000000000;
+	
+	private static QueueCounter qc;
+	
+	public static class QueueCounter
+	{
+		private volatile long parseIn;
+		private volatile long parseOut;
+		
+		private volatile boolean parseDone;
+		private volatile long writeIn;
+		private volatile long writeOut;
+		
+		public QueueCounter()
+		{
+			parseIn = 0;
+			parseOut = 0;
+			parseDone = false;
+			writeIn = 0;
+			writeOut = 0;
+		}
+		
+		public long countParseIn()
+		{
+			return parseIn;
+		}
+		
+		public void incrementParseIn()
+		{
+			parseIn++; //Only reader thread writes
+		}
+		
+		public long countParseOut()
+		{
+			return parseOut;
+		}
+		
+		public synchronized void incrementParseOut()
+		{
+			parseOut++;
+		}
+		
+		public boolean isParseDone()
+		{
+			return parseDone;
+		}
+		
+		public void setParseDone()
+		{
+			parseDone = true;
+		}
+
+		public long countWriteIn()
+		{
+			return writeIn;
+		}
+		
+		public synchronized void incrementWriteIn()
+		{
+			writeIn++;
+		}
+		
+		public long countWriteOut()
+		{
+			return writeOut;
+		}
+		
+		public void incrementWriteOut()
+		{
+			writeOut++;
+		}
+	
+	}
 	
 	public static void printUsage()
 	{
@@ -75,6 +149,9 @@ public class SamFixer {
 		private long bad_format;
 		private long bad_record;
 		
+		private long bad_POS;
+		private long bad_NPOS;
+		
 		private volatile long queued_for_write;
 		private volatile long total_read;
 		private volatile long total_written;
@@ -91,6 +168,8 @@ public class SamFixer {
 			queued_for_write = 0;
 			total_read = 0;
 			total_written = 0;
+			bad_POS = 0;
+			bad_NPOS = 0;
 		}
 		
 		public synchronized void increment_RNAME()
@@ -163,6 +242,26 @@ public class SamFixer {
 			return this.total_written;
 		}
 		
+		public synchronized void incrementBadPosition()
+		{
+			bad_POS++;
+		}
+		
+		public synchronized void incrementBadNextPosition()
+		{
+			bad_NPOS++;
+		}
+		
+		public long getBadPosCount()
+		{
+			return this.bad_POS;
+		}
+		
+		public long getBadNPosCount()
+		{
+			return this.bad_NPOS;
+		}
+		
 		/*
 		public synchronized void addAux(String s)
 		{
@@ -191,7 +290,7 @@ public class SamFixer {
 		
 	}
 	
-	private static class SyncedInt
+	/*private static class SyncedInt
 	{
 		private volatile int i;
 		
@@ -209,7 +308,7 @@ public class SamFixer {
 		{
 			return i;
 		}
-	}
+	}*/
 	
 	private static List<SAMHeaderLine> parseHeader(List<String> rawlines) throws UnsupportedFileTypeException
 	{
@@ -314,7 +413,7 @@ public class SamFixer {
 		return outlist;
 	}
 	
-	private static void generateOutputLine(String input, GenomeBuild gb, BadCounter counter, ConcurrentLinkedQueue<String> writequeue, boolean verbose, boolean ucsc, boolean keep_bad_contig) throws InterruptedException
+	private static void generateOutputLine(String input, GenomeBuild gb, BadCounter counter, ConcurrentLinkedQueue<String> writequeue, boolean verbose, boolean ucsc, boolean keep_bad_contig, String defo_rgid) throws InterruptedException
 	{
 		//Tosses lines with bad contigs (commented out lines for unmapping bad contig lines)
 		try 
@@ -345,6 +444,56 @@ public class SamFixer {
 				return;
 			}
 			
+			//Check for positions and mate positions that are off end of contig...
+			Contig rcontig = sr.getReferenceContig();
+			/*if (rcontig == null)
+			{
+				//NOOOOOOOO! This is printing all unmapped contigs!!!!
+				//System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || Ref contig is null! InputString:");
+				//System.err.println(input);
+			}*/
+			if (rcontig != null)
+			{
+				if(sr.getPosition() >= rcontig.getLength())
+				{
+					counter.incrementBadPosition();
+					if(keep_bad_contig) 
+					{
+						sr.flagSegmentUnmapped(true);
+						sr.setPosition(0);
+					}
+					else return;
+				}
+			}
+			
+			Contig ncontig = sr.getNextReferenceContig();
+			/*if (ncontig == null)
+			{
+				System.err.println(Thread.currentThread().getName() + " || SamFixer.generateOutputLine || Next ref contig is null! InputString:");
+				System.err.println(input);
+			}*/
+			if (ncontig != null)
+			{
+				if(sr.getNextPosition() >= ncontig.getLength())
+				{
+					counter.incrementBadNextPosition();
+					if(keep_bad_contig) 
+					{
+						sr.flagNextSegmentUnmapped(true);
+						sr.setNextPosition(0);
+					}
+					else return;
+				}
+			}
+			
+			//Add read group if needed...
+			SAMField rgfield = sr.getCustomField("RG");
+			if (rgfield == null)
+			{
+				rgfield = new SAMStringField("RG", defo_rgid);
+				sr.addCustomField(rgfield);
+			}
+			
 			//Dump any aux fields...
 			//List<SAMField> auxlist = sr.getAllOptionalFields();
 			/*for (SAMField aux : auxlist)
@@ -364,11 +513,13 @@ public class SamFixer {
 				{
 					//If it's getting interrupted, that should only be a kill signal...
 					//Dump the record in the queue regardless of queue size, and throw the exception.
+					qc.incrementWriteIn();
 					writequeue.add(outline);
 					counter.incrementQueuedForWrite();
 					throw e;
 				}
 			}
+			qc.incrementWriteIn();
 			writequeue.add(outline);
 			counter.incrementQueuedForWrite();
 		}
@@ -384,7 +535,7 @@ public class SamFixer {
 		}
 	}
 	
-	private static int finishParsingQueue(ConcurrentLinkedQueue<String> linequeue, GenomeBuild gb, BadCounter counter, ConcurrentLinkedQueue<String> writequeue, boolean verbose, boolean ucsc, boolean keep_bad_contig)
+	private static int finishParsingQueue(ConcurrentLinkedQueue<String> linequeue, GenomeBuild gb, BadCounter counter, ConcurrentLinkedQueue<String> writequeue, boolean verbose, boolean ucsc, boolean keep_bad_contig, String defo_rgid)
 	{
 		int lcount = 0;
 		while(!linequeue.isEmpty())
@@ -393,7 +544,7 @@ public class SamFixer {
 			if (line == null) continue;
 			try 
 			{
-				generateOutputLine(line, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
+				generateOutputLine(line, gb, counter, writequeue, verbose, ucsc, keep_bad_contig, defo_rgid);
 			} 
 			catch (InterruptedException e) 
 			{
@@ -401,7 +552,7 @@ public class SamFixer {
 				//e.printStackTrace();
 			}
 			lcount++;
-			counter.incrementQueuedForWrite();
+			//counter.incrementQueuedForWrite();
 		}
 		return lcount;
 	}
@@ -416,9 +567,38 @@ public class SamFixer {
 		ConcurrentLinkedQueue<String> linequeue = new ConcurrentLinkedQueue<String>();
 		ConcurrentLinkedQueue<String> writequeue = new ConcurrentLinkedQueue<String>();
 		
+		String defo_rgid = null;
+		List<String> rawheader = new LinkedList<String>();
+		String line = null;
+		while((line = input.readLine()) != null)
+		{
+			if (line.isEmpty() || line.charAt(0) != '@') break; //We'll save that line for records in a minute..
+			//Otherwise...
+			rawheader.add(line);
+		}
+		
+		//Interpret header lines
+		List<SAMHeaderLine> hlist = parseHeader(rawheader);
+		
+		//Modify header/ genome build
+		List<SAMHeaderLine> nhlist = fixHeader(hlist, gb, newRG, ucsc);
+		
+		//Pull a default value for the default RG ID
+		for(SAMHeaderLine hl : nhlist)
+		{
+			if(hl.getKey().contains("RG"))
+			{
+				defo_rgid = hl.getValue("ID");
+				break;
+			}
+		}
+		System.err.println("Default ReadGroup ID set to: " + defo_rgid);
+		
+		String rgid = defo_rgid;
+		
 		int tcount = threads - 2;
 		Thread[] tarr = new Thread[tcount];
-		SyncedInt donecount = new SyncedInt();
+		//SyncedInt donecount = new SyncedInt();
 		for (int i = 0; i < tcount; i++)
 		{
 			tarr[i] = new Thread(new Runnable() {
@@ -439,7 +619,7 @@ public class SamFixer {
 							{
 								//If it's getting interrupted, that should only be a kill signal...
 								if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning... (From queue empty sleep)");
-								donecount.increment();
+								//donecount.increment();
 								return;
 							}
 						}
@@ -447,19 +627,20 @@ public class SamFixer {
 						{
 							String line = linequeue.poll();
 							if (line == null) continue;
+							qc.incrementParseOut();
 							pcount++;
 							
 							//Try to parse
 							try 
 							{
-								generateOutputLine(line, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
+								generateOutputLine(line, gb, counter, writequeue, verbose, ucsc, keep_bad_contig, rgid);
 							} 
 							catch (InterruptedException e) 
 							{
 								//Interruption should only be a kill signal.
 								//Run until read queue is empty, eating any more interruptions, and return.
-								pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
-								donecount.increment();
+								pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig,rgid);
+								//donecount.increment();
 								if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning... (From write queue full sleep)");
 								return;
 							}
@@ -467,10 +648,10 @@ public class SamFixer {
 						}		
 					}
 					//Run until the queue is empty...
-					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig);
+					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig,rgid);
 					if(verbose)System.err.println("DEBUG: Running until queue is empty. Total lines queued: " + counter.getQueuedForWriteCount() + " (Worker: " + Thread.currentThread().getName() + ")");
 					if(verbose)System.err.println("DEBUG: Running until queue is empty. Total lines queued by this thread (before final dump): " + pcount + " (Worker: " + Thread.currentThread().getName() + ")");
-					donecount.increment();
+					//donecount.increment();
 					if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning...");
 				}
 			});
@@ -504,6 +685,7 @@ public class SamFixer {
 						//Write the line to the output stream
 						String line = writequeue.poll();
 						if (line == null) continue;
+						qc.incrementWriteOut();
 						try 
 						{
 							//output.write("\n" + line);
@@ -526,10 +708,24 @@ public class SamFixer {
 				}
 				//Finish writing any lines still in queue or that are waiting to be processed...
 				if(verbose)System.err.println("DEBUG: Interrupt received. Lines Written (before final push): " + lcount + " (" + Thread.currentThread().getName() + ")");
-				while(!writequeue.isEmpty() || donecount.get() < tcount)
+				while(!(writequeue.isEmpty() && qc.isParseDone() && (qc.countWriteOut() >= qc.countWriteIn())))
 				{
+					if(writequeue.isEmpty())
+					{
+						//Sleep and continue
+						try 
+						{
+							Thread.sleep(10);
+						} 
+						catch (InterruptedException e) 
+						{
+							e.printStackTrace();
+						}
+						continue;
+					}
 					String line = writequeue.poll();
 					if (line == null) continue;
+					qc.countWriteOut();
 					try 
 					{
 
@@ -553,20 +749,6 @@ public class SamFixer {
 		
 		//Read and re-write header
 		//Remove any contigs from the genome build not in header
-		List<String> rawheader = new LinkedList<String>();
-		String line = null;
-		while((line = input.readLine()) != null)
-		{
-			if (line.isEmpty() || line.charAt(0) != '@') break; //We'll save that line for records in a minute..
-			//Otherwise...
-			rawheader.add(line);
-		}
-		
-		//Interpret header lines
-		List<SAMHeaderLine> hlist = parseHeader(rawheader);
-		
-		//Modify header/ genome build
-		List<SAMHeaderLine> nhlist = fixHeader(hlist, gb, newRG, ucsc);
 		
 		//Output new header
 		//boolean first = true;
@@ -601,6 +783,7 @@ public class SamFixer {
 				}
 			}
 			linequeue.add(line);
+			qc.countParseIn();
 			readcount++;
 			counter.incrementTotalRead();
 			if ((verbose) && (readcount % 10000000L == 0)) System.err.println("DEBUG: " + readcount + " lines read!");
@@ -624,10 +807,6 @@ public class SamFixer {
 			}
 			
 			anyalive = false;
-			if (writerthread.isAlive()) {
-				anyalive = true;
-				continue;
-			}
 			for (int i = 0; i < tcount; i++) {
 				if(tarr[i].isAlive())
 				{
@@ -636,12 +815,23 @@ public class SamFixer {
 				}
 			}
 		}
+		qc.setParseDone();
+		
+		while (writerthread.isAlive()) 
+		{
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
+				System.err.println("SamFixer.fixSam || Unexpected interruption to reader thread. Ignoring...");
+			}
+		}
 		
 		return counter;
 	}
 
 	public static void runSamFixer(String[] args, GenomeBuild gb, boolean verbose)
 	{
+		Contig.setSortMode(Contig.SORTMODE_NORMAL_CTGLEN);
 		if (gb == null)
 		{
 			System.err.println("ERROR: Genome Build must be non-null!");
@@ -715,6 +905,7 @@ public class SamFixer {
 			}
 		}
 		
+		qc = new QueueCounter();
 		//Check threads
 		if (threads < 1)
 		{
@@ -812,6 +1003,8 @@ public class SamFixer {
 		System.err.println("Invalid Records: " + counter.get_BadRecord());
 		System.err.println("Records with Illegal RNAME: " + counter.get_RNAME());
 		System.err.println("Records with Illegal RNEXT: " + counter.get_RNEXT());
+		System.err.println("Records with Position Exceeding Contig Length: " + counter.getBadPosCount());
+		System.err.println("Records with Mate Position Exceeding Contig Length: " + counter.getBadNPosCount());
 		System.err.println("Total Records Read: " + counter.getTotalRead());
 		System.err.println("Total Records Queued for Writing: " + counter.getQueuedForWriteCount());
 		System.err.println("Total Records Written: " + counter.getTotalWritten());

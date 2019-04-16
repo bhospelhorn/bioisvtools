@@ -366,4 +366,9 @@ public class Individual implements Comparable<Individual>{
 		return custom_y;
 	}
 	
+	protected void setSampleName(String newname)
+	{
+		this.sName = newname;
+	}
+
 }

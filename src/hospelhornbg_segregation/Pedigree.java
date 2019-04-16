@@ -139,6 +139,12 @@ public class Pedigree{
 		return ilist;
 	}
 	
+	public int countMembers()
+	{
+		if (indivMap == null) return 0;
+		return indivMap.size();
+	}
+	
 	/* --- Setters --- */
 	
 	public boolean setProband(String pbID)
@@ -153,6 +159,19 @@ public class Pedigree{
 	public void setFamilyName(String name)
 	{
 		this.familyName = name;
+	}
+	
+	public void changeSampleName(String oldname, String newname)
+	{
+		Individual i = indivMap.remove(oldname);
+		if (i == null) return;
+		i.setSampleName(newname);
+		indivMap.put(newname, i);
+	}
+	
+	protected void setProband(Individual pb)
+	{
+		proband = pb;
 	}
 	
 	/* --- Lists --- */

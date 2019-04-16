@@ -477,7 +477,7 @@ public class Inheritor {
 		}
 		return false;
 	}
-
+	
 	public static List<Candidate> getCandidates(VariantPool varpool, Pedigree family, GeneSet genes)
 	{
 		//Checks

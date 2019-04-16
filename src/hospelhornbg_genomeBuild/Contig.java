@@ -16,6 +16,10 @@ public class Contig implements Comparable<Contig>{
 	public static final int SORTCLASS_COMPOUND = 4;
 	public static final int SORTCLASS_UNKNOWN = 5;
 	
+	public static final int SORTMODE_NORMAL = 0;
+	public static final int SORTMODE_NORMAL_CTGLEN = 1;
+	private static int SORTMODE = SORTMODE_NORMAL;
+	
 	private Set<String> names;
 	private String UCSC_name;
 	private String UDP_name;
@@ -227,6 +231,13 @@ public class Contig implements Comparable<Contig>{
 			return this.UDP_name.compareTo(o.UDP_name);
 		}
 		
+		//Check sort mode
+		if(sortClass == SORTCLASS_CONTIG && SORTMODE == SORTMODE_NORMAL_CTGLEN)
+		{
+			return (int)(this.length - o.length);
+		}
+		
+		//Else, normal
 		if (this.UDP_name == null)
 		{
 			System.err.println("Contig.compareTo || [this] UDP name field is null!!");
@@ -276,6 +287,23 @@ public class Contig implements Comparable<Contig>{
 		s += "]";
 		
 		return s;
+	}
+	
+	public static void setSortMode(int sortModeEnum)
+	{
+		SORTMODE = sortModeEnum;
+	}
+	
+	public boolean hasName(String name)
+	{
+		if(name == null || name.isEmpty()) return false;
+		if (name.equals(UDP_name)) return true;
+		if (name.equals(UCSC_name)) return true;
+		for(String s : names)
+		{
+			if(name.equals(s)) return true;
+		}
+		return false;
 	}
 	
 }

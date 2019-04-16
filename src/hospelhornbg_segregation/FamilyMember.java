@@ -7,7 +7,9 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
+import java.util.TreeSet;
 
 import hospelhornbg_bioinformatics.AffectedStatus;
 import hospelhornbg_bioinformatics.Sex;
@@ -26,14 +28,17 @@ public class FamilyMember extends Individual{
 	private Sex phenotypicSex;
 	
 	private Map<String, AffectedStatus> affected;
+	private Set<Population> population_tags;
 	
 	public FamilyMember(String samplename)
 	{
 		super(samplename);
-		uid = samplename.hashCode();
+		Random r = new Random();
+		uid = samplename.hashCode() ^ r.nextInt();
 		affected = new HashMap<String, AffectedStatus>();
 		birthYear = -1;
 		deathYear = -1;
+		population_tags = new TreeSet<Population>();
 	}
 	
 	public FamilyMember(Individual indiv)
@@ -44,6 +49,7 @@ public class FamilyMember extends Individual{
 		birthYear = -1;
 		deathYear = -1;
 		phenotypicSex = super.getSex();
+		population_tags = new TreeSet<Population>();
 	}
 	
 	public int getUID()
@@ -168,7 +174,7 @@ public class FamilyMember extends Individual{
 		this.phenotypicSex = s;
 	}
 	
-	protected void setUID(int UID)
+	public void setUID(int UID)
 	{
 		this.uid = UID;
 	}
@@ -205,6 +211,28 @@ public class FamilyMember extends Individual{
 	public void clearMiddleNames()
 	{
 		this.middleNames = null;
+	}
+	
+	public Collection<Population> getPopulationTags()
+	{
+		List<Population> list = new ArrayList<Population>(population_tags.size() + 1);
+		list.addAll(population_tags);
+		return list;
+	}
+	
+	public void addPopulationTag(Population p)
+	{
+		population_tags.add(p);
+	}
+	
+	public void clearPopulationTags()
+	{
+		population_tags.clear();
+	}
+	
+	public boolean hasPopulationTag(Population p)
+	{
+		return population_tags.contains(p);
 	}
 	
 }

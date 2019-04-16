@@ -6,11 +6,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 
 import hospelhornbg_bioinformatics.AffectedStatus;
 import hospelhornbg_bioinformatics.Sex;
@@ -41,7 +41,7 @@ public class Family extends Pedigree{
 	private String[] conditions;
 	private int segCond;
 	
-	private Set<Population> population_tags;
+	//private Set<Population> population_tags;
 	
  	protected Family()
 	{
@@ -51,7 +51,7 @@ public class Family extends Pedigree{
 		segCond = 0;
 		conditions = new String[MAX_CONDITIONS];
 		conditions[0] = DEFO_CONDITION;
-		population_tags = new TreeSet<Population>();
+		//population_tags = new TreeSet<Population>();
 	}
 	
 	public Family(FamilyMember proband)
@@ -134,14 +134,7 @@ public class Family extends Pedigree{
 		}
 		return null;
 	}
-	
-	public Collection<Population> getPopulationTags()
-	{
-		List<Population> list = new ArrayList<Population>(population_tags.size() + 1);
-		list.addAll(population_tags);
-		return list;
-	}
-	
+
 	/* --- Setters --- */
 	
 	public boolean setProband(String pbID)
@@ -155,6 +148,7 @@ public class Family extends Pedigree{
 				if (i instanceof FamilyMember)
 				{
 					iProband = (FamilyMember)i;
+					super.setProband(i);
 					return true;
 				}
 			}
@@ -167,6 +161,7 @@ public class Family extends Pedigree{
 		FamilyMember fm = iMembers.get(pbID);
 		if (fm == null) return false;
 		iProband = fm;
+		super.setProband(iProband);
 		return true;
 	}
 	
@@ -216,16 +211,6 @@ public class Family extends Pedigree{
 		iMembers.put(indiv.getUID(), indiv);
 	}
 	
-	public void addPopulationTag(Population p)
-	{
-		population_tags.add(p);
-	}
-	
-	public void clearPopulationTags()
-	{
-		population_tags.clear();
-	}
-	
 	/* --- Conditions --- */
 	
 	private void updateAffectedStatus()
@@ -265,6 +250,63 @@ public class Family extends Pedigree{
 			momMap = new HashMap<Integer, String>();
 			dadMap = new HashMap<Integer, String>();
 		}
+	
+		public void detectProband()
+		{
+			//If someone's id matches the family id, then set
+			//If someone's id is the familyid-PB, then set (This is a nomenclature I use)
+			//If there is only one affected, then set
+			//Set the first affected with both parents
+			//Set the first affected with any parents
+			//Set the first affected
+			//Set a random person
+			List<FamilyMember> members = family.getAllFamilyMembers();
+			if(members.isEmpty()) return;
+			for (FamilyMember fm : members)
+			{
+				if(fm.getName().equals(family.getFamilyName()))
+				{
+					family.setProband(fm.getUID());
+					return;
+				}
+			}
+			for (FamilyMember fm : members)
+			{
+				if(fm.getName().equals(family.getFamilyName()+"-PB"))
+				{
+					family.setProband(fm.getUID());
+					return;
+				}
+			}
+			List<Individual> aff = family.getAllAffected();
+			if(aff.isEmpty())
+			{
+				family.setProband(members.get(0).getName());
+				return;
+			}
+			if (aff.size() == 1)
+			{
+				family.setProband(aff.get(0).getName());
+				return;
+			}
+			for(Individual i : aff)
+			{
+				if(i.getParent1() != null && i.getParent2() != null)
+				{
+					family.setProband(i.getName());
+					return;
+				}
+			}
+			for(Individual i : aff)
+			{
+				if(i.getParent1() != null || i.getParent2() != null)
+				{
+					family.setProband(i.getName());
+					return;
+				}
+			}
+			family.setProband(aff.get(0).getName());
+		}
 	}
 	
 	private static void printPEDParsingError(int lineno)
@@ -294,10 +336,13 @@ public class Family extends Pedigree{
 				printPEDParsingError(lcount);
 				continue;
 			}
+			//System.err.println("Family.readFromPED || -DEBUG- Reading line...");
 			String fam = fields[0];
+			//System.err.println("Family.readFromPED || -DEBUG-\tFamily Name: " + fam);
 			UnlinkedFam f = rawmap.get(fam);
 			if (f == null)
 			{
+				//System.err.println("Family.readFromPED || -DEBUG-\tNEW FAMILY~!");
 				f = new UnlinkedFam(new Family());
 				f.family.setFamilyName(fam);
 				rawmap.put(fam, f);
@@ -305,6 +350,9 @@ public class Family extends Pedigree{
 			
 			//Get Indiv name
 			FamilyMember indiv = new FamilyMember(fields[1]);
+			f.family.addMember(indiv);
+			//System.err.println("Family.readFromPED || -DEBUG-\tIndiv Name: " + indiv.getName());
+			//System.err.println("Family.readFromPED || -DEBUG-\tUID of generated Indiv: " + Integer.toHexString(indiv.getUID()));
 			String sexstr = fields[4];
 			String affstr = fields[5];
 			if (sexstr.equals("1")) 
@@ -338,20 +386,30 @@ public class Family extends Pedigree{
 				indiv.setAffectedStatus(AffectedStatus.UNKNOWN);
 				indiv.setAffectedStatus(DEFO_CONDITION, AffectedStatus.UNKNOWN);
 			}
+			//System.err.println("Family.readFromPED || -DEBUG-\tSex: " + indiv.getSex());
+			//System.err.println("Family.readFromPED || -DEBUG-\tAff Status: " + indiv.getAffectedStatus());
 			
 			//Parents
 			String mname = fields[3];
-			if(!mname.equals("0")) f.momMap.put(indiv.getUID(), mname);
+			if(!mname.equals("0")) {
+				f.momMap.put(indiv.getUID(), mname);
+				//System.err.println("Family.readFromPED || -DEBUG-\tMother Name: " + mname);
+			}
 			String fname = fields[2];
-			if(!fname.equals("0")) f.dadMap.put(indiv.getUID(), fname);
+			if(!fname.equals("0")) {
+				f.dadMap.put(indiv.getUID(), fname);
+				//System.err.println("Family.readFromPED || -DEBUG-\tFather Name: " + fname);
+			}
 		}
 		
 		br.close();
 		
 		//Link parents & dump to return map
+		//System.err.println("Family.readFromPED || -DEBUG- Reading done. Families found: " + rawmap.size());
 		Collection<UnlinkedFam> allfam = rawmap.values();
 		for (UnlinkedFam uf : allfam)
 		{
+			//System.err.println("Family.readFromPED || -DEBUG- Linking family: " + uf.family.getFamilyName());
 			//Go through the mom map...
 			Set<Integer> keys = uf.momMap.keySet();
 			for (Integer i : keys)
@@ -359,7 +417,10 @@ public class Family extends Pedigree{
 				//Link the individual to their mother
 				FamilyMember indiv = uf.family.getMember(i);
 				FamilyMember mom = uf.family.getMemberByName(uf.momMap.get(i));
-				if (mom != null) indiv.setParent1(mom);
+				if (mom != null) {
+					//System.err.println("Family.readFromPED || -DEBUG- Mother found for " + indiv.getName() + ": " + mom.getName());
+					indiv.setParent1(mom);
+				}
 			}
 
 			//Go through the dad map...
@@ -370,11 +431,17 @@ public class Family extends Pedigree{
 				FamilyMember indiv = uf.family.getMember(i);
 				FamilyMember dad = uf.family.getMemberByName(uf.dadMap.get(i));
 				if (dad != null) {
+					//System.err.println("Family.readFromPED || -DEBUG- Father found for " + indiv.getName() + ": " + dad.getName());
 					if(indiv.getParent1() != null) indiv.setParent2(dad);
 					else indiv.setParent1(dad);
 				}
 			}
 			
+			//Try to determine proband...
+			uf.detectProband();
+			//Individual pb = uf.family.getProband();
+			//if(pb != null) System.err.println("Family.readFromPED || -DEBUG- Proband set to " + pb.getName());
+			//else System.err.println("Family.readFromPED || -DEBUG- Proband not detected!");
 			//Dump the family in the final map
 			fammap.put(uf.family.getFamilyName(), uf.family);
 		}
@@ -413,7 +480,6 @@ public class Family extends Pedigree{
 		 * Proband UID [4]
 		 * # Individuals [4]
 		 * Version [4]
-		 * Population Tags [8] (8 x 1 byte: -1 if empty) (v2+)
 		 * Family Name [48]
 		 * Condition Name Table [Variable]
 		 * 		# Condition Names [4]
@@ -424,6 +490,7 @@ public class Family extends Pedigree{
 		 * 		Parent 2 UID [4]
 		 * 		Chrom Sex Enum [2]
 		 * 		Pheno Sex Enum [2]
+		 * 		Population Tags [8] (8 x 1 byte: -1 if empty) (v2+)
 		 * 		Affected Flags [24]
 		 * 			Affected stat [1/2] (Up to 48 conditions, 1 nybble per condition)
 		 * 		Birthday [4]
@@ -455,6 +522,9 @@ public class Family extends Pedigree{
 			cpos = myfile.findString(0, 0x10, FAMI_MAGIC);
 			if (cpos != 0) throw new FileBuffer.UnsupportedFileTypeException();
 		}
+		//DEBUG!!!
+		//String debugPath = path + "_DECOMP.bin";
+		//myfile.writeFile(debugPath);
 		
 		cpos += 4; //Skip magic now
 		int pbid = myfile.intFromFile(cpos); cpos += 4;
@@ -462,7 +532,8 @@ public class Family extends Pedigree{
 		int version = myfile.intFromFile(cpos); cpos += 4;
 		if (version > CURRENT_FAMI_VERSION) throw new FileBuffer.UnsupportedFileTypeException();
 		
-		byte[] ptags = new byte[8];
+		//Obsolete
+		/*byte[] ptags = new byte[8];
 		if (version >= 2)
 		{
 			for(int i = 0; i < 8; i++)
@@ -470,23 +541,13 @@ public class Family extends Pedigree{
 				ptags[i] = myfile.getByte(cpos);
 				cpos++;
 			}	
-		}
+		}*/
 		
 		String famName = myfile.getASCII_string(cpos, 48); cpos += 48;
 		
 		//Instantiate family...
 		Family f = new Family();
 		f.setFamilyName(famName);
-		
-		if (version >= 2)
-		{
-			for(int i = 0; i < 8; i++)
-			{
-				int pt = (int)ptags[i];
-				if (pt == -1) continue;
-				f.addPopulationTag(Population.getPopulation(pt));
-			}
-		}
 		
 		//Condition name table...
 		int ncond = myfile.intFromFile(cpos); cpos += 4;
@@ -509,6 +570,21 @@ public class Family extends Pedigree{
 			int p2id = myfile.intFromFile(cpos); cpos += 4;
 			int csx = myfile.getValueAsInt(cpos, BinFieldSize.WORD); cpos += 2;
 			int psx = myfile.getValueAsInt(cpos, BinFieldSize.WORD); cpos += 2;
+			//Pop table
+			Set<Population> pset = new HashSet<Population>();
+			if(version >= 2)
+			{
+				long pos = cpos;
+				for(int j = 0; j < 8; j++)
+				{
+					byte b = myfile.getByte(pos + j);
+					if (b == 0xFF) break;
+					Population p = Population.getPopulation(Byte.toUnsignedInt(b));
+					if (p != null) pset.add(p);
+				}
+				cpos += 8;
+			}
+			
 			int[] aff = new int[MAX_CONDITIONS];
 			for(int j = 0; j < MAX_CONDITIONS; j += 2)
 			{
@@ -516,6 +592,11 @@ public class Family extends Pedigree{
 				aff[j] = (n >>> 4) & 0xF;
 				aff[j+1] = n & 0xF;
 			}
+			//DEBUG
+			//System.err.print("-DEBUG- AFF TABLE READ: ");
+			//for(int j = 0; j < MAX_CONDITIONS; j += 2) System.err.print(aff[j] + " ");
+			//System.err.println();
+			
 			//Skip next two bytes
 			cpos += 2;
 			int byear = myfile.getValueAsInt(cpos, BinFieldSize.WORD); cpos += 2;
@@ -556,12 +637,19 @@ public class Family extends Pedigree{
 			FamilyMember fm = new FamilyMember(samplename);
 			fm.setUID(uid);
 			if(p1id != -1) p1map.put(uid, p1id);
+			//System.err.println("-DEBUG- p1UID: " + Integer.toHexString(p1id));
 			if(p2id != -1) p2map.put(uid, p2id);
+			//System.err.println("-DEBUG- p2UID: " + Integer.toHexString(p2id));
 			fm.setSex(getFAMISexEnum(csx));
 			fm.setPhenotypicSex(getFAMISexEnum(psx));
+			for (Population p : pset) fm.addPopulationTag(p);
 			for (int j = 0; j < ncond; j++)
 			{
-				fm.setAffectedStatus(f.getCondition(j), Family.getFAMIAffectedEnum(aff[j]));
+				//System.err.println("-DEBUG- Condition " + j + ": " + f.getCondition(j));
+				//System.err.println("-DEBUG- Enum Value: " + aff[j]);
+				AffectedStatus as = Family.getFAMIAffectedEnum(aff[j]);
+				//System.err.println("-DEBUG- Affected Status: " + as);
+				fm.setAffectedStatus(f.getCondition(j), as);
 			}
 			fm.setFirstName(firstname);
 			fm.setLastName(lastname);
@@ -594,12 +682,15 @@ public class Family extends Pedigree{
 			if (p2 != null)
 			{
 				FamilyMember child = f.getMember(i);
-				if(child != null) child.setParent1(p2);
+				if(child != null) child.setParent2(p2);
 			}
 		}
 		
 		//Set proband
 		f.setProband(pbid);
+		
+		//Default seg condition to 0
+		f.setSegregatingCondition(0);
 		
 		return f;
 	}
@@ -635,6 +726,39 @@ public class Family extends Pedigree{
 	
 	public static void writeToFAMI(Family fam, String path, boolean huff) throws IOException
 	{
+		/*
+		 * Magic [4]
+		 * Proband UID [4]
+		 * # Individuals [4]
+		 * Version [4]
+		 * Family Name [48]
+		 * Condition Name Table [Variable]
+		 * 		# Condition Names [4]
+		 * 		Names... [2x2 VLS]
+		 * Individual Table [Variable]
+		 * 		Indiv UID [4]
+		 * 		Parent 1 UID [4]
+		 * 		Parent 2 UID [4]
+		 * 		Chrom Sex Enum [2]
+		 * 		Pheno Sex Enum [2]
+		 * 		Population Tags [8] (8 x 1 byte: -1 if empty) (v2+)
+		 * 		Affected Flags [24]
+		 * 			Affected stat [1/2] (Up to 48 conditions, 1 nybble per condition)
+		 * 		Birthday [4]
+		 * 			Day [1]
+		 * 			Month [1]
+		 * 			Year [2]
+		 * 		Deathday [4]
+		 * 			Day [1]
+		 * 			Month [1]
+		 * 			Year [2]
+		 * 		Sample Name [2x2 VLS]
+		 * 		Last Name [2x2 VLS]
+		 * 		First Name [2x2 VLS]
+		 * 		# Middle Names [4]
+		 * 		Middle Names [2x2 VLS] x # MN
+		 */
+		
 		if (fam == null) return;
 		//Estimate needed size for buffer...
 		int estsz = 64 + (48 * 64) + 8; //Header
@@ -648,16 +772,17 @@ public class Family extends Pedigree{
 		if (fam.iProband != null) myfile.addToFile(fam.iProband.getUID());
 		else myfile.addToFile(-1);
 		myfile.addToFile(nindiv);
+		myfile.addToFile(CURRENT_FAMI_VERSION);
 		
 		//Population tags
-		int tcount = 0;
+		/*int tcount = 0;
 		for(Population p : fam.population_tags)
 		{
 			if (tcount >= 8) break;
 			myfile.addToFile((byte)p.getIDNumber());
 			tcount++;
 		}
-		while (tcount < 8) myfile.addToFile((byte)-1);
+		while (tcount < 8) myfile.addToFile((byte)-1);*/
 		
 		String famname = fam.getFamilyName();
 		if (famname.length() > 48) famname = famname.substring(0, 48);
@@ -670,7 +795,6 @@ public class Family extends Pedigree{
 				myfile.addToFile(FileBuffer.ZERO_BYTE);
 			}
 		}
-		myfile.addToFile(CURRENT_FAMI_VERSION);
 		
 		//Affected condition string table
 		String[] ctbl = new String[MAX_CONDITIONS];
@@ -702,6 +826,19 @@ public class Family extends Pedigree{
 			else myfile.addToFile(-1);
 			myfile.addToFile(getFAMISexEnum(m.getSex()));
 			myfile.addToFile(getFAMISexEnum(m.getPhenotypicSex()));
+			//Population flags...
+			int fcount = 0;
+			Collection<Population> pflags = m.getPopulationTags();
+			for (Population p : pflags)
+			{
+				if (fcount >= 8) break;
+				myfile.addToFile((byte)p.getIDNumber());
+				fcount++;
+			}
+			while(fcount < 8) {
+				myfile.addToFile((byte)0xFF);
+				fcount++;
+			}
 			//Condition enums...
 			for(int i = 0; i < MAX_CONDITIONS; i += 2)
 			{
@@ -712,14 +849,18 @@ public class Family extends Pedigree{
 				int wbyte = 0;
 				if(c1 != null)
 				{
+					//System.err.println("-DEBUG- Condition found: " + c1);
 					AffectedStatus as = m.getAffectedStatus(c1);
+					//System.err.println("-DEBUG- Affected status: " + as);
 					int asi = getFAMIAffectedEnum(as);
 					asi = asi << 4;
 					wbyte |= asi;
 				}
 				if (c2 != null)
 				{
+					//System.err.println("-DEBUG- Condition found: " + c2);
 					AffectedStatus as = m.getAffectedStatus(c2);
+					//System.err.println("-DEBUG- Affected status: " + as);
 					int asi = getFAMIAffectedEnum(as);
 					wbyte |= asi;
 				}
@@ -729,9 +870,9 @@ public class Family extends Pedigree{
 			
 			//Dates (Month and day unused, set to 1/1)
 			myfile.addToFile((short)0x0101);
-			myfile.addToFile(m.getBirthYear());
+			myfile.addToFile((short)m.getBirthYear());
 			myfile.addToFile((short)0x0101);
-			myfile.addToFile(m.getDeathYear());
+			myfile.addToFile((short)m.getDeathYear());
 			//Sample name
 			myfile.addVariableLengthString(m.getName(), BinFieldSize.WORD, 2);
 			//Last name
@@ -754,6 +895,10 @@ public class Family extends Pedigree{
 				}
 			}
 		}
+		
+		//DEBUG
+		//String decompPath = path + "DECOMPOUT.bin";
+		//myfile.writeFile(decompPath);
 		
 		//Compress if needed
 		if(huff)

@@ -1,25 +1,29 @@
 package hospelhornbg_segregation;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
 public enum Population {
 	
-	NFE(0, "Non-Finnish European"),
-	AFR(1, "African/African American"),
-	AMR(2, "Latino/Native American"),
-	FIN(3, "Finnish European"),
-	EAS(4, "East Asian"),
-	SAS(5, "South Asian"),
-	ASJ(6, "Ashkenazi Jewish"),
-	OTH(7, "Other");
+	NFE(0, "Non-Finnish European", "NFE"),
+	AFR(1, "African/African American", "AFR"),
+	AMR(2, "Latino/Native American", "AMR"),
+	FIN(3, "Finnish European", "FIN"),
+	EAS(4, "East Asian", "EAS"),
+	SAS(5, "South Asian", "SAS"),
+	ASJ(6, "Ashkenazi Jewish", "ASJ"),
+	OTH(7, "Other", "OTH");
 
 	private int eid;
 	private String desc;
+	private String shrt;
 	
-	private Population(int i, String str)
+	private Population(int i, String str, String shortStr)
 	{
 		desc = str;
+		shrt = shortStr;
+		eid = i;
 	}
 	
 	public int getIDNumber()
@@ -45,6 +49,26 @@ public enum Population {
 	{
 		if(idmap == null) populateMap();
 		return idmap.get(id);
+	}
+	
+	private static Map<String, Population> codemap;
+	
+	private static void populateCodeMap()
+	{
+		codemap = new HashMap<String, Population>();
+		Population[] all = Population.values();
+		for (Population p : all) codemap.put(p.getShortString(), p);
+	}
+	
+	public static Population getPopulation(String shortCode)
+	{
+		if(codemap == null) populateCodeMap();
+		return codemap.get(shortCode);
+	}
+	
+	public String getShortString()
+	{
+		return shrt;
 	}
 
 }

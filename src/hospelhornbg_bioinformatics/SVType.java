@@ -1,27 +1,30 @@
 package hospelhornbg_bioinformatics;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 public enum SVType{
 	
-	BND("BND"),
-	DEL("DEL"),
-	DUP("DUP"),
-	INS("INS"),
-	INV("INV"),
-	CNV("CNV"),
-	TANDEM("DUP:TANDEM"),
-	OTHER("OTHER"),
-	BED_REGION("REG"),
-	DELME("DEL:ME"),
-	INSME("INS:ME"),
-	TRA("TRA");
+	BND("BND", 0),
+	DEL("DEL", 1),
+	DUP("DUP", 2),
+	INS("INS", 3),
+	INV("INV", 4),
+	CNV("CNV", 5),
+	TANDEM("DUP:TANDEM", 6),
+	OTHER("OTHER", 7),
+	BED_REGION("REG", 8),
+	DELME("DEL:ME", 9),
+	INSME("INS:ME", 10),
+	TRA("TRA", 11);
 	
 	private String abrv;
+	private int eID;
 	
-	private SVType (String tWritten)
+	private SVType (String tWritten, int id)
 	{
 		abrv = tWritten;
 	}
@@ -70,6 +73,28 @@ public enum SVType{
 		allTypes.add(BED_REGION);
 		allTypes.add(TRA);
 		return allTypes;
+	}
+	
+	public int getID()
+	{
+		return eID;
+	}
+	
+	private static Map<Integer, SVType> idmap;
+	
+	private static void populateIDMap()
+	{
+		idmap = new HashMap<Integer, SVType>();
+		for(SVType t : SVType.values())
+		{
+			idmap.put(t.getID(), t);
+		}
+	}
+	
+	public static SVType getTypeByID(int id)
+	{
+		if (idmap == null) populateIDMap();
+		return idmap.get(id);
 	}
 	
 }
