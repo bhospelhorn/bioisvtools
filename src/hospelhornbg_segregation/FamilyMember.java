@@ -230,5 +230,9 @@ public class FamilyMember extends Individual{
 		population_tags.clear();
 	}
 	
+	public boolean hasPopulationTag(Population p)
+	{
+		return population_tags.contains(p);
+	}
 	
 }

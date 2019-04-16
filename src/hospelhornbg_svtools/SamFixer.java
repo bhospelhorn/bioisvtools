@@ -39,6 +39,78 @@ public class SamFixer {
 	
 	public static final int MAX_QUEUESIZE = 1000000000;
 	
+	private static QueueCounter qc;
+	
+	public static class QueueCounter
+	{
+		private volatile long parseIn;
+		private volatile long parseOut;
+		
+		private volatile boolean parseDone;
+		private volatile long writeIn;
+		private volatile long writeOut;
+		
+		public QueueCounter()
+		{
+			parseIn = 0;
+			parseOut = 0;
+			parseDone = false;
+			writeIn = 0;
+			writeOut = 0;
+		}
+		
+		public long countParseIn()
+		{
+			return parseIn;
+		}
+		
+		public void incrementParseIn()
+		{
+			parseIn++; //Only reader thread writes
+		}
+		
+		public long countParseOut()
+		{
+			return parseOut;
+		}
+		
+		public synchronized void incrementParseOut()
+		{
+			parseOut++;
+		}
+		
+		public boolean isParseDone()
+		{
+			return parseDone;
+		}
+		
+		public void setParseDone()
+		{
+			parseDone = true;
+		}
+
+		public long countWriteIn()
+		{
+			return writeIn;
+		}
+		
+		public synchronized void incrementWriteIn()
+		{
+			writeIn++;
+		}
+		
+		public long countWriteOut()
+		{
+			return writeOut;
+		}
+		
+		public void incrementWriteOut()
+		{
+			writeOut++;
+		}
+	
+	}
+	
 	public static void printUsage()
 	{
 		System.out.println("--------------------------------------------------------------------------------------------------------------");
@@ -218,7 +290,7 @@ public class SamFixer {
 		
 	}
 	
-	private static class SyncedInt
+	/*private static class SyncedInt
 	{
 		private volatile int i;
 		
@@ -236,7 +308,7 @@ public class SamFixer {
 		{
 			return i;
 		}
-	}
+	}*/
 	
 	private static List<SAMHeaderLine> parseHeader(List<String> rawlines) throws UnsupportedFileTypeException
 	{
@@ -385,7 +457,8 @@ public class SamFixer {
 				if(sr.getPosition() >= rcontig.getLength())
 				{
 					counter.incrementBadPosition();
-					if(keep_bad_contig) {
+					if(keep_bad_contig) 
+					{
 						sr.flagSegmentUnmapped(true);
 						sr.setPosition(0);
 					}
@@ -404,7 +477,8 @@ public class SamFixer {
 				if(sr.getNextPosition() >= ncontig.getLength())
 				{
 					counter.incrementBadNextPosition();
-					if(keep_bad_contig) {
+					if(keep_bad_contig) 
+					{
 						sr.flagNextSegmentUnmapped(true);
 						sr.setNextPosition(0);
 					}
@@ -439,11 +513,13 @@ public class SamFixer {
 				{
 					//If it's getting interrupted, that should only be a kill signal...
 					//Dump the record in the queue regardless of queue size, and throw the exception.
+					qc.incrementWriteIn();
 					writequeue.add(outline);
 					counter.incrementQueuedForWrite();
 					throw e;
 				}
 			}
+			qc.incrementWriteIn();
 			writequeue.add(outline);
 			counter.incrementQueuedForWrite();
 		}
@@ -476,7 +552,7 @@ public class SamFixer {
 				//e.printStackTrace();
 			}
 			lcount++;
-			counter.incrementQueuedForWrite();
+			//counter.incrementQueuedForWrite();
 		}
 		return lcount;
 	}
@@ -522,7 +598,7 @@ public class SamFixer {
 		
 		int tcount = threads - 2;
 		Thread[] tarr = new Thread[tcount];
-		SyncedInt donecount = new SyncedInt();
+		//SyncedInt donecount = new SyncedInt();
 		for (int i = 0; i < tcount; i++)
 		{
 			tarr[i] = new Thread(new Runnable() {
@@ -543,7 +619,7 @@ public class SamFixer {
 							{
 								//If it's getting interrupted, that should only be a kill signal...
 								if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning... (From queue empty sleep)");
-								donecount.increment();
+								//donecount.increment();
 								return;
 							}
 						}
@@ -551,6 +627,7 @@ public class SamFixer {
 						{
 							String line = linequeue.poll();
 							if (line == null) continue;
+							qc.incrementParseOut();
 							pcount++;
 							
 							//Try to parse
@@ -563,7 +640,7 @@ public class SamFixer {
 								//Interruption should only be a kill signal.
 								//Run until read queue is empty, eating any more interruptions, and return.
 								pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig,rgid);
-								donecount.increment();
+								//donecount.increment();
 								if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning... (From write queue full sleep)");
 								return;
 							}
@@ -574,7 +651,7 @@ public class SamFixer {
 					pcount += finishParsingQueue(linequeue, gb, counter, writequeue, verbose, ucsc, keep_bad_contig,rgid);
 					if(verbose)System.err.println("DEBUG: Running until queue is empty. Total lines queued: " + counter.getQueuedForWriteCount() + " (Worker: " + Thread.currentThread().getName() + ")");
 					if(verbose)System.err.println("DEBUG: Running until queue is empty. Total lines queued by this thread (before final dump): " + pcount + " (Worker: " + Thread.currentThread().getName() + ")");
-					donecount.increment();
+					//donecount.increment();
 					if(verbose)System.err.println("DEBUG: Lines Parsed " + pcount + " (Worker: " + Thread.currentThread().getName() + ") - Worker thread returning...");
 				}
 			});
@@ -608,6 +685,7 @@ public class SamFixer {
 						//Write the line to the output stream
 						String line = writequeue.poll();
 						if (line == null) continue;
+						qc.incrementWriteOut();
 						try 
 						{
 							//output.write("\n" + line);
@@ -630,10 +708,24 @@ public class SamFixer {
 				}
 				//Finish writing any lines still in queue or that are waiting to be processed...
 				if(verbose)System.err.println("DEBUG: Interrupt received. Lines Written (before final push): " + lcount + " (" + Thread.currentThread().getName() + ")");
-				while(!writequeue.isEmpty() || donecount.get() < tcount)
+				while(!(writequeue.isEmpty() && qc.isParseDone() && (qc.countWriteOut() >= qc.countWriteIn())))
 				{
+					if(writequeue.isEmpty())
+					{
+						//Sleep and continue
+						try 
+						{
+							Thread.sleep(10);
+						} 
+						catch (InterruptedException e) 
+						{
+							e.printStackTrace();
+						}
+						continue;
+					}
 					String line = writequeue.poll();
 					if (line == null) continue;
+					qc.countWriteOut();
 					try 
 					{
 
@@ -691,6 +783,7 @@ public class SamFixer {
 				}
 			}
 			linequeue.add(line);
+			qc.countParseIn();
 			readcount++;
 			counter.incrementTotalRead();
 			if ((verbose) && (readcount % 10000000L == 0)) System.err.println("DEBUG: " + readcount + " lines read!");
@@ -714,16 +807,22 @@ public class SamFixer {
 			}
 			
 			anyalive = false;
-			if (writerthread.isAlive()) {
-				anyalive = true;
-				continue;
-			}
 			for (int i = 0; i < tcount; i++) {
 				if(tarr[i].isAlive())
 				{
 					anyalive = true;
 					break;
 				}
+			}
+		}
+		qc.setParseDone();
+		
+		while (writerthread.isAlive()) 
+		{
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
+				System.err.println("SamFixer.fixSam || Unexpected interruption to reader thread. Ignoring...");
 			}
 		}
 		
@@ -806,6 +905,7 @@ public class SamFixer {
 			}
 		}
 		
+		qc = new QueueCounter();
 		//Check threads
 		if (threads < 1)
 		{
