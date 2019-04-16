@@ -42,7 +42,7 @@ public class Pedigree{
 	
 	protected Pedigree()
 	{
-		
+		indivMap = new HashMap<String, Individual>();
 	}
 	
  	public Pedigree(Individual PB)
@@ -172,6 +172,11 @@ public class Pedigree{
 	protected void setProband(Individual pb)
 	{
 		proband = pb;
+	}
+	
+	protected void addMember(String name, Individual member)
+	{
+		indivMap.put(name, member);
 	}
 	
 	/* --- Lists --- */

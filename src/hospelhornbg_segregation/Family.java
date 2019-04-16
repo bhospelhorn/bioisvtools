@@ -209,6 +209,7 @@ public class Family extends Pedigree{
 	public void addMember(FamilyMember indiv)
 	{
 		iMembers.put(indiv.getUID(), indiv);
+		super.addMember(indiv.getName(), indiv);
 	}
 	
 	/* --- Conditions --- */
