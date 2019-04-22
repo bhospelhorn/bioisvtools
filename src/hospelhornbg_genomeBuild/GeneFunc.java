@@ -3,6 +3,8 @@ package hospelhornbg_genomeBuild;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public enum GeneFunc {
 	
@@ -84,6 +86,19 @@ public enum GeneFunc {
 		all.add(INTERGENIC);
 		
 		return all;
+	}
+	
+	
+	private static ConcurrentMap<Integer, GeneFunc> iMap;
+	
+	public static GeneFunc getByValue(int value)
+	{
+		if(iMap == null)
+		{
+			iMap = new ConcurrentHashMap<Integer, GeneFunc>();
+			for(GeneFunc g : GeneFunc.values()) iMap.put(g.getPriority(), g);
+		}
+		return iMap.get(value);
 	}
 	
 }

@@ -10,13 +10,16 @@ import java.util.Collection;
 import java.util.Deque;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 import hospelhornbg_bioinformatics.VariantPool.InfoDefinition;
 import hospelhornbg_genomeBuild.GenomeBuild;
+import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 /*
@@ -62,6 +65,9 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  *
  * 1.6.1 -> 1.6.2 | February 28, 2019
  * 	Static method for parsing INFO field into a key/value map
+ * 
+ * 1.6.2 -> 1.7.0 | April 22, 2019
+ * 	Added static single variant parser methods
  */
 
 
@@ -69,8 +75,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * A container for reading and writing a collection of variants and annotation metadata to
  * VCF format.
  * @author Blythe Hospelhorn
- * @version 1.6.2
- * @since February 28, 2019
+ * @version 1.7.0
+ * @since April 22, 2019
  *
  */
 public class VCF {
@@ -858,5 +864,304 @@ public class VCF {
 		myVCF.writeToDisk(outpath);
 	}
 	
+	public static Variant parseVCFLine(String line, List<String> genoSamples, GenomeBuild gb) throws UnsupportedFileTypeException
+	{
+		if(gb == null) return null;
+		Variant v = new Variant();
+		
+		String[] fields = line.split("\t");
+		try 
+		{
+			v.setChromosome(gb.getContig(fields[0]));
+			v.setPosition(Integer.parseInt(fields[1]));
+			v.setVariantName(fields[2]);
+			v.setRefAllele(fields[3]);
+			//Alt allele(s)
+			String[] alts = fields[4].split(",");
+			for(String a : alts) v.addAltAllele(a);
+			//QUAL
+			v.setQuality(Double.parseDouble(fields[5]));
+			//FILTER
+			if(fields[6].equals("PASS")) v.setFilterPass(true);
+			else
+			{
+				v.setFilterPass(false);
+				String[] filters = fields[6].split(";");
+				if(filters != null && filters.length > 0)
+				{
+					for(String f : filters) v.addFailedFilter(f);
+				}	
+			}
+			//INFO
+			String[] infoFields = fields[7].split(";");
+			if(infoFields != null)
+			{
+				for (String i : infoFields)
+				{
+					String[] kv = i.split("=");
+					if(kv.length < 2)
+					{
+						v.addInfoFlag(i);
+						continue;
+					}
+					String key = kv[0];
+					String[] values = kv[1].split(",");
+					v.addInfoField(key, values);
+				}
+			}
+			//FORMAT
+			if(fields.length < 9) return v;
+			String formatString = fields[8];
+			//Genotypes
+			int i = 9;
+			for(String s : genoSamples)
+			{
+				if (i >= fields.length) break;
+				String rawGeno = fields[i];
+				
+				Genotype g = new Genotype(formatString, rawGeno);
+				v.addGenotype(s, g);
+				
+				i++;
+			}
+		}
+		catch(NullPointerException e)
+		{
+			e.printStackTrace();
+			throw new FileBuffer.UnsupportedFileTypeException("VCF.parseVCFLine || NPE - Likely VCF record has insufficient tab separated fields");
+		}
+		catch(NumberFormatException e)
+		{
+			e.printStackTrace();
+			throw new FileBuffer.UnsupportedFileTypeException("VCF.parseVCFLine || One or more integers could not be read as such!");
+		}
+		
+		return v;
+	}
+	
+	public static StructuralVariant parseVCFLineAsSV(String line, List<String> genoSamples, GenomeBuild gb) throws UnsupportedFileTypeException
+	{
+		if(gb == null) return null;
+		StructuralVariant sv = null;
+		
+		String[] fields = line.split("\t");
+		
+		try 
+		{
+			//This time, we're gonna parse INFO first in case we need to
+			// switch to TRA!
+			
+			Set<String> flags = new HashSet<String>();
+			Map<String, String[]> infos = new HashMap<String, String[]>();
+			
+			String[] infoFields = fields[7].split(";");
+			if(infoFields != null)
+			{
+				for (String i : infoFields)
+				{
+					String[] kv = i.split("=");
+					if(kv.length < 2)
+					{
+						flags.add(i);
+						continue;
+					}
+					String key = kv[0];
+					String[] values = kv[1].split(",");
+					infos.put(key, values);
+				}
+			}
+			
+			//Get the SV related INFO fields out of the way!
+			String typeraw = "BND";
+			String[] val = infos.remove(StructuralVariant.INFODEF_INFO_SVTYPE.getKey());
+			if (val.length >= 1) typeraw = val[0];
+			SVType t = SVType.getType(typeraw);
+			
+			//Initialize the SV
+			if(t == SVType.TRA) sv = new Translocation();
+			else sv = new StructuralVariant();
+			sv.setType(t);
+			
+			//Parse the other interesting SV fields
+				//End
+				//Chr2
+				//SVLEN
+				//CI
+				//MateID
+				//Imprecise
+				//Secondary
+			
+			sv.setChromosome(gb.getContig(fields[0]));
+			sv.setPosition(Integer.parseInt(fields[1]));
+			
+			try
+			{
+				val = infos.remove(StructuralVariant.INFODEF_INFO_END.getKey());
+				if(val != null && val.length >= 1)
+				{
+					int end = Integer.parseInt(val[0]);
+					sv.setEndPosition(end);
+				}
+			}
+			catch(NumberFormatException e)
+			{
+				e.printStackTrace();
+				throw new FileBuffer.UnsupportedFileTypeException("VCF.parseVCFLineAsSV || SV end position could not be read! (Number parsing error)");
+			}
+			
+			
+			if(t == SVType.TRA)
+			{
+				val = infos.remove(Translocation.INFODEF_INFO_CHR2.getKey());
+				if(val == null) sv.setEndChromosome(sv.getChromosome());
+				else sv.setEndChromosome(gb.getContig(val[0]));
+			}
+			
+			
+			val = infos.remove(StructuralVariant.INFODEF_INFO_SVLEN.getKey());
+			if(val != null)
+			{
+				try
+				{
+					for(int i = 0; i < val.length; i++)
+					{
+						int len = Integer.parseInt(val[i]);
+						sv.setSVLength(i, len);
+					}
+				}
+				catch(NumberFormatException e)
+				{
+					e.printStackTrace();
+					throw new FileBuffer.UnsupportedFileTypeException("VCF.parseVCFLineAsSV || SVLEN could not be read! (Number parsing error)");
+				}
+			}
+			
+			try
+			{
+				val = infos.remove(StructuralVariant.INFODEF_INFO_CIPOS.getKey());
+				if(val != null)
+				{
+					String[] rng = val[0].split(",");
+					if(rng.length >= 2)
+					{
+						sv.setCIDiff(Integer.parseInt(rng[0]), false, false, false);
+						sv.setCIDiff(Integer.parseInt(rng[1]), false, false, true);
+					}
+				}
+				
+				val = infos.remove(StructuralVariant.INFODEF_INFO_CIEND.getKey());
+				if(val != null)
+				{
+					String[] rng = val[0].split(",");
+					if(rng.length >= 2)
+					{
+						sv.setCIDiff(Integer.parseInt(rng[0]), true, false, false);
+						sv.setCIDiff(Integer.parseInt(rng[1]), true, false, true);
+					}
+				}
+				
+				val = infos.remove(StructuralVariant.INFODEF_INFO_CIPOS95.getKey());
+				if(val != null)
+				{
+					String[] rng = val[0].split(",");
+					if(rng.length >= 2)
+					{
+						sv.setCIDiff(Integer.parseInt(rng[0]), false, true, false);
+						sv.setCIDiff(Integer.parseInt(rng[1]), false, true, true);
+					}
+				}
+				
+				val = infos.remove(StructuralVariant.INFODEF_INFO_CIEND95.getKey());
+				if(val != null)
+				{
+					String[] rng = val[0].split(",");
+					if(rng.length >= 2)
+					{
+						sv.setCIDiff(Integer.parseInt(rng[0]), true, true, false);
+						sv.setCIDiff(Integer.parseInt(rng[1]), true, true, true);
+					}
+				}
+			}
+			catch(NumberFormatException e)
+			{
+				e.printStackTrace();
+				throw new FileBuffer.UnsupportedFileTypeException("VCF.parseVCFLineAsSV || CIs could not be read! (Number parsing error)");
+			}
+			
+			val = infos.remove(StructuralVariant.INFODEF_INFO_MATEID.getKey());
+			if(val != null) sv.addMate(val[0]);
+			
+			String fkey = StructuralVariant.INFODEF_INFO_IMPRECISE.getKey();
+			if(flags.remove(fkey)) sv.setImprecise(true);
+			else sv.setImprecise(false);
+			
+			fkey = StructuralVariant.INFODEF_INFO_SECONDARY.getKey();
+			if(flags.remove(fkey)) sv.setSecondary(true);
+			else sv.setSecondary(false);
+			
+			//Copy the remainder of the INFO fields
+			
+			if(!flags.isEmpty())
+			{
+				for(String f : flags) sv.addInfoFlag(f);
+			}
+			
+			if(!infos.isEmpty())
+			{
+				for(String k : infos.keySet()) sv.addInfoField(k, infos.get(k));
+			}
+			
+			
+			/*--------------------*/
+			
+			sv.setVariantName(fields[2]);
+			sv.setRefAllele(fields[3]);
+			//Alt allele(s)
+			String[] alts = fields[4].split(",");
+			for(String a : alts) sv.addAltAllele(a);
+			//QUAL
+			sv.setQuality(Double.parseDouble(fields[5]));
+			//FILTER
+			if(fields[6].equals("PASS")) sv.setFilterPass(true);
+			else
+			{
+				sv.setFilterPass(false);
+				String[] filters = fields[6].split(";");
+				if(filters != null && filters.length > 0)
+				{
+					for(String f : filters) sv.addFailedFilter(f);
+				}	
+			}
+			//INFO (Did before...)
+			
+			//FORMAT
+			if(fields.length < 9) return sv;
+			String formatString = fields[8];
+			//Genotypes
+			int i = 9;
+			for(String s : genoSamples)
+			{
+				if (i >= fields.length) break;
+				String rawGeno = fields[i];
+				
+				Genotype g = new Genotype(formatString, rawGeno);
+				sv.addGenotype(s, g);
+				
+				i++;
+			}
+		}
+		catch(NullPointerException e)
+		{
+			e.printStackTrace();
+			throw new FileBuffer.UnsupportedFileTypeException("VCF.parseVCFLineAsSV || NPE - Likely VCF record has insufficient tab separated fields");
+		}
+		catch(NumberFormatException e)
+		{
+			e.printStackTrace();
+			throw new FileBuffer.UnsupportedFileTypeException("VCF.parseVCFLineAsSV || One or more integers could not be read as such!");
+		}
+		
+		return sv;
+	}
 
 }

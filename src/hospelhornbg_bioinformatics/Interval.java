@@ -56,4 +56,21 @@ public class Interval implements Comparable<Interval>{
 		return (iEnd + iStart)/2;
 	}
 	
+	public boolean contains(int i)
+	{
+		if(i < iStart) return false;
+		if(i > iEnd) return false;
+		return true;
+	}
+	
+	public void setStart(int i)
+	{
+		iStart = i;
+	}
+	
+	public void setEnd(int i)
+	{
+		iEnd = i;
+	}
+	
 }

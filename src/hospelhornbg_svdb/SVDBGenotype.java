@@ -4,7 +4,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.Interval;
+import hospelhornbg_bioinformatics.StructuralVariant;
+import hospelhornbg_segregation.FamilyMember;
 
 public class SVDBGenotype {
 
@@ -60,6 +63,33 @@ public class SVDBGenotype {
 	public int getUniqueAlleleCount()
 	{
 		return alleles.size();
+	}
+	
+	public boolean isHomozygous()
+	{
+		for(SVDBAllele a : alleles)
+		{
+			if (a.getAlleleCount() > 1) return true;
+		}
+		return false;
+	}
+	
+	public static SVDBGenotype generateGenotype(FamilyMember sample, StructuralVariant sv)
+	{
+		String name = sample.getName();
+		Genotype g = sv.getSampleGenotype(name);
+		if(g != null)
+		{
+			SVDBGenotype geno = new SVDBGenotype(sample.getUID(), 1);
+			//Get GT field...
+			int[] calls = g.getAlleles();
+			//We're really only looking at 1's and 0's
+			int oneCount = 0;
+			for(int a : calls) if (a == 1) oneCount++;
+			geno.addAllele(oneCount, sv.getPosition(), sv.getEndPosition());
+			return geno;
+		}
+		return null;
 	}
 	
 }

@@ -1,5 +1,6 @@
 package hospelhornbg_svdb;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
@@ -18,13 +19,16 @@ import hospelhornbg_genomeBuild.GeneFunc;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_segregation.Population;
+import waffleoRai_Utils.BinFieldSize;
+import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.SerializedString;
 
 public class DBVariant implements Comparable<DBVariant>{
 	
 	public static final String ID_INFO_KEY = "SVDBid";
 	
 	private String sID;
-	private int iID;
+	private long lID;
 	private SVType eType;
 	private Contig oChrom;
 	
@@ -42,9 +46,32 @@ public class DBVariant implements Comparable<DBVariant>{
 	private List<Gene> lGenes;
 	private GeneFunc ePosEff;
 	private String sValidationNotes;
+	//private String omimNotes;
 	
 	private Contig oChrom2; //TRA only
 	private String sAlt; //INS and INS:ME only
+	
+	public static class ParsedVariant
+	{
+		private long size;
+		private DBVariant variant;
+		
+		private ParsedVariant(DBVariant v, long sz)
+		{
+			size = sz;
+			variant = v;
+		}
+		
+		public long getSize()
+		{
+			return size;
+		}
+		
+		public DBVariant getVariant()
+		{
+			return variant;
+		}
+	}
 	
 	private DBVariant()
 	{
@@ -73,7 +100,7 @@ public class DBVariant implements Comparable<DBVariant>{
 		try
 		{
 			var.sID = fields[0];
-			var.iID = Integer.parseUnsignedInt(fields[1], 16);
+			var.lID = Long.parseUnsignedLong(fields[1], 16);
 			var.eType = SVType.getType(fields[2]);
 			var.oChrom = gb.getContig(fields[3]);
 			
@@ -197,6 +224,108 @@ public class DBVariant implements Comparable<DBVariant>{
 		return var;
 	}
 
+	public static ParsedVariant getFromVDBRecord(FileBuffer record, GenomeBuild gb, GeneSet gs, long stoff)
+	{
+		//VDB Format
+		// Magic "VDB_" [4]
+		// Version [4]
+		//	Record [Variable]
+		//		Variant UID [8]
+		//		Contig1 [4]
+		//		Start1 [4]
+		//		Start2 [4]
+		//		End1 [4]
+		//		End2 [4]
+		//		SVType [1]
+		//		PosEff [1]
+		//		Var Name [2x2 VLS]
+		//		Total Count [4]
+		//		Total Hom Count [4]
+		//		(Population Counts) [4+4]
+		//		# Genes[4]
+		//		Gene List
+		//			Gene Hash [4]...
+		//		Flags[2]
+		//			0 - Has OMIM String
+		//			1 - Has Validation Notes
+		//		OMIM String [VLS 2x2, if present]
+		//		Validation Notes [VLS 2x2, if present]
+		//		Contig2 [4] (TRA Only)
+		//		INS Seq [4x4 VLS] (INS Only)
+		
+		DBVariant var = new DBVariant();
+		long cpos = stoff;
+		
+		var.lID = record.longFromFile(cpos); cpos += 8;
+		int cid1 = record.intFromFile(cpos); cpos += 4;
+		var.oChrom = gb.getContigByUID(cid1);
+		int st1 = record.intFromFile(cpos); cpos += 4;
+		int st2 = record.intFromFile(cpos); cpos += 4;
+		var.iStart = new Interval(st1, st2);
+		int ed1 = record.intFromFile(cpos); cpos += 4;
+		int ed2 = record.intFromFile(cpos); cpos += 4;
+		var.iEnd = new Interval(ed1, ed2);
+		int sve = Byte.toUnsignedInt(record.getByte(cpos)); cpos++;
+		var.eType = SVType.getTypeByID(sve);
+		int effe = Byte.toUnsignedInt(record.getByte(cpos)); cpos++;
+		var.ePosEff = GeneFunc.getByValue(effe);
+		SerializedString ss = record.readVariableLengthString(cpos, BinFieldSize.WORD, 2);
+		cpos += ss.getSizeOnDisk();
+		var.sID = ss.getString();
+		
+		//Population counts
+		var.iCohortTotalCount = record.intFromFile(cpos); cpos += 4;
+		var.iCohortHomCount = record.intFromFile(cpos); cpos += 4;
+		Population[] pops = Population.values();
+		for(Population p : pops)
+		{
+			var.mPopTotalCounts.put(p, record.intFromFile(cpos)); cpos += 4;
+			var.mPopHomCounts.put(p, record.intFromFile(cpos)); cpos += 4;
+		}
+		
+		//Gene List
+		int ngenes = record.intFromFile(cpos); cpos += 4;
+		var.lGenes = new ArrayList<Gene>(ngenes + 1);
+		if (ngenes > 0)
+		{
+			for(int i = 0; i < ngenes; i++)
+			{
+				int gid = record.intFromFile(cpos); cpos += 4;
+				Gene g = gs.getGeneByTranscriptHashUID(gid);
+				if(g != null) var.lGenes.add(g);
+			}
+		}
+		
+		//Optional Strings
+		int flags = Short.toUnsignedInt(record.shortFromFile(cpos)); cpos += 2;
+		//boolean hasomim = (flags & 0x1) != 0;
+		boolean hasvalcom = (flags & 0x2) != 0;
+		if(hasvalcom)
+		{
+			ss = record.readVariableLengthString(cpos, BinFieldSize.WORD, 2);
+			cpos += ss.getSizeOnDisk();
+			var.sValidationNotes = ss.getString();
+		}
+		
+		//Optional fields
+		if(var.eType == SVType.TRA)
+		{
+			//Chrom 2
+			int cid2 = record.intFromFile(cpos); cpos += 4;
+			var.oChrom2 = gb.getContigByUID(cid2);
+		}
+		else if (var.eType == SVType.INS || var.eType == SVType.INSME)
+		{
+			ss = record.readVariableLengthString(cpos, BinFieldSize.DWORD, 4);
+			cpos += ss.getSizeOnDisk();
+			var.sAlt = ss.getString();
+		}
+		
+		long sz = cpos - stoff;
+		
+		return new ParsedVariant(var, sz);
+	}
+	
 	public void countIndividual(boolean hom, Collection<Population> popGroups, int total, Map<Population, Integer> groupTotals)
 	{
 		iCohortTotalCount++;
@@ -276,7 +405,7 @@ public class DBVariant implements Comparable<DBVariant>{
 	{
 		StringBuilder sb = new StringBuilder(2048);
 		sb.append(sID + "\t");
-		sb.append(Integer.toHexString(iID) + "\t");
+		sb.append(Long.toHexString(lID) + "\t");
 		sb.append(eType.getString() + "\t");
 		sb.append(oChrom.getUDPName() + "\t");
 		sb.append(iStart.getStart() + "-" + iStart.getEnd() + "\t");
@@ -342,6 +471,106 @@ public class DBVariant implements Comparable<DBVariant>{
 		return sb.toString();
 	}
 
+	public FileBuffer toVDBRecord()
+	{
+		/*VDB Format
+		 Magic "VDB_" [4]
+		 Version [4]
+			Record [Variable]
+				Variant UID [8]
+				Contig1 [4]
+				Start1 [4]
+				Start2 [4]
+				End1 [4]
+				End2 [4]
+				SVType [1]
+				PosEff [1]
+				Var Name [2x2 VLS]
+				Total Count [4]
+				Total Hom Count [4]
+				(Population Counts) [4+4]
+				# Genes[4]
+				Gene List
+					Gene Hash [4]...
+				Flags[2]
+					0 - Has OMIM String
+					1 - Has Validation Notes
+				OMIM String [VLS 2x2, if present]
+				Validation Notes [VLS 2x2, if present]
+				Contig2 [4] (TRA Only)
+				INS Seq [4x4 VLS] (INS Only)*/
+		
+		int minsz = 30;
+		minsz += sID.length() + 4;
+		minsz += 8 + (8*Population.values().length);
+		minsz += 4;
+		if(lGenes != null) minsz += 4 * lGenes.size();
+		minsz += 2;
+		if(sValidationNotes != null) minsz += sValidationNotes.length() + 4;
+		minsz += 4;
+		if (this.sAlt != null) minsz += sAlt.length() + 8;
+		
+		FileBuffer record = new FileBuffer(minsz, true);
+		record.addToFile(lID);
+		if(oChrom != null) record.addToFile(oChrom.getUDPName().hashCode());
+		else record.addToFile(-1);
+		record.addToFile(iStart.getStart());
+		record.addToFile(iStart.getEnd());
+		record.addToFile(iEnd.getStart());
+		record.addToFile(iEnd.getEnd());
+		if(eType != null) record.addToFile((byte)eType.getID());
+		else record.addToFile((byte)0xFF);
+		if(ePosEff != null) record.addToFile((byte)ePosEff.getPriority());
+		else record.addToFile((byte)0xFF);
+		record.addVariableLengthString(sID, BinFieldSize.WORD, 2);
+		
+		//Population Counts
+		record.addToFile(iCohortTotalCount);
+		record.addToFile(iCohortHomCount);
+		Population[] pops = Population.values();
+		for(Population p : pops)
+		{
+			int i = this.mPopTotalCounts.get(p);
+			int j = this.mPopHomCounts.get(p);
+			record.addToFile(i);
+			record.addToFile(j);
+		}
+		
+		//Gene List
+		if (lGenes != null)
+		{
+			record.addToFile(lGenes.size());
+			for(Gene g : lGenes) record.addToFile(g.getID().hashCode());
+		}
+		else record.addToFile(0);
+		
+		//Optional Fields
+		int flags = 0;
+		if (sValidationNotes != null && !sValidationNotes.isEmpty()) flags |= 0x2;
+		record.addToFile((short)flags);
+		if ((flags & 0x2) != 0) record.addVariableLengthString(sValidationNotes, BinFieldSize.WORD, 2);
+		
+		//Type specific fields
+		if(eType == SVType.TRA)
+		{
+			//Chrom 2
+			if(oChrom2 != null) record.addToFile(oChrom2.getUDPName().hashCode());
+			else
+			{
+				if(oChrom != null) record.addToFile(oChrom.getUDPName().hashCode());
+				else record.addToFile(-1);
+			}
+		}
+		else if (eType == SVType.INS || eType == SVType.INSME)
+		{
+			//Insert string
+			if(sAlt == null) sAlt = "N";
+			record.addVariableLengthString(sAlt, BinFieldSize.DWORD, 4);
+		}
+		
+		return record;
+	}
+	
 	public boolean equals(Object o)
 	{
 		if (o == null) return false;
@@ -476,16 +705,18 @@ public class DBVariant implements Comparable<DBVariant>{
 		return true;
 	}
 	
-	public int getIntegerID()
+	public long getLongID()
 	{
-		return this.iID;
+		return this.lID;
 	}
 	
-	public void regenerateIntegerID()
+	public int regenerateIntegerID()
 	{
 		Random r = new Random();
+		int iID = 0;
 		if(sID == null) iID = r.nextInt();
 		else iID = sID.hashCode() ^ r.nextInt();
+		return iID;
 	}
 	
 	public void setTotalCount(int total)
@@ -563,7 +794,7 @@ public class DBVariant implements Comparable<DBVariant>{
 		sv.setCIPOS(iStart);
 		sv.setCIEND(iEnd);
 		
-		sv.addInfoField(ID_INFO_KEY, iID);
+		sv.addInfoField(ID_INFO_KEY, lID);
 		
 		return sv;
 	}
@@ -640,5 +871,33 @@ public class DBVariant implements Comparable<DBVariant>{
 		return this.mPopFreqs.get(p);
 	}
 	
+	protected void setLongUID(long uid)
+	{
+		this.lID = uid;
+	}
+
+	public void decrementTotalCount()
+	{
+		if(iCohortTotalCount > 0) iCohortTotalCount--;
+	}
+	
+	public void decrementTotalCount(Population p)
+	{
+		Integer i = this.mPopTotalCounts.get(p);
+		if (i == null) return;
+		this.mPopTotalCounts.put(p, i++);
+	}
+	
+	public void decrementHomozygoteCount()
+	{
+		if(iCohortHomCount > 0) iCohortHomCount--;
+	}
+	
+	public void decrementHomozygoteCount(Population p)
+	{
+		Integer i = mPopHomCounts.get(p);
+		if (i == null) return;
+		mPopHomCounts.put(p, i++);
+	}
 	
 }
