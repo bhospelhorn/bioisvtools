@@ -42,7 +42,7 @@ public class Pedigree{
 	
 	protected Pedigree()
 	{
-		
+		indivMap = new HashMap<String, Individual>();
 	}
 	
  	public Pedigree(Individual PB)
