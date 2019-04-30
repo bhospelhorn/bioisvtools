@@ -27,6 +27,7 @@ import hospelhornbg_genomeBuild.Gene;
 import hospelhornbg_genomeBuild.GeneFunc;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
+import hospelhornbg_genomeBuild.OMIMGeneMapImporter;
 import hospelhornbg_segregation.Candidate;
 import hospelhornbg_segregation.Individual;
 import hospelhornbg_segregation.Inheritance;
@@ -42,6 +43,7 @@ public class SVFam {
 
 	public static final String OP_VCFIN = "-i"; 
 	public static final String OP_OUTDIR = "-o"; 
+	public static final String OP_OMIM_TABLE = "-a"; 
 	
 	public static final String OP_PEDIN = "-p"; 
 	
@@ -70,6 +72,7 @@ public class SVFam {
 		System.out.println("\t-i\tFILE\t[Required]\t\tInput vcf path.");
 		System.out.println("\t-o\tFILE\t[Required]\t\tOutput directory path.");
 		System.out.println("\t-p\tFILE\t[Required]\t\tInput PED (pedigree) file path.");
+		System.out.println("\t-a\tFILE\t[Optional]\t\tOMIM genemap2.txt file for OMIM annotation.");
 		System.out.println("\t-s\tINT\t[Optional]\t\tMaximum size of CNVs kept in analysis. [Default: 50000bp]");
 		//System.out.println("\t-m\tFLOAT\t[Optional]\t\tMinimum mappability score of regions where SV endpoints fall for SV to be kept. [Default: 0.5]");
 		System.out.println();
@@ -83,7 +86,7 @@ public class SVFam {
 	public static void writeTable(List<Candidate> clist, Pedigree fam, String outpath, boolean includePartners) throws IOException
 	{
 		//int ncand = clist.size();
-		String header = "VARID\tPOS\tTYPE\tSIZE\tPOSEFF\tGENE\tTID\tALLELE";
+		String header = "VARID\tPOS\tTYPE\tSIZE\tPOSEFF\tGENE\tTID\tALLELE\tOMIM";
 		List<Individual> famlist = fam.getAllMembers();
 		List<Individual> affected = fam.getAllAffected();
 		for (Individual aff : affected){
@@ -171,6 +174,18 @@ public class SVFam {
 			
 			//ALLELE
 			rec += c.getAllele() + "\t";
+			
+			//OMIM
+			if(g != null)
+			{
+				String omimAnno = g.getAnnotation(OMIMGeneMapImporter.ANNO_KEY);
+				if(omimAnno == null) rec += "[NONE]\t";
+				else rec += omimAnno + "\t";
+			}
+			else
+			{
+				rec += "[N/A]\t";
+			}
 			
 			//SEG & SEGPARTNERS
 			for (Individual aff : affected)
@@ -312,6 +327,7 @@ public class SVFam {
 		String inPath = null;
 		String outPath = null;
 		String pedPath = null;
+		String omimPath = null;
 		int maxsize = DEFO_MAXSIZE;
 		double minmap = DEFO_MINMAP;
 		
@@ -337,6 +353,16 @@ public class SVFam {
 					System.exit(1);
 				}
 				outPath = args[i+1];
+			}
+			if (s.equals(OP_OMIM_TABLE))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_OMIM_TABLE + " flag MUST be followed by path to OMIM genemap2.txt file!");
+					printUsage();
+					System.exit(1);
+				}
+				omimPath = args[i+1];
 			}
 			if (s.equals(OP_PEDIN))
 			{
@@ -497,6 +523,14 @@ public class SVFam {
 			System.exit(1);
 		}
 		System.err.println("Gene info loaded!");
+		
+		//Load OMIM anno if path provided
+		if(omimPath != null && !omimPath.isEmpty())
+		{
+			OMIMGeneMapImporter omimImport = new OMIMGeneMapImporter(omimPath);
+			if (omimImport.importTable(gs)) System.err.println("OMIM Table read!");
+			else System.err.println("OMIM Table read failed!");
+		}
 		
 		//Filter size - toss anything above max size
 		System.err.println("NOTICE: Filtering out CNVs larger than " + maxsize + "bp...");

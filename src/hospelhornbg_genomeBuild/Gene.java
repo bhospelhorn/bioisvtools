@@ -3,7 +3,9 @@ package hospelhornbg_genomeBuild;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import waffleoRai_Utils.FileBuffer;
 
@@ -29,13 +31,16 @@ import waffleoRai_Utils.FileBuffer;
  * 
  * 1.3.0 -> 1.3.1 | January 24, 2019
  * 		Added two whitelist flags!
+ * 
+ * 1.3.1 -> 1.4.0 | April 24, 2019
+ * 		Added generic annotation map
  */
 
 /**
  * A container for basic gene information - location and exons.
  * @author Blythe Hospelhorn
- * @version 1.3.1
- * @since January 24, 2019
+ * @version 1.4.0
+ * @since April 24, 2019
  *
  */
 public class Gene implements Comparable<Gene>{
@@ -69,6 +74,8 @@ public class Gene implements Comparable<Gene>{
 	private boolean flag_pseudogene;
 	private boolean flag_whitelist;
 	private boolean flag_omim;
+	
+	private Map<String, String> annotations;
 	
 	/* --- Inner Structures --- */
 	
@@ -239,6 +246,7 @@ public class Gene implements Comparable<Gene>{
 		tlEnd = -1;
 		isNCRNA = false;
 		exons.clear();
+		annotations = new HashMap<String, String>();
 	}
 
 	/* --- Getters --- */
@@ -1207,6 +1215,18 @@ public class Gene implements Comparable<Gene>{
 	public void flagOMIM(boolean b)
 	{
 		this.flag_omim = b;
+	}
+	
+	/* --- Annotation --- */
+	
+	public void addAnnotation(String key, String value)
+	{
+		annotations.put(key, value);
+	}
+	
+	public String getAnnotation(String key)
+	{
+		return annotations.get(key);
 	}
 	
 }

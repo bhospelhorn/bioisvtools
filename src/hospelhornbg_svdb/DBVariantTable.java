@@ -1706,6 +1706,13 @@ public class DBVariantTable {
 			return true;
 		}
 		
+		public SVType getVariantType(long varUID)
+		{
+			LookupRecord lr = this.getIndexRecord(varUID);
+			if(lr == null) return null;
+			return lr.type;
+		}
+		
 	}
 
 	/*----- Instance Variables -----*/
@@ -1763,6 +1770,18 @@ public class DBVariantTable {
 		}
 		
 		return idlist;
+	}
+	
+	public List<Long> getVariantIDsForSampleOfType(int sampleUID, SVType type)
+	{
+		List<Long> list = new LinkedList<Long>();
+		List<Long> allvar = getVariantIDsForSample(sampleUID);
+		if(allvar == null) return list;
+		for(Long vid : allvar)
+		{
+			if(varCache.getVariantType(vid) == type) list.add(vid);
+		}
+		return list;
 	}
 	
 	public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end)

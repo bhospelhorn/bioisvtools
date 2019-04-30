@@ -14,12 +14,17 @@ import java.util.Map;
 import java.util.Set;
 
 import hospelhornbg_bioinformatics.SVType;
+import hospelhornbg_genomeBuild.Gene;
 import hospelhornbg_genomeBuild.GeneFunc;
+import hospelhornbg_genomeBuild.GeneSet;
+import hospelhornbg_genomeBuild.GenomeBuild;
+import hospelhornbg_genomeBuild.OMIMGeneMapImporter;
 
 public class GeneTally {
 	
 	public static final String OP_INFILE = "-n"; 
 	
+	public static final String OP_OMIM_TABLE = "-a"; 
 	public static final String OP_TYPELIST = "-t"; 
 	public static final String OP_INTRONIC = "-i"; 
 	public static final String OP_INTERGENIC = "-I"; 
@@ -42,6 +47,7 @@ public class GeneTally {
 		System.out.println("Flags:");
 		System.out.println("\t-n\tFILE\t[Required]\t\tInput table path.");
 		System.out.println("\t-t\tSTRING\t[Optional]\t\tComma delimited list of SV types to include. (Default: DEL,DUP)");
+		System.out.println("\t-a\tFILE\t[Optional]\t\tOMIM genemap2.txt file for OMIM annotation.");
 		System.out.println("\t-i\tFLAG\t[Optional]\t\tInclude intronic hits.");
 		System.out.println("\t-I\tFLAG\t[Optional]\t\tInclude downstream and intergenic hits.");
 		System.out.println("\t-e\tFLAG\t[Optional]\t\tInclude only exonic hits.");
@@ -246,7 +252,7 @@ public class GeneTally {
 		return hitmap;
 	}
 
-	public static void printHitMap(Map<String, Map<String, Hit>> hitmap)
+	public static void printHitMap(Map<String, Map<String, Hit>> hitmap, GeneSet genes)
 	{
 		List<GeneHit> list = new LinkedList<GeneHit>();
 		Set<String> geneset = hitmap.keySet();
@@ -263,9 +269,9 @@ public class GeneTally {
 		
 		Collections.sort(list);
 		
-		//GeneName	#Hits	HitDetails
+		//GeneName	#Hits	HitDetails	OMIM
 		//Hit details: Sample,Type,PosEff,Seg;Sample,Type,PosEff,Seg;(etc)
-		System.out.println("GeneName\t#Hits\tHitDetails");
+		System.out.println("GeneName\t#Hits\tHitDetails\tOMIM");
 		
 		for (GeneHit gh : list)
 		{
@@ -281,19 +287,39 @@ public class GeneTally {
 				System.out.print(s + "," + h.type.toString() + "," + h.poseff.toString() + "," + h.seg);
 				first = false;
 			}
+			System.out.print("\t");
+			//Try to get gene
+			List<Gene> gmatches = genes.getGeneByName(g);
+			if(gmatches == null || gmatches.isEmpty()) System.out.print("[N/A]");
+			else
+			{
+				first = true;
+				for(Gene go : gmatches)
+				{
+					String anno = go.getAnnotation(OMIMGeneMapImporter.ANNO_KEY);
+					if(anno != null && !anno.isEmpty())
+					{
+						if(!first) System.out.print(";");
+						System.out.print(anno);
+						first = false;
+					}
+				}
+				if(first) System.out.print("[N/A]"); //No genes had annotations
+			}
 			System.out.print("\n");
 		}
 		
 		
 	}
 	
-	public static void runGeneTally(String[] args)
+	public static void runGeneTally(String[] args, GenomeBuild gb)
 	{
 		String inPath = null;
 		String tlistraw = null;
 		boolean use_intronic = false;
 		boolean use_intergenic = false;
 		boolean exonic_only = false;
+		String omimPath = null;
 		
 		for (int i = 0; i < args.length; i++)
 		{
@@ -317,6 +343,16 @@ public class GeneTally {
 					System.exit(1);
 				}
 				tlistraw = args[i+1];
+			}
+			if (s.equals(OP_OMIM_TABLE))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_OMIM_TABLE + " flag MUST be followed by path to OMIM genemap2.txt file!");
+					printUsage();
+					System.exit(1);
+				}
+				omimPath = args[i+1];
 			}
 			if (s.equals(OP_INTRONIC))
 			{
@@ -367,6 +403,23 @@ public class GeneTally {
 			System.exit(1);
 		}
 		
+		//Load genes
+		GeneSet gs = GeneSet.loadRefGene(gb);
+		if (gb == null)
+		{
+			System.err.println("ERROR: Gene set could not be opened!");
+			System.exit(1);
+		}
+		System.err.println("Gene info loaded!");
+		
+		//Load omim, if specified
+		if(omimPath != null && !omimPath.isEmpty())
+		{
+			OMIMGeneMapImporter omimImport = new OMIMGeneMapImporter(omimPath);
+			if (omimImport.importTable(gs)) System.err.println("OMIM Table read!");
+			else System.err.println("OMIM Table read failed!");
+		}
+		
 		
 		//Parse input table
 		Map<String,String> pathmap = new HashMap<String, String>();
@@ -398,7 +451,7 @@ public class GeneTally {
 		Map<String, Map<String, Hit>> hitmap = generateHitMap(pathmap, tlist, use_intronic, use_intergenic, exonic_only);
 		
 		//Print
-		printHitMap(hitmap);
+		printHitMap(hitmap, gs);
 		
 	}
 

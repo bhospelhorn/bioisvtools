@@ -712,7 +712,14 @@ public class ConsoleMain {
 				System.err.println("Tool Selected: " + TOOL_SVGENEHITTALLY);
 				System.err.println();
 			}
-			GeneTally.runGeneTally(args);
+			GenomeBuild gb = loadBuild(homedir, genome, verbose);
+			if(gb == null)
+			{
+				System.err.println("Genome build for \"" + genome + "\" could not be loaded!");
+				printUsage();
+				System.exit(1);
+			}
+			GeneTally.runGeneTally(args, gb);
 		}
 		else if (program.equals(TOOL_SCANSAM))
 		{

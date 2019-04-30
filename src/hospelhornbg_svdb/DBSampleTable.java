@@ -2,6 +2,8 @@ package hospelhornbg_svdb;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -72,9 +74,14 @@ public class DBSampleTable implements Iterable<Family>{
 			}
 		}
 		
+		private String getFamPath(int fuid)
+		{
+			return srcDir + File.separator + Integer.toHexString(fuid) + ".fam";
+		}
+		
 		private Family loadFamily(int uid)
 		{
-			String fpath = srcDir + File.separator + Integer.toHexString(uid) + ".fam";
+			String fpath = getFamPath(uid);
 			if (!FileBuffer.fileExists(fpath)) return null;
 			if (idMap.size() >= MAX_FAM_IN_MEM)
 			{
@@ -220,7 +227,6 @@ public class DBSampleTable implements Iterable<Family>{
 			return nameIndex.size();
 		}
 
-		
 		public class FCIterator implements Iterator<Family>
 		{
 
@@ -257,6 +263,21 @@ public class DBSampleTable implements Iterable<Family>{
 		public Iterator<Family> iterator() 
 		{
 			return new FCIterator();
+		}
+		
+		public Family removeFamily(int famID) throws IOException
+		{
+			Family f = getFamily(famID);
+			if (f == null) return null;
+			
+			usedQueue.remove(famID);
+			idMap.remove(famID);
+			nameIndex.remove(f.getFamilyName());
+			
+			String fpath = this.getFamPath(famID);
+			Files.deleteIfExists(Paths.get(fpath));
+			
+			return f;
 		}
 		
 	}
@@ -521,6 +542,50 @@ public class DBSampleTable implements Iterable<Family>{
 	public Iterator<Family> iterator() 
 	{
 		return fCache.iterator();
+	}
+	
+	public Family removeFamily(int famUID)
+	{
+		Family f = null;
+		try
+		{f = fCache.removeFamily(famUID);}
+		catch(IOException e)
+		{return null;}
+		
+		if(f == null) return null;
+		
+		//Clear out all indices here
+		nameMap.remove(f.getFamilyName());
+		List<FamilyMember> members = f.getAllFamilyMembers();
+		for(FamilyMember m : members) famIdMap.remove(m.getUID());
+		
+		return f;
+	}
+	
+	public Family removeFamily(String famName)
+	{
+		Integer id = nameMap.get(famName);
+		if (id == null) return null;
+		return removeFamily(id);
+	}
+	
+	public FamilyMember removeSample(int sampleUID)
+	{
+		int famid = famIdMap.get(sampleUID);
+		Family f = fCache.getFamily(famid);
+		if(f == null) return null;
+		
+		FamilyMember m = f.removeMember(sampleUID);
+		if(m == null) return null;
+		
+		try {fCache.addOrReplaceFamily(f);} 
+		catch (IOException e) 
+		{
+			e.printStackTrace();
+			return null;
+		}
+		
+		return m;
 	}
 	
 }

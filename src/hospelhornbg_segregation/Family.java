@@ -211,6 +211,29 @@ public class Family extends Pedigree{
 		iMembers.put(indiv.getUID(), indiv);
 	}
 	
+	public FamilyMember removeMember(int uid)
+	{
+		FamilyMember m = iMembers.remove(uid);
+		if(m == null) return null;
+		
+		if(iProband == m) iProband = null;
+		super.removeIndividual(m.getName());
+		
+		return m;
+	}
+	
+	public FamilyMember removeMember(String name)
+	{
+		FamilyMember m = getMemberByName(name);
+		if(m == null) return null;
+		
+		iMembers.remove(m.getUID());
+		if(iProband == m) iProband = null;
+		super.removeIndividual(m.getName());
+		
+		return m;
+	}
+	
 	/* --- Conditions --- */
 	
 	private void updateAffectedStatus()

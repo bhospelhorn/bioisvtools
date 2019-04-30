@@ -174,6 +174,19 @@ public class Pedigree{
 		proband = pb;
 	}
 	
+	public Individual removeIndividual(String name)
+	{
+		iUnaffected = null;
+		iAffected = null;
+		
+		Individual i = indivMap.remove(name);
+		if (i == null) return null;
+		
+		if(proband != null && proband.getName().equals(name)) proband = null;
+		
+		return i;
+	}
+	
 	/* --- Lists --- */
 	
 	public void regenerateAffectedLists()
