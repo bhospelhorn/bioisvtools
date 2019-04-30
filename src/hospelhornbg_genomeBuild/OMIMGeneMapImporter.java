@@ -34,17 +34,28 @@ public class OMIMGeneMapImporter {
 				if(line.isEmpty()) continue;
 				if(line.startsWith("#")) continue;
 				String[] fields = line.split("\t");
+				//System.err.println("Line: " + line);
+				//System.err.println("Field count: " + fields.length);
 				if(fields.length <= GENES_COLUMN) continue;
+				if(fields.length <= PHENO_COLUMN) continue;
+				//System.err.println("Pheno pass!: " + fields.length);
 				String pheno = fields[PHENO_COLUMN];
 				if(pheno.isEmpty()) continue;
+				//System.err.println("Pheno: " + pheno);
 				String genelist = fields[GENES_COLUMN];
+				//System.err.println("Genelist: " + genelist);
 				String gclean = genelist.replace(" ", ""); //Delete spaces
 				String[] glsplit = gclean.split(",");
+				//System.err.println("Genelist (list): ");
 				for(String gname : glsplit)
 				{
+					//System.err.println("\t" + gname);
 					List<Gene> cand = genes.getGeneByName(gname);
 					if (cand == null || cand.isEmpty()) continue;
-					for(Gene g : cand) g.addAnnotation(ANNO_KEY, pheno);
+					for(Gene g : cand) {
+						//System.err.println("Gene Match Found: " + g.getName());
+						g.addAnnotation(ANNO_KEY, pheno);
+					}
 				}
 			}
 			br.close();

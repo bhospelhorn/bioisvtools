@@ -187,6 +187,11 @@ public class Pedigree{
 		return i;
 	}
 	
+	protected void addMember(String name, Individual member)
+	{
+		indivMap.put(name, member);
+	}
+	
 	/* --- Lists --- */
 	
 	public void regenerateAffectedLists()
