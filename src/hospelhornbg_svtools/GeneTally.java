@@ -302,6 +302,7 @@ public class GeneTally {
 						if(!first) System.out.print(";");
 						System.out.print(anno);
 						first = false;
+						break;
 					}
 				}
 				if(first) System.out.print("[N/A]"); //No genes had annotations
