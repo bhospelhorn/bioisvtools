@@ -725,7 +725,7 @@ public class SamFixer {
 					}
 					String line = writequeue.poll();
 					if (line == null) continue;
-					qc.countWriteOut();
+					qc.incrementWriteOut();
 					try 
 					{
 
