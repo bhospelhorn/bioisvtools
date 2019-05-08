@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 import hospelhornbg_segregation.Family;
 import hospelhornbg_segregation.FamilyMember;
@@ -30,6 +31,7 @@ public class DBSampleTable implements Iterable<Family>{
 	public static final int MAX_FAM_IN_MEM = 256;
 	public static final String FINDEX_NAME = "famid.fidx";
 	public static final String SINDEX_NAME = "smplid.sidx";
+	public static final String IMPORTLIST_NAME = "imported.bin";
 	
 	public static final String FAMI_DIR = "fam";
 	
@@ -284,9 +286,12 @@ public class DBSampleTable implements Iterable<Family>{
 	
 	private FamilyCache fCache;
 	
-	private String sidx_path;
+	private String sidx_path; 
+	private String implist_path;
+	
 	private ConcurrentMap<String, Integer> nameMap;
 	private ConcurrentMap<Integer, Integer> famIdMap;
+	private ConcurrentSkipListSet<Integer> importedSamples;
 	
 	public DBSampleTable(String projectDir) throws IOException
 	{
@@ -296,6 +301,33 @@ public class DBSampleTable implements Iterable<Family>{
 		nameMap = new ConcurrentHashMap<String, Integer>();
 		famIdMap = new ConcurrentSkipListMap<Integer, Integer>();
 		readSampleIndex();
+		implist_path = projectDir + File.separator + FAMI_DIR + File.separator + IMPORTLIST_NAME;
+		importedSamples = new ConcurrentSkipListSet<Integer>();
+		readImportedList();
+	}
+	
+	private void readImportedList() throws IOException
+	{
+		if(!FileBuffer.fileExists(implist_path)) return; //Nothing to read
+		long fsz = FileBuffer.fileSize(implist_path);
+		FileBuffer ilist = FileBuffer.createBuffer(implist_path, true);
+		long cpos = 0;
+		while(cpos < fsz)
+		{
+			importedSamples.add(ilist.intFromFile(cpos)); cpos+=4;
+		}
+	}
+	
+	private void writeImportedList() throws IOException
+	{
+		int nsamp = importedSamples.size();
+		if(nsamp < 1) return; //Nothing to write
+		FileBuffer ilist = FileBuffer.createWritableBuffer("DBSampleTableImportListOut", (nsamp+1) * 4, true);
+		for(Integer sid : importedSamples)
+		{
+			ilist.addToFile(sid);
+		}
+		ilist.writeFile(implist_path);
 	}
 	
 	private void readSampleIndex() throws IOException
@@ -367,6 +399,7 @@ public class DBSampleTable implements Iterable<Family>{
 		//Fami files should be written as they are modified...
 		fCache.writeIndex();
 		writeSampleIndex();
+		writeImportedList();
 	}
 	
 	public Family getFamily(int uid)
@@ -517,11 +550,38 @@ public class DBSampleTable implements Iterable<Family>{
 	
 	public int countSamples()
 	{
+		//Don't count ghosts!
+		//c
+		return importedSamples.size();
+	}
+	
+	public int countAllSamples()
+	{
+		//This one counts ghosts
 		return famIdMap.size();
 	}
 	
 	public int countSamplesInPopulation(Population p)
 	{
+		//Don't count ghosts!
+		int tot = 0;
+		for(Family f : fCache)
+		{
+			if (f != null)
+			{
+				List<FamilyMember> members = f.getAllFamilyMembers();
+				for(FamilyMember mem : members)
+				{
+					if (mem.hasPopulationTag(p) && importedSamples.contains(mem.getUID())) tot++;
+				}
+			}
+		}
+		return tot;
+	}
+	
+	public int countAllSamplesInPopulation(Population p)
+	{
+		//This one counts ghosts!
 		int tot = 0;
 		for(Family f : fCache)
 		{
@@ -534,7 +594,6 @@ public class DBSampleTable implements Iterable<Family>{
 				}
 			}
 		}
-		
 		return tot;
 	}
 
@@ -557,7 +616,10 @@ public class DBSampleTable implements Iterable<Family>{
 		//Clear out all indices here
 		nameMap.remove(f.getFamilyName());
 		List<FamilyMember> members = f.getAllFamilyMembers();
-		for(FamilyMember m : members) famIdMap.remove(m.getUID());
+		for(FamilyMember m : members) {
+			famIdMap.remove(m.getUID());
+			importedSamples.remove(m.getUID());
+		}
 		
 		return f;
 	}
@@ -584,8 +646,25 @@ public class DBSampleTable implements Iterable<Family>{
 			e.printStackTrace();
 			return null;
 		}
+		famIdMap.remove(m.getUID());
+		importedSamples.remove(m.getUID());
 		
 		return m;
+	}
+	
+	public void markSample(int sampleID)
+	{
+		importedSamples.add(sampleID);
+	}
+	
+	public void unmarkSample(int sampleID)
+	{
+		importedSamples.remove(sampleID);
+	}
+	
+	public boolean sampleHasData(int sampleID)
+	{
+		return this.importedSamples.contains(sampleID);
 	}
 	
 }

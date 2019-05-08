@@ -10,6 +10,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -26,6 +27,8 @@ import hospelhornbg_bioinformatics.SVType;
 import hospelhornbg_bioinformatics.StructuralVariant;
 import hospelhornbg_bioinformatics.VCFReadStreamer;
 import hospelhornbg_genomeBuild.Contig;
+import hospelhornbg_genomeBuild.Gene;
+import hospelhornbg_genomeBuild.GeneFunc;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_segregation.Family;
@@ -265,6 +268,20 @@ public class DBVariantTable {
 			bw.close();
 		}
 		
+	}
+	
+	public static class GeneHitCounter
+	{
+		public Set<Integer> total_hits_indiv;
+		public Set<Integer> exon_hits_indiv;
+		public int total_hits_var;
+		public int exon_hits_var;
+		
+		public GeneHitCounter()
+		{
+			total_hits_indiv = new TreeSet<Integer>();
+			exon_hits_indiv = new TreeSet<Integer>();
+		}
 	}
 	
 	/*----- Inner Classes (Major) -----*/
@@ -1713,6 +1730,44 @@ public class DBVariantTable {
 			return lr.type;
 		}
 		
+		public Map<String, GeneHitCounter> generateGeneHitMap()
+		{
+			Map<String, GeneHitCounter> map = new HashMap<String, GeneHitCounter>();
+			for(VariantGenotype vg : genoCache)
+			{
+				//See what genes the variant overlaps with
+				long vid = vg.getVariantUID();
+				DBVariant var = getVariantNoCache(vid);
+				List<Gene> glist = var.getGeneListReference();
+				if(glist == null || glist.isEmpty()) continue; //Nothing to count!
+				
+				//Iterate through genes and update counts.
+				//Remember to check if exonic
+				for(Gene g : glist)
+				{
+					//See if there is already a record
+					GeneHitCounter ghc = map.get(g.getID());
+					if(ghc == null)
+					{
+						ghc = new GeneHitCounter();
+						map.put(g.getID(), ghc);
+					}
+					//Total var always gets incremented
+					ghc.total_hits_var++;
+					//See if exonic
+					boolean isExonic = g.getRelativeRegionLocationEffect(var.getStartPosition().getStart(), var.getEndPosition().getEnd()) == GeneFunc.EXONIC;
+					if(isExonic) ghc.exon_hits_var++;
+					Collection<SVDBGenotype> gtlist = vg.getGenotypes();
+					for(SVDBGenotype gt : gtlist)
+					{
+						ghc.total_hits_indiv.add(gt.getIndividualUID());
+						if(isExonic) ghc.exon_hits_indiv.add(gt.getIndividualUID());
+					}
+				}
+			}
+			return map;
+		}
+		
 	}
 
 	/*----- Instance Variables -----*/
@@ -1797,6 +1852,11 @@ public class DBVariantTable {
 		}
 	}
 	
+	public Map<String, GeneHitCounter> generateGeneHitMap()
+	{
+		return varCache.generateGeneHitMap();
+	}
+	
 	/*----- Write -----*/
 	
 	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor) throws IOException
@@ -1873,5 +1933,9 @@ public class DBVariantTable {
 		return varCache.updatePopFlags(sample.getUID(), addedFlags, removedFlags);
 	}
 	
+	public void save() throws IOException
+	{
+		varCache.updateTablesAndReindex();
+	}
 	
 }

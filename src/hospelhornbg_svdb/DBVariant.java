@@ -900,4 +900,9 @@ public class DBVariant implements Comparable<DBVariant>{
 		mPopHomCounts.put(p, i++);
 	}
 	
+	public List<Gene> getGeneListReference()
+	{
+		return this.lGenes;
+	}
+	
 }

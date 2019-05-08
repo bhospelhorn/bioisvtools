@@ -152,4 +152,13 @@ public class VariantGenotype {
 		return gMap.remove(sampleUID);
 	}
 	
+	public Collection<SVDBGenotype> getGenotypes()
+	{
+		List<SVDBGenotype> list = new ArrayList<SVDBGenotype>(gMap.size() + 1);
+		list.addAll(gMap.values());
+		return list;
+	}
+
+	
+	
 }
