@@ -45,9 +45,9 @@ public class DBSampleTable implements Iterable<Family>{
 		private ConcurrentLinkedQueue<Integer> usedQueue;
 		
 		//private ConcurrentMap<String, Family> nameMap;
-		private ConcurrentMap<Integer, Family> idMap;
+		private ConcurrentMap<Integer, Family> idMap; //Maps family UID to family data
 		
-		private ConcurrentMap<String, Integer> nameIndex;
+		private ConcurrentMap<String, Integer> nameIndex; //Maps family name to family UID
 		
 		public FamilyCache(String dirpath) throws IOException
 		{
@@ -64,7 +64,7 @@ public class DBSampleTable implements Iterable<Family>{
 			String idxPath = srcDir + File.separator + FINDEX_NAME;
 			//FamName [28]
 			//Fam UID [4]
-			
+			if(!FileBuffer.fileExists(idxPath)) return;
 			FileBuffer idxFile = FileBuffer.createBuffer(idxPath, true);
 			long cpos = 0;
 			long fsz = idxFile.getFileSize();
@@ -136,6 +136,10 @@ public class DBSampleTable implements Iterable<Family>{
 		{
 			String idxPath = srcDir + File.separator + FINDEX_NAME;
 			
+			if(nameIndex.isEmpty()) {
+				if(FileBuffer.fileExists(idxPath)) Files.delete(Paths.get(idxPath));
+				return;
+			}
 			int nfam = nameIndex.size();
 			FileBuffer out = new CompositeBuffer(nfam);
 			
@@ -289,13 +293,14 @@ public class DBSampleTable implements Iterable<Family>{
 	private String sidx_path; 
 	private String implist_path;
 	
-	private ConcurrentMap<String, Integer> nameMap;
-	private ConcurrentMap<Integer, Integer> famIdMap;
-	private ConcurrentSkipListSet<Integer> importedSamples;
+	private ConcurrentMap<String, Integer> nameMap; //Maps sample name to sample UID
+	private ConcurrentMap<Integer, Integer> famIdMap; //Maps sample UID to family UID
+	private ConcurrentSkipListSet<Integer> importedSamples; //UIDs of samples that have variants in db
 	
 	public DBSampleTable(String projectDir) throws IOException
 	{
 		String famdir = projectDir + File.separator + FAMI_DIR;
+		if(!FileBuffer.directoryExists(famdir)) Files.createDirectories(Paths.get(famdir));
 		fCache = new FamilyCache(famdir);
 		sidx_path = famdir + File.pathSeparator + SINDEX_NAME;
 		nameMap = new ConcurrentHashMap<String, Integer>();
@@ -358,6 +363,11 @@ public class DBSampleTable implements Iterable<Family>{
 	
 	private void writeSampleIndex() throws IOException
 	{
+		if(nameMap.isEmpty())
+		{
+			if(FileBuffer.fileExists(sidx_path)) Files.delete(Paths.get(sidx_path));
+			return;
+		}
 		int scount = nameMap.size();
 		FileBuffer out = new CompositeBuffer(scount);
 		
@@ -447,6 +457,7 @@ public class DBSampleTable implements Iterable<Family>{
 		//Also map to sample index!
 		String fname = f.getFamilyName();
 		int oldid = fCache.getFamilyID(fname);
+		System.err.println("DBSampleTable.addOrReplaceFamily || -DEBUG- oldid = 0x" + Integer.toHexString(oldid));
 		boolean newfam = (oldid != -1);
 		List<FamilyMember> members = f.getAllFamilyMembers();
 		for(FamilyMember mem : members)
@@ -665,6 +676,13 @@ public class DBSampleTable implements Iterable<Family>{
 	public boolean sampleHasData(int sampleID)
 	{
 		return this.importedSamples.contains(sampleID);
+	}
+	
+	public boolean writeToTSV(String path)
+	{
+		//TODO
+		//Writes the contents of the sample table to tsv
+		return false;
 	}
 	
 }

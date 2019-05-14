@@ -216,6 +216,7 @@ public class DBVariantTable {
 			
 			//We are assuming everything is sorted correctly.
 			if(!FileBuffer.fileExists(vidxPath)) return;
+			if(FileBuffer.fileSize(vidxPath) < 1L) return;
 			
 			long fsz = FileBuffer.fileSize(vidxPath);
 			long cpos = 0;
@@ -356,7 +357,8 @@ public class DBVariantTable {
 			} 
 			catch (IOException e) 
 			{
-				e.printStackTrace();
+				//e.printStackTrace();
+				System.err.println("Genotype file does not currently exist! Nothing to read!");
 				openFile = null;
 			}
 		}
@@ -624,6 +626,7 @@ public class DBVariantTable {
 			cindex = new RegionIndex(srcDir + File.separator + CINDEX_NAME);
 			genoCache = new GenotypeCache(srcDir + File.separator + GENOTBL_FILE + "." + GENOTBL_EXT);
 			dirtyQueue = new ConcurrentSkipListMap<Long, DBVariant>();
+			removeQueue = new ConcurrentLinkedQueue<Long>();
 			if(!cacheIndex) loadIndex();
 		}
 		
@@ -1778,7 +1781,9 @@ public class DBVariantTable {
 	
 	public DBVariantTable(GenomeBuild gb, GeneSet gs, String srcDir, boolean limitVarIndexRecords) throws IOException
 	{
-		varCache = new VariantCache(gb, gs, srcDir, limitVarIndexRecords);
+		String vardirpath = srcDir + File.separator + VAR_DIR;
+		if(!FileBuffer.directoryExists(vardirpath)) Files.createDirectories(Paths.get(vardirpath));
+		varCache = new VariantCache(gb, gs, vardirpath, limitVarIndexRecords);
 	}
 	
 	/*----- Read -----*/
