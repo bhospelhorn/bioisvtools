@@ -65,6 +65,7 @@ public class ConsoleFrontEnd {
 		Family fam = Family.readFromFAMI(famiPath);
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		db.addFamily(fam);
+		db.saveDatabase();
 	}
 	
 	public static void removeFam(String dbDir, String famName) throws IOException
@@ -85,6 +86,7 @@ public class ConsoleFrontEnd {
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		db.addVCF(vcfPath, verbose);
+		db.saveDatabase();
 	}
 	
 	/* ----- Main Method ----- */
@@ -229,13 +231,13 @@ public class ConsoleFrontEnd {
 			catch (IOException e) 
 			{
 				System.err.println(PROG_ADDFAM + " ERROR | Family could not be added (IO Error)!");
-				printUsage();
+				e.printStackTrace();
 				System.exit(1);
 			} 
 			catch (UnsupportedFileTypeException e) 
 			{
 				System.err.println(PROG_ADDFAM + " ERROR | Family could not be added (File Error)!");
-				printUsage();
+				e.printStackTrace();
 				System.exit(1);
 			}
 			

@@ -1120,7 +1120,19 @@ public class VCF {
 			String[] alts = fields[4].split(",");
 			for(String a : alts) sv.addAltAllele(a);
 			//QUAL
-			sv.setQuality(Double.parseDouble(fields[5]));
+			if(fields[5].equals(".")) sv.setQuality(-1);
+			else
+			{
+				try 
+				{
+					sv.setQuality(Double.parseDouble(fields[5]));
+				}
+				catch(NumberFormatException e)
+				{
+					e.printStackTrace();
+					throw new FileBuffer.UnsupportedFileTypeException();
+				}
+			}
 			//FILTER
 			if(fields[6].equals("PASS")) sv.setFilterPass(true);
 			else

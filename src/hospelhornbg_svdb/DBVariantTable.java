@@ -36,9 +36,10 @@ import hospelhornbg_segregation.FamilyMember;
 import hospelhornbg_segregation.Population;
 import hospelhornbg_svdb.DBVariant.ParsedVariant;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Utils.StreamBuffer;
 
-public class DBVariantTable {
+public class DBVariantTable implements VariantTable{
 	
 	//Variant UID format (64-bit)
 	//	Contig ID [2]
@@ -46,6 +47,8 @@ public class DBVariantTable {
 	//	Random [4]
 	
 	/*----- Constants -----*/
+	
+	public static boolean breaker = true;
 	
 	public static final String GENOTABLE_MAGIC = "GENO_TBL";
 	public static final int GENOTABLE_VERSION = 2;
@@ -740,6 +743,7 @@ public class DBVariantTable {
 			String idxpath = getIndexPath();
 			if (!FileBuffer.fileExists(idxpath)) return null;
 			long fsz = FileBuffer.fileSize(idxpath);
+			if(fsz < 32L) return null;
 			
 			//Start at middle record
 			//All records are 32 bytes
@@ -853,12 +857,14 @@ public class DBVariantTable {
 			if(cachedIndex)
 			{
 				RegionIndex.RegionRecord r = cindex.getRecordInterval(cpre, stpre, edpre);
+				if(r == null) return found;
 				
 				//Scan the vidx, loading all lookup records in range into index cache
 				long vidx_off = r.startIndex << 5;
 				long vidx_end_off = vidx_off + ((long)r.recordCount * 32L);
 				
 				String vidx_path = getIndexPath();
+				if(!FileBuffer.fileExists(vidx_path)) return found;
 				FileBuffer vidx = FileBuffer.createBuffer(vidx_path, vidx_off, vidx_end_off, true);
 				long fsz = vidx.getFileSize();
 				long cpos = 0;
@@ -912,7 +918,7 @@ public class DBVariantTable {
 			return found;
 		}
 		
-		private List<DBVariant> scanForTRAs(Contig c, int start, int end) throws IOException
+		private List<DBVariant> scanForTRAs(Contig c, int start, int end) throws IOException, UnsupportedFileTypeException
 		{
 			String tratblpath = getFilename(SVType.TRA);
 			List<DBVariant> vlist = new LinkedList<DBVariant>();
@@ -964,7 +970,7 @@ public class DBVariantTable {
 						vlist = scanForTRAs(c, start, end);
 						varlist.addAll(vlist);
 					} 
-					catch (IOException e) 
+					catch (IOException | UnsupportedFileTypeException e) 
 					{
 						e.printStackTrace();
 					}
@@ -1387,7 +1393,7 @@ public class DBVariantTable {
 				{
 					updateTable();
 				} 
-				catch (IOException e) 
+				catch (IOException | UnsupportedFileTypeException e) 
 				{
 					e.printStackTrace();
 					return -1;
@@ -1403,7 +1409,7 @@ public class DBVariantTable {
 					{
 						updateTablesAndReindex();
 					} 
-					catch (IOException e) 
+					catch (IOException | UnsupportedFileTypeException e) 
 					{
 						e.printStackTrace();
 						return -1;
@@ -1483,7 +1489,7 @@ public class DBVariantTable {
 				{
 					updateTablesAndReindex();
 				} 
-				catch (IOException e) 
+				catch (IOException | UnsupportedFileTypeException e) 
 				{
 					e.printStackTrace();
 					return false;
@@ -1499,7 +1505,7 @@ public class DBVariantTable {
 					{
 						updateTablesAndReindex();
 					} 
-					catch (IOException e) 
+					catch (IOException | UnsupportedFileTypeException e) 
 					{
 						e.printStackTrace();
 						return false;
@@ -1547,14 +1553,19 @@ public class DBVariantTable {
 			return true;
 		}
 		
-		public void updateTable() throws IOException
+		public void updateTable() throws IOException, UnsupportedFileTypeException
 		{
+			System.err.println("UpdateTable called!");
 			if(dirtyQueue.isEmpty() && removeQueue.isEmpty()) return;
+			
+			//168.1 MB
 			
 			cache.clear();
 			index.clear();
 			cacheQueue.clear();
 			indexCacheQueue.clear();
+			
+			//167.3 MB
 			
 			FileBuffer header = new FileBuffer(8, true);
 			header.printASCIIToFile(VARTBL_MAGIC);
@@ -1569,22 +1580,30 @@ public class DBVariantTable {
 					String temp = FileBuffer.getTempDir() + File.separator + "vtableupdate.tmp";
 					BufferedOutputStream bw = new BufferedOutputStream(new FileOutputStream(temp));
 					bw.write(header.getBytes());
-					
+					//168.2
 					VDBFileScanner streamer = new VDBFileScanner(genome, genes, tpath);
+					streamer.open();
+					//166.7
 					for(DBVariant dbv : streamer)
 					{
+						System.err.println("DBVariantTable.VariantCache.updateTable || -DEBUG- Variant read from old file!");
 						//See if dirty
 						if(!dirtyQueue.containsKey(dbv.getLongID()) && !removeQueue.contains(dbv.getLongID()))
 						{
+							System.err.println("DBVariantTable.VariantCache.updateTable || -DEBUG- Variant good to copy!");
 							//Copy!
 							FileBuffer rec = dbv.toVDBRecord();
 							bw.write(rec.getBytes(0, rec.getFileSize()));
+							//System.err.println("Hitting while breaker");
+							//while(breaker);
 						}
 					}
 					bw.close();
 					
 					//Copy back
-					Files.move(Paths.get(temp), Paths.get(tpath));
+					//Files.deleteIfExists(Paths.get(tpath));
+					Files.move(Paths.get(tpath), Paths.get(tpath + ".old"));
+					Files.move(Paths.get(temp), Paths.get(tpath)); //Looks like it won't move if target exists >.>
 				}
 			}
 			
@@ -1615,13 +1634,13 @@ public class DBVariantTable {
 			return genoCache.queueForWriting(vg);
 		}
 		
-		public void updateTables() throws IOException
+		public void updateTables() throws IOException, UnsupportedFileTypeException
 		{
 			updateTable();
 			genoCache.writeGenotypeTable();
 		}
 		
-		public void updateTablesAndReindex() throws IOException
+		public void updateTablesAndReindex() throws IOException, UnsupportedFileTypeException
 		{
 			updateTables();
 			generateMasterIndex();
@@ -1649,7 +1668,7 @@ public class DBVariantTable {
 			
 			//Write and index
 			try {updateTablesAndReindex();} 
-			catch (IOException e) {
+			catch (IOException | UnsupportedFileTypeException e) {
 				e.printStackTrace();
 				return false;
 			}
@@ -1677,7 +1696,7 @@ public class DBVariantTable {
 			}
 			
 			try {updateTablesAndReindex();} 
-			catch (IOException e) {
+			catch (IOException | UnsupportedFileTypeException e) {
 				e.printStackTrace();
 				return false;
 			}
@@ -1698,7 +1717,7 @@ public class DBVariantTable {
 			}
 			
 			try {updateTablesAndReindex();} 
-			catch (IOException e) {
+			catch (IOException | UnsupportedFileTypeException e) {
 				e.printStackTrace();
 				return false;
 			}
@@ -1718,7 +1737,7 @@ public class DBVariantTable {
 			}
 			
 			try {updateTablesAndReindex();} 
-			catch (IOException e) {
+			catch (IOException | UnsupportedFileTypeException e) {
 				e.printStackTrace();
 				return false;
 			}
@@ -1940,7 +1959,14 @@ public class DBVariantTable {
 	
 	public void save() throws IOException
 	{
-		varCache.updateTablesAndReindex();
+		try 
+		{
+			varCache.updateTablesAndReindex();
+		} 
+		catch (UnsupportedFileTypeException e) 
+		{
+			e.printStackTrace();
+		}
 	}
 	
 }

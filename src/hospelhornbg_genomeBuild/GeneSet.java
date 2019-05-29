@@ -68,6 +68,10 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 1.3.1 -> 1.4.0 | February 11, 2019
  * 	Fixed a parser oopsy
  * 	Fixed genes in region search logic
+ * 
+ * 1.4.0 -> 1.4.1 | May 29, 2019
+ * 	When looking up genes by name, generates a map for later use.
+ * 		Faster, but more memory. Really needed the faster part, though. It was BAD.
  * 	
  */
 
@@ -75,8 +79,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 /**
  * A set of gene annotations for a genome build.
  * @author Blythe Hospelhorn
- * @version 1.4.0
- * @since February 11, 2019
+ * @version 1.4.1
+ * @since May 29, 2019
  *
  */
 public class GeneSet 
@@ -174,6 +178,7 @@ public class GeneSet
 	private Map<Contig, ChromSet> genemap;
 	
 	private Map<Integer, Gene> transcriptMap; //null until queried...
+	private Map<String, List<Gene>> nameMap; //null until queried...
 	
 	/* --- Inner Structures --- */
 	
@@ -2069,12 +2074,24 @@ public class GeneSet
 	 */
 	public List<Gene> getGeneByName(String gene_name)
 	{
-		List<Gene> allgenes = getAllGenes();
-		List<Gene> results = new LinkedList<Gene>();
-		for (Gene g : allgenes)
+		if(nameMap == null)
 		{
-			if (g.getName().equalsIgnoreCase(gene_name)) results.add(g);
+			//Populate name map
+			nameMap = new HashMap<String, List<Gene>>();
+			List<Gene> allgenes = getAllGenes();
+			for (Gene g : allgenes)
+			{
+				List<Gene> l = nameMap.get(g.getName());
+				if(l == null)
+				{
+					l = new LinkedList<Gene>();
+					nameMap.put(g.getName(), l);
+				}
+				l.add(g);
+			}
 		}
+		List<Gene> results = nameMap.get(gene_name);
+		if(results == null) return new LinkedList<Gene>();
 		Collections.sort(results);
 		return results;
 	}

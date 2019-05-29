@@ -7,10 +7,15 @@ import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_svdb.DBVariant.ParsedVariant;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Utils.StreamBuffer;
 
 public class VDBFileScanner implements Iterable<DBVariant>{
-
+	
+	public static final String VARTBL_EXT = "vdb";
+	public static final int VARTBL_VERSION = 1;
+	public static final String VARTBL_MAGIC = "VDBt";
+	
 	private String path;
 	private long stOff;
 	private long edOff;
@@ -29,6 +34,8 @@ public class VDBFileScanner implements Iterable<DBVariant>{
 		edOff = FileBuffer.fileSize(filepath);
 		fsz = edOff - 8;
 		cpos = -1;
+		genome = gb;
+		genes = gs;
 	}
 	
 	public VDBFileScanner(GenomeBuild gb, GeneSet gs, String filepath, long stpos, long edpos)
@@ -39,12 +46,20 @@ public class VDBFileScanner implements Iterable<DBVariant>{
 		edOff = edpos;
 		cpos = -1;
 		fsz = edpos - stpos;
+		genome = gb;
+		genes = gs;
 	}
 	
-	public void open() throws IOException
+	public void open() throws IOException, UnsupportedFileTypeException
 	{
-		cpos = 0;
 		file = new StreamBuffer(path, stOff, edOff);
+		//Check header
+		cpos = file.findString(0, 0x10, VARTBL_MAGIC);
+		if (cpos != 0) throw new FileBuffer.UnsupportedFileTypeException("VDBFileScanner - File is not valid VDB file! (Magic number not found)");
+		//Check version
+		int version = file.intFromFile(4L);
+		if(version > VARTBL_VERSION) throw new FileBuffer.UnsupportedFileTypeException("VDBFileScanner - Version of VDB file is not recognized!");
+		cpos = 8;
 	}
 	
 	public void close()
@@ -58,9 +73,14 @@ public class VDBFileScanner implements Iterable<DBVariant>{
 		if(file == null) return null;
 		if(cpos >= fsz) return null;
 		
+		System.err.println("VDBFileScanner.parseNextVariant | -DEBUG- cpos (before): 0x" + Long.toHexString(cpos));
 		ParsedVariant pv = DBVariant.getFromVDBRecord(file, genome, genes, cpos);
 		if(pv == null) return null;
 		cpos += pv.getSize();
+		System.err.println("VDBFileScanner.parseNextVariant | -DEBUG- File Path: " + path);
+		System.err.println("VDBFileScanner.parseNextVariant | -DEBUG- Variant Read: " + pv.getVariant().getName());
+		System.err.println("VDBFileScanner.parseNextVariant | -DEBUG- Variant Size: 0x" + Long.toHexString(pv.getSize()));
+		System.err.println("VDBFileScanner.parseNextVariant | -DEBUG- cpos: 0x" + Long.toHexString(cpos));
 		
 		return pv.getVariant();
 	}

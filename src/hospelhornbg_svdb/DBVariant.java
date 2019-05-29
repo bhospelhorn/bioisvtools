@@ -255,6 +255,7 @@ public class DBVariant implements Comparable<DBVariant>{
 		
 		DBVariant var = new DBVariant();
 		long cpos = stoff;
+		//System.err.println("DBVariant.getFromVDBRecord | -DEBUG- 1 ");
 		
 		var.lID = record.longFromFile(cpos); cpos += 8;
 		int cid1 = record.intFromFile(cpos); cpos += 4;
@@ -272,6 +273,7 @@ public class DBVariant implements Comparable<DBVariant>{
 		SerializedString ss = record.readVariableLengthString(cpos, BinFieldSize.WORD, 2);
 		cpos += ss.getSizeOnDisk();
 		var.sID = ss.getString();
+		//System.err.println("DBVariant.getFromVDBRecord | -DEBUG- 2 ");
 		
 		//Population counts
 		var.iCohortTotalCount = record.intFromFile(cpos); cpos += 4;
@@ -282,6 +284,7 @@ public class DBVariant implements Comparable<DBVariant>{
 			var.mPopTotalCounts.put(p, record.intFromFile(cpos)); cpos += 4;
 			var.mPopHomCounts.put(p, record.intFromFile(cpos)); cpos += 4;
 		}
+		//System.err.println("DBVariant.getFromVDBRecord | -DEBUG- 3 ");
 		
 		//Gene List
 		int ngenes = record.intFromFile(cpos); cpos += 4;
@@ -295,6 +298,7 @@ public class DBVariant implements Comparable<DBVariant>{
 				if(g != null) var.lGenes.add(g);
 			}
 		}
+		//System.err.println("DBVariant.getFromVDBRecord | -DEBUG- 4 ");
 		
 		//Optional Strings
 		int flags = Short.toUnsignedInt(record.shortFromFile(cpos)); cpos += 2;
@@ -306,6 +310,7 @@ public class DBVariant implements Comparable<DBVariant>{
 			cpos += ss.getSizeOnDisk();
 			var.sValidationNotes = ss.getString();
 		}
+		//System.err.println("DBVariant.getFromVDBRecord | -DEBUG- 5 ");
 		
 		//Optional fields
 		if(var.eType == SVType.TRA)
@@ -320,6 +325,7 @@ public class DBVariant implements Comparable<DBVariant>{
 			cpos += ss.getSizeOnDisk();
 			var.sAlt = ss.getString();
 		}
+		//System.err.println("DBVariant.getFromVDBRecord | -DEBUG- 6 ");
 		
 		long sz = cpos - stoff;
 		
@@ -530,10 +536,12 @@ public class DBVariant implements Comparable<DBVariant>{
 		Population[] pops = Population.values();
 		for(Population p : pops)
 		{
-			int i = this.mPopTotalCounts.get(p);
-			int j = this.mPopHomCounts.get(p);
-			record.addToFile(i);
-			record.addToFile(j);
+			Integer i = this.mPopTotalCounts.get(p);
+			Integer j = this.mPopHomCounts.get(p);
+			if(i != null) record.addToFile(i);
+			else record.addToFile(0);
+			if(j != null) record.addToFile(j);
+			else record.addToFile(0);
 		}
 		
 		//Gene List

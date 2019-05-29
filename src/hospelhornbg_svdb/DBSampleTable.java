@@ -302,7 +302,7 @@ public class DBSampleTable implements Iterable<Family>{
 		String famdir = projectDir + File.separator + FAMI_DIR;
 		if(!FileBuffer.directoryExists(famdir)) Files.createDirectories(Paths.get(famdir));
 		fCache = new FamilyCache(famdir);
-		sidx_path = famdir + File.pathSeparator + SINDEX_NAME;
+		sidx_path = famdir + File.separator+ SINDEX_NAME;
 		nameMap = new ConcurrentHashMap<String, Integer>();
 		famIdMap = new ConcurrentSkipListMap<Integer, Integer>();
 		readSampleIndex();
@@ -457,8 +457,8 @@ public class DBSampleTable implements Iterable<Family>{
 		//Also map to sample index!
 		String fname = f.getFamilyName();
 		int oldid = fCache.getFamilyID(fname);
-		System.err.println("DBSampleTable.addOrReplaceFamily || -DEBUG- oldid = 0x" + Integer.toHexString(oldid));
-		boolean newfam = (oldid != -1);
+		//System.err.println("DBSampleTable.addOrReplaceFamily || -DEBUG- oldid = 0x" + Integer.toHexString(oldid));
+		boolean newfam = (oldid == -1);
 		List<FamilyMember> members = f.getAllFamilyMembers();
 		for(FamilyMember mem : members)
 		{

@@ -51,7 +51,7 @@ public class SVDatabase {
 	/* ----- Instance Variables ----- */
 	
 	private DBSampleTable sampleTable;
-	private DBVariantTable variantTable;
+	private VariantTable variantTable;
 	
 	private String directory;
 	private String dbName;

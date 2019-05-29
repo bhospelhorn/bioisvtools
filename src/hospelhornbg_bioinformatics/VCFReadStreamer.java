@@ -144,10 +144,12 @@ private String vcf_path;
 	
 	private void readHeader() throws IOException
 	{
+		//System.err.println("VCFReadStreamer.readHeader || -DEBUG- Called!");
 		String line = null;
 		while((line = readBuffer.readLine()) != null)
 		{
 			if(line.isEmpty()) continue;
+			//System.err.println("VCFReadStreamer.readHeader || -DEBUG- Line: " + line);
 			if(!line.startsWith("##")) {
 				String[] fields = line.split("\t");
 				if(fields.length > 9)
@@ -161,11 +163,11 @@ private String vcf_path;
 			}
 			
 			//Split into key and value
-			String[] kv = line.split("=");
-			if(kv.length < 1) continue;
-			String key = kv[0].substring(2); //Chop off the ##
-			String value = null;
-			if(kv.length >= 2) value = kv[1];
+			int firsteq = line.indexOf('=');
+			if(firsteq < 0) continue;
+			String key = line.substring(2, firsteq); //Chop off the ##
+			String value = line.substring(firsteq+1);
+			//System.err.println("VCFReadStreamer.readHeader || -DEBUG- Key: " + key + " | Value: " + value);
 			
 			//Figure out what type of header line it is
 			if(key.equals("INFO"))
