@@ -92,4 +92,20 @@ public class SVDBGenotype {
 		return null;
 	}
 	
+	public static SVDBGenotype generateGenotype(int sampleUID, Genotype g, StructuralVariant sv)
+	{
+		if(g != null)
+		{
+			SVDBGenotype geno = new SVDBGenotype(sampleUID, 1);
+			//Get GT field...
+			int[] calls = g.getAlleles();
+			//We're really only looking at 1's and 0's
+			int oneCount = 0;
+			for(int a : calls) if (a == 1) oneCount++;
+			geno.addAllele(oneCount, sv.getPosition(), sv.getEndPosition());
+			return geno;
+		}
+		return null;
+	}
+	
 }

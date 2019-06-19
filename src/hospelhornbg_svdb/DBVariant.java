@@ -80,6 +80,11 @@ public class DBVariant implements Comparable<DBVariant>{
 		mPopFreqs = new TreeMap<Population, Double>();
 	}
 	
+	public static DBVariant getEmptyVariant()
+	{
+		return new DBVariant();
+	}
+	
 	public static DBVariant getFromDBRecord(String record, GenomeBuild gb, GeneSet gs)
 	{
 		if (record == null || record.isEmpty()) return null;
@@ -330,6 +335,41 @@ public class DBVariant implements Comparable<DBVariant>{
 		long sz = cpos - stoff;
 		
 		return new ParsedVariant(var, sz);
+	}
+	
+	public byte[] getGeneListAsBLOB()
+	{
+		if(lGenes == null || lGenes.isEmpty()) {byte[] barr = {-1}; return barr;}
+		int sz = lGenes.size() * 4;
+		FileBuffer loader = new FileBuffer(sz, true);
+		for(Gene g : lGenes) loader.addToFile(g.getID().hashCode());
+		return loader.getBytes();
+	}
+	
+	public void loadGeneListFromBLOB(byte[] data, GeneSet gs)
+	{
+		if(data == null) return;
+		//Wrap into FileBuffer
+		FileBuffer loader = new FileBuffer(data.length, true);
+		for(byte b : data) loader.addToFile(b);
+		loadGeneListFromBLOB(loader, gs);
+	}
+	
+	public void loadGeneListFromBLOB(FileBuffer data, GeneSet gs)
+	{
+		if(data == null) return;
+		if(gs == null) return;
+		long cpos = 0;
+		long bsz = data.getFileSize();
+		data.setEndian(true);
+		while(cpos < bsz)
+		{
+			int tid = data.intFromFile(cpos); cpos += 4;
+			if(tid == -1) return;
+			Gene g = gs.getGeneByTranscriptHashUID(tid);
+			lGenes.add(g);
+		}
+		
 	}
 	
 	public void countIndividual(boolean hom, Collection<Population> popGroups, int total, Map<Population, Integer> groupTotals)
@@ -911,6 +951,56 @@ public class DBVariant implements Comparable<DBVariant>{
 	public List<Gene> getGeneListReference()
 	{
 		return this.lGenes;
+	}
+	
+	public void setContig1(Contig c)
+	{
+		this.oChrom = c;
+	}
+	
+	public void setContig2(Contig c)
+	{
+		this.oChrom2 = c;
+	}
+	
+	public void setStartInterval(int s1, int s2)
+	{
+		this.iStart = new Interval(s1, s2);
+	}
+	
+	public void setEndInterval(int e1, int e2)
+	{
+		this.iEnd = new Interval(e1, e2);
+	}
+	
+	public void setSVType(SVType type)
+	{
+		this.eType = type;
+	}
+	
+	public void setSVType(int type)
+	{
+		this.eType = SVType.getTypeByID(type);
+	}
+	
+	public void setPosEff(GeneFunc eff)
+	{
+		this.ePosEff = eff;
+	}
+	
+	public void setPosEff(int eff)
+	{
+		this.ePosEff = GeneFunc.getByValue(eff);
+	}
+	
+	public void setVariantName(String name)
+	{
+		this.sID = name;
+	}
+	
+	public void setInsSeq(String seq)
+	{
+		this.sAlt = seq;
 	}
 	
 }
