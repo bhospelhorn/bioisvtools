@@ -3,6 +3,7 @@ package hospelhornbg_bioinformatics;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -232,7 +233,11 @@ private String vcf_path;
 	
 	public void open() throws IOException
 	{
-		readBuffer = new BufferedReader(new FileReader(vcf_path));
+		if(vcf_path != null && !vcf_path.isEmpty() && !vcf_path.equalsIgnoreCase("stdin"))
+		{
+			readBuffer = new BufferedReader(new FileReader(vcf_path));
+		}
+		else readBuffer = new BufferedReader(new InputStreamReader(System.in));
 		readHeader();
 	}
 	
