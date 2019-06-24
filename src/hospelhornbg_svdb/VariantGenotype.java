@@ -1,5 +1,6 @@
 package hospelhornbg_svdb;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -154,12 +155,20 @@ public class VariantGenotype {
 		return outbuff;
 	}
 	
-	public byte[] getGenotypesAsBLOB()
+	public byte[] getGenotypesAsBLOBBytes()
 	{
 		if(gMap.isEmpty()) {byte[] barr = {-1}; return barr;}
 		FileBuffer me = serializeForGENOT();
 		//Knock off the first 12 bytes...
 		return me.getBytes(12, me.getFileSize());
+	}
+	
+	public FileBuffer getGenotypesAsBLOB()
+	{
+		FileBuffer me = serializeForGENOT();
+		try {return me.createReadOnlyCopy(12, me.getFileSize());} 
+		catch (IOException e) {e.printStackTrace();}
+		return null;
 	}
 	
 	public long getVariantUID()
@@ -205,6 +214,11 @@ public class VariantGenotype {
 		Set<Integer> set = new HashSet<Integer>();
 		set.addAll(gMap.keySet());
 		return set;
+	}
+
+	public boolean isEmpty()
+	{
+		return gMap.isEmpty();
 	}
 	
 }

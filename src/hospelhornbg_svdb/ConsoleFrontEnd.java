@@ -1,6 +1,7 @@
 package hospelhornbg_svdb;
 
 import java.io.IOException;
+import java.sql.SQLException;
 
 import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_segregation.Family;
@@ -16,6 +17,7 @@ public class ConsoleFrontEnd {
 	/* ----- Constants ----- */
 	
 	public static final String PROG_NEWDB = "newdb";
+	public static final String PROG_NEWSQLDB = "newsqldb";
 	public static final String PROG_ADDFAM = "addfam";
 	public static final String PROG_UPDATEFAM = "updatefam";
 	public static final String PROG_REMOVEFAM = "removefam";
@@ -37,6 +39,8 @@ public class ConsoleFrontEnd {
 	public static final String OP_OUTPUTPATH = "-o";
 	
 	public static final String OP_LEEWAY = "-l";
+	
+	public static final String OP_SQLURL = "-U";
 	
 	public static final String OP_UID = "-I"; //Can be used for sample or variant IDs
 
@@ -60,7 +64,14 @@ public class ConsoleFrontEnd {
 		db.saveDatabase();
 	}
 	
-	public static void addOrUpdateFam(String dbDir, String famiPath) throws IOException, UnsupportedFileTypeException
+	public static void newSQLDB(String dbName, String dbDir, GenomeBuild gb, int leeway, String omimpath, String sqlurl) throws IOException, SQLException
+	{
+		SVDatabase db = SVDatabase.newDatabase(dbDir, dbName, leeway, gb, sqlurl);
+		if(omimpath != null) db.setOMIMTablePath(omimpath);
+		db.saveDatabase();
+	}
+	
+	public static void addOrUpdateFam(String dbDir, String famiPath) throws IOException, UnsupportedFileTypeException, SQLException
 	{
 		Family fam = Family.readFromFAMI(famiPath);
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
@@ -68,13 +79,13 @@ public class ConsoleFrontEnd {
 		db.saveDatabase();
 	}
 	
-	public static void removeFam(String dbDir, String famName) throws IOException
+	public static void removeFam(String dbDir, String famName) throws IOException, SQLException
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		db.removeFamily(famName);
 	}
 	
-	public static void dumpFam(String dbDir, String famName, String outpath, boolean verbose) throws IOException
+	public static void dumpFam(String dbDir, String famName, String outpath, boolean verbose) throws IOException, SQLException
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		Family fam = db.getFamily(famName);
@@ -82,7 +93,7 @@ public class ConsoleFrontEnd {
 		db.dumpFamily(fam, outpath, verbose);
 	}
 	
-	public static void addVCF(String dbDir, String vcfPath, boolean verbose) throws IOException
+	public static void addVCF(String dbDir, String vcfPath, boolean verbose) throws IOException, SQLException
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		db.addVCF(vcfPath, verbose);
@@ -111,6 +122,7 @@ public class ConsoleFrontEnd {
 		String vcfPath = null;
 		String outPath = null;
 		String omimPath = null;
+		String sqlPath = null;
 		int mFactor = DEFO_MERGE_FACTOR;
 		
 		for (int i = 0; i < args.length; i++)
@@ -135,6 +147,16 @@ public class ConsoleFrontEnd {
 					System.exit(1);
 				}
 				dbname = args[i+1];
+			}
+			else if (s.equals(OP_SQLURL))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_SQLURL + " flag MUST be followed by an SQL DB path!");
+					printUsage();
+					System.exit(1);
+				}
+				sqlPath = args[i+1];
 			}
 			else if (s.equals(OP_FAMILY))
 			{
@@ -208,6 +230,40 @@ public class ConsoleFrontEnd {
 				System.exit(1);
 			}
 		}
+		else if(mode.equals(PROG_NEWSQLDB))
+		{
+			//Need dbname, dbdir
+			//mfactor optional - defaults to 50
+			if(dbname == null || dbname.isEmpty())
+			{
+				System.err.println(PROG_NEWSQLDB + " ERROR | Database name is required!");
+				printUsage();
+				System.exit(1);
+			}
+			if(dbdir == null || dbdir.isEmpty())
+			{
+				System.err.println(PROG_NEWSQLDB + " ERROR | Database directory is required!");
+				printUsage();
+				System.exit(1);
+			}
+			
+			try 
+			{
+				newSQLDB(dbname, dbdir, gb, mFactor, omimPath, sqlPath);
+			} 
+			catch (IOException e) 
+			{
+				System.err.println(PROG_NEWSQLDB + " ERROR | Database creation failed!");
+				e.printStackTrace();
+				System.exit(1);
+			} 
+			catch (SQLException e) 
+			{
+				System.err.println(PROG_NEWSQLDB + " ERROR | Database creation failed! Could not connect to SQL database!");
+				e.printStackTrace();
+				System.exit(1);
+			}
+		}
 		else if(mode.equals(PROG_ADDFAM))
 		{
 			//Need dbdir, famipath
@@ -239,6 +295,12 @@ public class ConsoleFrontEnd {
 				System.err.println(PROG_ADDFAM + " ERROR | Family could not be added (File Error)!");
 				e.printStackTrace();
 				System.exit(1);
+			} 
+			catch (SQLException e) 
+			{
+				System.err.println(PROG_ADDFAM + " ERROR | Family could not be added! Could not connect to SQL database!");
+				e.printStackTrace();
+				System.exit(1);
 			}
 			
 		}
@@ -265,6 +327,12 @@ public class ConsoleFrontEnd {
 			catch (IOException e) 
 			{
 				System.err.println(PROG_REMOVEFAM + " ERROR | Family could not be removed!");
+				printUsage();
+				System.exit(1);
+			} 
+			catch (SQLException e) 
+			{
+				System.err.println(PROG_REMOVEFAM + " ERROR | Family could not be removed! Could not connect to SQL database!");
 				printUsage();
 				System.exit(1);
 			}
@@ -300,6 +368,12 @@ public class ConsoleFrontEnd {
 				System.err.println(PROG_DUMPFAM + " ERROR | Dump failed!");
 				e.printStackTrace();
 				System.exit(1);
+			} 
+			catch (SQLException e)
+			{
+				System.err.println(PROG_DUMPFAM + " ERROR | Dump failed! Could not connect to SQL database!");
+				e.printStackTrace();
+				System.exit(1);
 			}
 			
 		}
@@ -326,6 +400,12 @@ public class ConsoleFrontEnd {
 			catch (IOException e) 
 			{
 				System.err.println(PROG_ADDVARS + " ERROR | VCF could not be added!");
+				e.printStackTrace();
+				System.exit(1);
+			} 
+			catch (SQLException e) 
+			{
+				System.err.println(PROG_ADDVARS + " ERROR | VCF could not be added! (Could not connect to SQL database!)");
 				e.printStackTrace();
 				System.exit(1);
 			}

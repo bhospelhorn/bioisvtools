@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -45,8 +46,11 @@ public class SVDatabase {
 	public static final double POPFREQ_CUTOFF_G4 = 0.01;
 	
 	public static final String SETTINGS_FILE = "SVDB_settings.bin";
-	public static final int SETTINGS_VERSION = 1;
+	public static final int SETTINGS_VERSION = 2;
 	public static final String SETTINGS_MAGIC = "svDB";
+	
+	public static final int VARTBL_TYPE_DEFO = 0;
+	public static final int VARTBL_TYPE_SQL = 1;
 	
 	/* ----- Instance Variables ----- */
 	
@@ -62,9 +66,14 @@ public class SVDatabase {
 	
 	private String omim_table_path;
 	
+	private int varTableType;
+	private String sqlURL;
+	private String sqlUser;
+	private String sqlPassword;
+	
 	/* ----- Private Constructors ----- */
 	
-	private SVDatabase(String dir, boolean indexLimiter) throws IOException
+	private SVDatabase(String dir, boolean indexLimiter) throws IOException, SQLException
 	{
 		//Load existing
 		directory = dir;
@@ -72,7 +81,18 @@ public class SVDatabase {
 		
 		//Load tables
 		sampleTable = new DBSampleTable(directory);
-		variantTable = new DBVariantTable(genome, genes, directory, indexLimiter);
+		//variantTable = new DBVariantTable(genome, genes, directory, indexLimiter);
+	
+		switch(varTableType)
+		{
+		case VARTBL_TYPE_DEFO:
+			variantTable = new DBVariantTable(genome, genes, directory, indexLimiter);
+			break;
+		case VARTBL_TYPE_SQL:
+			variantTable = new SQLVariantTable(sqlURL, sqlUser, sqlPassword, genome, genes);
+			break;
+		}
+		
 	}
 	
 	private SVDatabase(String dir, String name, int leewayValue, GenomeBuild gb, boolean indexLimiter) throws IOException
@@ -86,6 +106,27 @@ public class SVDatabase {
 		
 		sampleTable = new DBSampleTable(directory);
 		variantTable = new DBVariantTable(genome, genes, directory, indexLimiter);
+		varTableType = VARTBL_TYPE_DEFO;
+		
+		saveDatabase();
+	}
+	
+	private SVDatabase(String dir, String name, int leewayValue, GenomeBuild gb, String sqlPath) throws IOException, SQLException
+	{
+		//New DB
+		directory = dir;
+		dbName = name;
+		mergeFactor = leewayValue;
+		genome = gb;
+		genes = GeneSet.loadRefGene(genome);
+		
+		sqlURL = sqlPath;
+		sqlUser = "svdb_bioi";
+		sqlPassword = "bIoI%pAsS";
+		
+		sampleTable = new DBSampleTable(directory);
+		variantTable = new SQLVariantTable(sqlURL, sqlUser, sqlPassword, genome, genes);
+		varTableType = VARTBL_TYPE_SQL;
 		
 		saveDatabase();
 	}
@@ -97,8 +138,12 @@ public class SVDatabase {
 		// 	Version [4]
 		//	GB UID[4]
 		//	Merge Factor[4]
+		//	Variant Table Type [2]
 		//	DB Name [VLS 2x2]
 		// 	OMIM Table Path [VLS 2x2]
+		//	SQL DB Path [VLS 2x2]
+		//	SQL DB Username [VLS 2x2]
+		//	SQL DB Password [VLS 2x2]
 		
 		String settings_path = directory + File.separator + SETTINGS_FILE;
 		FileBuffer settings = new FileBuffer(settings_path, true);
@@ -107,14 +152,16 @@ public class SVDatabase {
 		int gbuid = settings.intFromFile(cpos); cpos += 4;
 		mergeFactor = settings.intFromFile(cpos); cpos += 4;
 		
+		varTableType = Short.toUnsignedInt(settings.shortFromFile(cpos)); cpos += 2;
+		
 		SerializedString ss = settings.readVariableLengthString(cpos, BinFieldSize.WORD, 2);
 		dbName = ss.getString();
 		cpos += ss.getSizeOnDisk();
-		if(cpos < settings.getFileSize())
-		{
-			ss = settings.readVariableLengthString(cpos, BinFieldSize.WORD, 2);	
-			omim_table_path = ss.getString();
-		}
+		
+		ss = settings.readVariableLengthString(cpos, BinFieldSize.WORD, 2);	
+		omim_table_path = ss.getString();
+		cpos += ss.getSizeOnDisk();
+		if(omim_table_path.equals("null")) omim_table_path = null;
 		
 		//Load genome build...
 		GenomeBuildUID en = GenomeBuildUID.getByID(gbuid);
@@ -123,6 +170,22 @@ public class SVDatabase {
 			genome = GenomeBuild.loadStandardBuild(en.getName());
 			genes = GeneSet.loadRefGene(genome);
 		}
+		
+		//Get the SQL stuff if needed.
+		if(varTableType == VARTBL_TYPE_SQL)
+		{
+			ss = settings.readVariableLengthString(cpos, BinFieldSize.WORD, 2);
+			sqlURL = ss.getString();
+			cpos += ss.getSizeOnDisk();
+			
+			ss = settings.readVariableLengthString(cpos, BinFieldSize.WORD, 2);
+			sqlUser = ss.getString();
+			cpos += ss.getSizeOnDisk();
+			
+			ss = settings.readVariableLengthString(cpos, BinFieldSize.WORD, 2);
+			sqlPassword = ss.getString();
+		}
+		
 		
 	}
 	
@@ -133,14 +196,22 @@ public class SVDatabase {
 		// 	Version [4]
 		//	GB UID[4]
 		//	Merge Factor[4]
+		//	Variant Table Type [2]
 		//	DB Name [VLS 2x2]
 		// 	OMIM Table Path [VLS 2x2]
+		//	SQL DB Path [VLS 2x2]
+		//	SQL DB Username [VLS 2x2]
+		//	SQL DB Password [VLS 2x2]
 		
 		//Write settings
 		String settings_path = directory + File.separator + SETTINGS_FILE;
-		int sz = 16;
+		int sz = 18;
 		sz += this.dbName.length() + 4;
 		if(this.omim_table_path != null) sz += this.omim_table_path.length() + 4;
+		else sz += 8;
+		if(this.sqlURL != null) sz += this.sqlURL.length() + 4;
+		if(this.sqlUser != null) sz += this.sqlUser.length() + 4;
+		if(this.sqlPassword != null) sz += this.sqlPassword.length() + 4;
 		FileBuffer file = new FileBuffer(sz, true);
 		file.printASCIIToFile(SETTINGS_MAGIC);
 		file.addToFile(SETTINGS_VERSION);
@@ -152,8 +223,17 @@ public class SVDatabase {
 		}
 		else file.addToFile(-1);
 		file.addToFile(mergeFactor);
+		file.addToFile((short)varTableType);
 		file.addVariableLengthString(dbName, BinFieldSize.WORD, 2);
 		if(this.omim_table_path != null) file.addVariableLengthString(this.omim_table_path, BinFieldSize.WORD, 2);
+		else file.addVariableLengthString("null", BinFieldSize.WORD, 2);
+		
+		if(varTableType == VARTBL_TYPE_SQL)
+		{
+			file.addVariableLengthString(sqlURL, BinFieldSize.WORD, 2);
+			file.addVariableLengthString(sqlUser, BinFieldSize.WORD, 2);
+			file.addVariableLengthString(sqlPassword, BinFieldSize.WORD, 2);
+		}
 		
 		file.writeFile(settings_path);
 		
@@ -691,7 +771,7 @@ public class SVDatabase {
 	
 	/* ----- Database Loaders ----- */
 	
-	public static SVDatabase loadDatabase(String dir) throws IOException
+	public static SVDatabase loadDatabase(String dir) throws IOException, SQLException
 	{
 		SVDatabase db = new SVDatabase(dir, true);
 		return db;
@@ -710,6 +790,12 @@ public class SVDatabase {
 	public static SVDatabase newDatabase(String dir, String name, int mergeFactor, GenomeBuild gb) throws IOException
 	{
 		SVDatabase db = new SVDatabase(dir, name, mergeFactor, gb, true);
+		return db;
+	}
+	
+	public static SVDatabase newDatabase(String dir, String name, int mergeFactor, GenomeBuild gb, String sqlPath) throws IOException, SQLException
+	{
+		SVDatabase db = new SVDatabase(dir, name, mergeFactor, gb, sqlPath);
 		return db;
 	}
 

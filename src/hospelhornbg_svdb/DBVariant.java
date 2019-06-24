@@ -337,12 +337,24 @@ public class DBVariant implements Comparable<DBVariant>{
 		return new ParsedVariant(var, sz);
 	}
 	
-	public byte[] getGeneListAsBLOB()
+	public FileBuffer getGeneListAsBLOB()
 	{
-		if(lGenes == null || lGenes.isEmpty()) {byte[] barr = {-1}; return barr;}
+		if(lGenes == null || lGenes.isEmpty()) 
+		{
+			FileBuffer b = new FileBuffer(4);
+			b.addToFile(-1);
+		}
+		
 		int sz = lGenes.size() * 4;
 		FileBuffer loader = new FileBuffer(sz, true);
 		for(Gene g : lGenes) loader.addToFile(g.getID().hashCode());
+		return loader;
+	}
+	
+	public byte[] getGeneListAsBLOBBytes()
+	{
+		if(lGenes == null || lGenes.isEmpty()) {byte[] barr = {-1, -1, -1, -1}; return barr;}
+		FileBuffer loader = this.getGeneListAsBLOB();
 		return loader.getBytes();
 	}
 	
@@ -767,6 +779,11 @@ public class DBVariant implements Comparable<DBVariant>{
 		return iID;
 	}
 	
+	public GeneFunc getPositionEffect()
+	{
+		return this.ePosEff;
+	}
+	
 	public void setTotalCount(int total)
 	{
 		this.iCohortTotalCount = total;
@@ -917,6 +934,11 @@ public class DBVariant implements Comparable<DBVariant>{
 	public double getCohortFreq(Population p)
 	{
 		return this.mPopFreqs.get(p);
+	}
+	
+	public String getValidationNotes()
+	{
+		return this.sValidationNotes;
 	}
 	
 	protected void setLongUID(long uid)

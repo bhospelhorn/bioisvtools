@@ -2,6 +2,8 @@ package hospelhornbg_svdb;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.Blob;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -38,6 +40,8 @@ import hospelhornbg_svdb.DBVariantTable.GeneHitCounter;
 import waffleoRai_Utils.FileBuffer;
 
 public class SQLVariantTable implements VariantTable{
+	
+	/* ----- Constants ----- */
 	
 	public static final String TABLENAME_VARIANTS = "Variants";
 	public static final String TABLENAME_SAMPLEGENO = "SampleGeno";
@@ -104,16 +108,21 @@ public class SQLVariantTable implements VariantTable{
 			{FIELDNAME_SVARLIST_HET, "BLOB"},
 			{FIELDNAME_SVARLIST_OTH, "BLOB"},};
 	
+	/* ----- Instance Variables ----- */
+	
 	private String dbURL;
 	private String username;
 	private String password;
 	
 	private Connection connection;
-	//private Statement cstat;
-	
+
 	private GenomeBuild genome;
 	private GeneSet genes;
 	private GenomeIndex uidIndex;
+	
+	private List<String> tempBlobFiles;
+	
+	/* ----- Construction ----- */
 	
 	public SQLVariantTable(String url, String user, String pw, GenomeBuild gb, GeneSet gs) throws SQLException
 	{
@@ -127,6 +136,7 @@ public class SQLVariantTable implements VariantTable{
 		connect();
 		//Check for tables, create if not there
 		if(!varTableExists()) createVarTable();
+		tempBlobFiles = new LinkedList<String>();
 	}
 	
 	private void connect() throws SQLException
@@ -134,7 +144,9 @@ public class SQLVariantTable implements VariantTable{
 		connection = DriverManager.getConnection(dbURL, username, password);
 		//cstat = connection.createStatement();
 	}
-
+	
+	/* ----- SQL Table Management ----- */
+	
 	private boolean varTableExists() throws SQLException
 	{
 		DatabaseMetaData meta = connection.getMetaData();
@@ -178,6 +190,8 @@ public class SQLVariantTable implements VariantTable{
 		Statement cstat = connection.createStatement();
 		cstat.executeUpdate(sqlcmd);
 	}
+	
+	/* ----- Parsing Retrieved ----- */
 	
 	private DBVariant readFromResultSet(ResultSet rs) throws SQLException
 	{
@@ -238,103 +252,6 @@ public class SQLVariantTable implements VariantTable{
 		return dbv;
 	}
 	
-	@Override
-	public DBVariant getVariant(long varUID) 
-	{	
-		String sqlQuery = ""; //TODO
-		
-		try 
-		{
-			Statement cstat = connection.createStatement();
-			ResultSet rs = cstat.executeQuery(sqlQuery);
-			if(!rs.next()) return null;
-			DBVariant var = readFromResultSet(rs);
-			return var;
-		} 
-		catch (SQLException e) 
-		{
-			e.printStackTrace();
-			return null;
-		}
-	}
-
-	public List<DBVariant> getVariants(Collection<Long> varUIDs)
-	{
-		if(varUIDs == null || varUIDs.isEmpty()) return null;
-		List<DBVariant> vlist = new LinkedList<DBVariant>();
-		
-		String sqlQuery = ""; //TODO
-		
-		try 
-		{
-			Statement cstat = connection.createStatement();
-			ResultSet rs = cstat.executeQuery(sqlQuery);
-			while(rs.next())
-			{
-				vlist.add(this.readFromResultSet(rs));
-			}
-		} 
-		catch (SQLException e) 
-		{
-			e.printStackTrace();
-			return null;
-		}
-		
-		return vlist;
-	}
-	
-	@Override
-	public VariantGenotype getGenotype(long varUID) 
-	{
-		String sqlQuery = ""; //TODO
-		
-		try 
-		{
-			Statement cstat = connection.createStatement();
-			ResultSet rs = cstat.executeQuery(sqlQuery);
-			if(!rs.next()) return null;
-			Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
-			VariantGenotype vg = new VariantGenotype(varUID);
-			vg.readDataFromBLOB(genoblob.getBytes(0, (int)genoblob.length()));
-			
-			return vg;
-		} 
-		catch (SQLException e) 
-		{
-			e.printStackTrace();
-			return null;
-		}
-	}
-
-	public List<VariantGenotype> getGenotypes(Collection<Long> varUIDs)
-	{
-		if(varUIDs == null || varUIDs.isEmpty()) return null;
-		List<VariantGenotype> glist = new LinkedList<VariantGenotype>();
-		
-		String sqlQuery = ""; //TODO
-		
-		try 
-		{
-			Statement cstat = connection.createStatement();
-			ResultSet rs = cstat.executeQuery(sqlQuery);
-			while(rs.next())
-			{
-				long varUID = rs.getLong(FIELDNAME_VARUID);
-				Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
-				VariantGenotype vg = new VariantGenotype(varUID);
-				vg.readDataFromBLOB(genoblob.getBytes(0, (int)genoblob.length()));
-				glist.add(vg);
-			}
-		} 
-		catch (SQLException e) 
-		{
-			e.printStackTrace();
-			return null;
-		}
-		
-		return glist;
-	}
-	
 	private List<Long> readVarUIDListBlob(Blob blob) throws SQLException, IOException
 	{
 		List<Long> list = new LinkedList<Long>();
@@ -361,10 +278,304 @@ public class SQLVariantTable implements VariantTable{
 		return list;
 	}
 	
+	/* ----- Storage Prep ----- */
+	
+	private String generateBlobTempFilePath()
+	{
+		Random rando = new Random();
+		try
+		{
+			String tpath = FileBuffer.generateTemporaryPath("svdb_blob_temp_" + Long.toHexString(rando.nextLong()));
+			tempBlobFiles.add(tpath);
+			return tpath;
+		}
+		catch(IOException e)
+		{
+			e.printStackTrace();
+			return null;
+		}
+	}
+	
+	private String generateFullVarInsertStatement(DBVariant var, VariantGenotype vgeno) throws IOException
+	{
+		String valStatement = var.getLongID() + ", ";
+		
+		Contig c = var.getChrom();
+		valStatement += c.getUDPName().hashCode() + ", ";
+		valStatement += var.getStartPosition().getStart() + ", ";
+		valStatement += var.getStartPosition().getEnd() + ", ";
+		valStatement += var.getEndPosition().getStart() + ", ";
+		valStatement += var.getEndPosition().getEnd() + ", ";
+		valStatement += var.getType().getID() + ", ";
+		valStatement += var.getPositionEffect().getPriority() + ", ";
+		valStatement += "'" + var.getName() + "', ";
+		
+		valStatement += var.getIndividualCount() + ", ";
+		valStatement += var.getHomozygoteCount() + ", ";
+		valStatement += var.getIndividualCount(Population.NFE) + ", ";
+		valStatement += var.getHomozygoteCount(Population.NFE) + ", ";
+		valStatement += var.getIndividualCount(Population.AFR) + ", ";
+		valStatement += var.getHomozygoteCount(Population.AFR) + ", ";
+		valStatement += var.getIndividualCount(Population.AMR) + ", ";
+		valStatement += var.getHomozygoteCount(Population.AMR) + ", ";
+		valStatement += var.getIndividualCount(Population.FIN) + ", ";
+		valStatement += var.getHomozygoteCount(Population.FIN) + ", ";
+		valStatement += var.getIndividualCount(Population.EAS) + ", ";
+		valStatement += var.getHomozygoteCount(Population.EAS) + ", ";
+		valStatement += var.getIndividualCount(Population.SAS) + ", ";
+		valStatement += var.getHomozygoteCount(Population.SAS) + ", ";
+		valStatement += var.getIndividualCount(Population.ASJ) + ", ";
+		valStatement += var.getHomozygoteCount(Population.ASJ) + ", ";
+		valStatement += var.getIndividualCount(Population.OTH) + ", ";
+		valStatement += var.getHomozygoteCount(Population.OTH) + ", ";
+		
+		//https://stackoverflow.com/questions/2607326/insert-a-blob-via-a-sql-script
+		//FILE_READ('file.dat')
+		FileBuffer genesBlob = var.getGeneListAsBLOB();
+		String gblobPath = generateBlobTempFilePath();
+		genesBlob.writeFile(gblobPath);
+		valStatement += "FILE_READ('" + gblobPath + "'), ";
+		
+		valStatement += "'" + var.getValidationNotes() + "', ";
+		
+		if(var.getType() == SVType.TRA || var.getType() == SVType.BND)
+		{
+			Contig c2 = var.getEndChrom();
+			if(c2 == null) valStatement += c.getUDPName().hashCode() + ", ";
+			else valStatement += c2.getUDPName().hashCode() + ", ";
+		}
+		else valStatement += "-1, ";
+		
+		if(var.getType() == SVType.INS || var.getType() == SVType.INSME)
+		{
+			String alt = var.getAltAlleleString();
+			valStatement += "'" + alt + "', ";
+		}
+		else valStatement += "'N/A', ";
+		
+		//Genotype blob
+		FileBuffer genoBlob = vgeno.getGenotypesAsBLOB();
+		gblobPath = generateBlobTempFilePath();
+		genoBlob.writeFile(gblobPath);
+		valStatement += "FILE_READ('" + gblobPath + "')";
+		
+		return "INSERT INTO " + TABLENAME_VARIANTS + "VALUES (" + valStatement + ");";
+	}
+	
+	private String generateAbridgedSetVarUpdateStatement(DBVariant var, VariantGenotype vgeno) throws IOException
+	{
+		//Updates:
+		//	Start, End
+		//	Allele Counts
+		//	Genes
+		//  PosEff
+		//	Genotype
+		
+		//String colStatement = "";
+		String valStatement = "";
+		
+		valStatement += FIELDNAME_START1 + " = " + var.getStartPosition().getStart() + ", ";
+		valStatement += FIELDNAME_START2 + " = " + var.getStartPosition().getEnd() + ", ";
+		valStatement += FIELDNAME_END1 + " = " + var.getEndPosition().getStart() + ", ";
+		valStatement += FIELDNAME_END2 + " = " + var.getEndPosition().getEnd() + ", ";
+		valStatement += FIELDNAME_POSEFF + " = " + var.getPositionEffect().getPriority() + ", ";
+	
+		valStatement += FIELDNAME_ACOUNT_TOT + " = " + var.getIndividualCount() + ", ";
+		valStatement += FIELDNAME_HCOUNT_TOT + " = " + var.getHomozygoteCount() + ", ";
+		valStatement += FIELDNAME_ACOUNT_NFE + " = " + var.getIndividualCount(Population.NFE) + ", ";
+		valStatement += FIELDNAME_HCOUNT_NFE + " = " + var.getHomozygoteCount(Population.NFE) + ", ";
+		valStatement += FIELDNAME_ACOUNT_AFR + " = " + var.getIndividualCount(Population.AFR) + ", ";
+		valStatement += FIELDNAME_HCOUNT_AFR + " = " + var.getHomozygoteCount(Population.AFR) + ", ";
+		valStatement += FIELDNAME_ACOUNT_AMR + " = " + var.getIndividualCount(Population.AMR) + ", ";
+		valStatement += FIELDNAME_HCOUNT_AMR + " = " + var.getHomozygoteCount(Population.AMR) + ", ";
+		valStatement += FIELDNAME_ACOUNT_FIN + " = " + var.getIndividualCount(Population.FIN) + ", ";
+		valStatement += FIELDNAME_HCOUNT_FIN + " = " + var.getHomozygoteCount(Population.FIN) + ", ";
+		valStatement += FIELDNAME_ACOUNT_EAS + " = " + var.getIndividualCount(Population.EAS) + ", ";
+		valStatement += FIELDNAME_HCOUNT_EAS + " = " + var.getHomozygoteCount(Population.EAS) + ", ";
+		valStatement += FIELDNAME_ACOUNT_SAS + " = " + var.getIndividualCount(Population.SAS) + ", ";
+		valStatement += FIELDNAME_HCOUNT_SAS + " = " + var.getHomozygoteCount(Population.SAS) + ", ";
+		valStatement += FIELDNAME_ACOUNT_ASJ + " = " + var.getIndividualCount(Population.ASJ) + ", ";
+		valStatement += FIELDNAME_HCOUNT_ASJ + " = " + var.getHomozygoteCount(Population.ASJ) + ", ";
+		valStatement += FIELDNAME_ACOUNT_OTH + " = " + var.getIndividualCount(Population.OTH) + ", ";
+		valStatement += FIELDNAME_HCOUNT_OTH + " = " + var.getHomozygoteCount(Population.OTH) + ", ";
+		
+		FileBuffer genesBlob = var.getGeneListAsBLOB();
+		String gblobPath = generateBlobTempFilePath();
+		genesBlob.writeFile(gblobPath);
+		valStatement += FIELDNAME_GENELIST + " = FILE_READ('" + gblobPath + "'), ";
+		
+		FileBuffer genoBlob = vgeno.getGenotypesAsBLOB();
+		gblobPath = generateBlobTempFilePath();
+		genoBlob.writeFile(gblobPath);
+		valStatement += FIELDNAME_GENOTYPES + " = FILE_READ('" + gblobPath + "')";
+		
+		return "UPDATE " + TABLENAME_VARIANTS + " SET " + valStatement + " WHERE " + FIELDNAME_VARUID + " = " + var.getLongID() + ";";
+	}
+	
+	private String generatePopulationSetVarUpdateStatement(DBVariant dbv)
+	{
+		String valStatement = "";
+		valStatement += FIELDNAME_ACOUNT_TOT + " = " + dbv.getIndividualCount() + ", ";
+		valStatement += FIELDNAME_HCOUNT_TOT + " = " + dbv.getHomozygoteCount() + ", ";
+		valStatement += FIELDNAME_ACOUNT_NFE + " = " + dbv.getIndividualCount(Population.NFE) + ", ";
+		valStatement += FIELDNAME_HCOUNT_NFE + " = " + dbv.getHomozygoteCount(Population.NFE) + ", ";
+		valStatement += FIELDNAME_ACOUNT_AFR + " = " + dbv.getIndividualCount(Population.AFR) + ", ";
+		valStatement += FIELDNAME_HCOUNT_AFR + " = " + dbv.getHomozygoteCount(Population.AFR) + ", ";
+		valStatement += FIELDNAME_ACOUNT_AMR + " = " + dbv.getIndividualCount(Population.AMR) + ", ";
+		valStatement += FIELDNAME_HCOUNT_AMR + " = " + dbv.getHomozygoteCount(Population.AMR) + ", ";
+		valStatement += FIELDNAME_ACOUNT_FIN + " = " + dbv.getIndividualCount(Population.FIN) + ", ";
+		valStatement += FIELDNAME_HCOUNT_FIN + " = " + dbv.getHomozygoteCount(Population.FIN) + ", ";
+		valStatement += FIELDNAME_ACOUNT_EAS + " = " + dbv.getIndividualCount(Population.EAS) + ", ";
+		valStatement += FIELDNAME_HCOUNT_EAS + " = " + dbv.getHomozygoteCount(Population.EAS) + ", ";
+		valStatement += FIELDNAME_ACOUNT_SAS + " = " + dbv.getIndividualCount(Population.SAS) + ", ";
+		valStatement += FIELDNAME_HCOUNT_SAS + " = " + dbv.getHomozygoteCount(Population.SAS) + ", ";
+		valStatement += FIELDNAME_ACOUNT_ASJ + " = " + dbv.getIndividualCount(Population.ASJ) + ", ";
+		valStatement += FIELDNAME_HCOUNT_ASJ + " = " + dbv.getHomozygoteCount(Population.ASJ) + ", ";
+		valStatement += FIELDNAME_ACOUNT_OTH + " = " + dbv.getIndividualCount(Population.OTH) + ", ";
+		valStatement += FIELDNAME_HCOUNT_OTH + " = " + dbv.getHomozygoteCount(Population.OTH);
+		return "UPDATE " + TABLENAME_VARIANTS + " SET " + valStatement + " WHERE " + FIELDNAME_VARUID + " = " + dbv.getLongID() + ";";
+	}
+	
+	/* ----- Getters ----- */
+	
+	public boolean variantExists(long varUID)
+	{
+		String sqlQuery = "SELECT " + FIELDNAME_VARUID + " FROM " + TABLENAME_VARIANTS;
+		sqlQuery += " WHERE " + FIELDNAME_VARUID + "=" + varUID + ";";
+		
+		try 
+		{
+			Statement cstat = connection.createStatement();
+			ResultSet rs = cstat.executeQuery(sqlQuery);
+			return rs.next();
+		} 
+		catch (SQLException e) 
+		{
+			e.printStackTrace();
+			return false;
+		}
+	}
+	
+	public DBVariant getVariant(long varUID) 
+	{	
+		String sqlQuery = "SELECT * FROM " + TABLENAME_VARIANTS;
+		sqlQuery += " WHERE " + FIELDNAME_VARUID + "=" + varUID + ";";
+		
+		try 
+		{
+			Statement cstat = connection.createStatement();
+			ResultSet rs = cstat.executeQuery(sqlQuery);
+			if(!rs.next()) return null;
+			DBVariant var = readFromResultSet(rs);
+			return var;
+		} 
+		catch (SQLException e) 
+		{
+			e.printStackTrace();
+			return null;
+		}
+	}
+
+	public List<DBVariant> getVariants(Collection<Long> varUIDs)
+	{
+		if(varUIDs == null || varUIDs.isEmpty()) return null;
+		List<DBVariant> vlist = new LinkedList<DBVariant>();
+		
+		String sqlQuery = "SELECT * FROM " + TABLENAME_VARIANTS + " WHERE";
+		int i = 0;
+		int len = varUIDs.size();
+		for(Long vuid : varUIDs)
+		{
+			sqlQuery += " " + FIELDNAME_VARUID + "=" + vuid;
+			if(i < (len - 1)) sqlQuery += " OR";
+			else sqlQuery += ";";
+			i++;
+		}
+		
+		try 
+		{
+			Statement cstat = connection.createStatement();
+			ResultSet rs = cstat.executeQuery(sqlQuery);
+			while(rs.next())
+			{
+				vlist.add(this.readFromResultSet(rs));
+			}
+		} 
+		catch (SQLException e) 
+		{
+			e.printStackTrace();
+			return null;
+		}
+		
+		return vlist;
+	}
+	
 	@Override
+	public VariantGenotype getGenotype(long varUID) 
+	{
+		String sqlQuery = "SELECT " + FIELDNAME_VARUID + ", " + FIELDNAME_GENOTYPES + " FROM " + TABLENAME_VARIANTS;
+		sqlQuery += " WHERE " + FIELDNAME_VARUID + "=" + varUID + ";";
+		
+		try 
+		{
+			Statement cstat = connection.createStatement();
+			ResultSet rs = cstat.executeQuery(sqlQuery);
+			if(!rs.next()) return null;
+			Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
+			VariantGenotype vg = new VariantGenotype(varUID);
+			vg.readDataFromBLOB(genoblob.getBytes(0, (int)genoblob.length()));
+			
+			return vg;
+		} 
+		catch (SQLException e) 
+		{
+			e.printStackTrace();
+			return null;
+		}
+	}
+
+	public List<VariantGenotype> getGenotypes(Collection<Long> varUIDs)
+	{
+		if(varUIDs == null || varUIDs.isEmpty()) return null;
+		List<VariantGenotype> glist = new LinkedList<VariantGenotype>();
+		
+		String sqlQuery = "SELECT " + FIELDNAME_VARUID + ", " + FIELDNAME_GENOTYPES + " FROM " + TABLENAME_VARIANTS;
+		int i = 0;
+		int len = varUIDs.size();
+		for(Long vuid : varUIDs)
+		{
+			sqlQuery += " " + FIELDNAME_VARUID + "=" + vuid;
+			if(i < (len - 1)) sqlQuery += " OR";
+			else sqlQuery += ";";
+			i++;
+		}
+		
+		try 
+		{
+			Statement cstat = connection.createStatement();
+			ResultSet rs = cstat.executeQuery(sqlQuery);
+			while(rs.next())
+			{
+				long varUID = rs.getLong(FIELDNAME_VARUID);
+				Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
+				VariantGenotype vg = new VariantGenotype(varUID);
+				vg.readDataFromBLOB(genoblob.getBytes(0, (int)genoblob.length()));
+				glist.add(vg);
+			}
+		} 
+		catch (SQLException e) 
+		{
+			e.printStackTrace();
+			return null;
+		}
+		
+		return glist;
+	}
+	
 	public List<Long> getVariantIDsForSample(int sampleUID) 
 	{
-		String sqlquery = ""; //TODO
+		String sqlquery = "SELECT * FROM " + TABLENAME_SAMPLEGENO;
+		sqlquery += " WHERE " + FIELDNAME_SAMPLEUID + "=" + sampleUID + ";";
 		
 		try 
 		{
@@ -434,13 +645,41 @@ public class SQLVariantTable implements VariantTable{
 		return list2;
 	}
 
-	@Override
 	public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end) 
 	{
-		//Don't forget to check the other end of TRAs!
-		String sqlQuery = ""; //TODO
 		List<DBVariant> varlist = new LinkedList<DBVariant>();
+		if(c == null) return varlist;
 		
+		//Don't forget to check the other end of TRAs!
+		int cuid = c.getUDPName().hashCode();
+		String sqlQuery = "SELECT * FROM " + TABLENAME_VARIANTS;
+		sqlQuery += " WHERE ";
+		
+		String statement_type = FIELDNAME_SVTYPE + "=" + SVType.TRA.getID() + " OR " + FIELDNAME_SVTYPE + "=" + SVType.BND.getID();
+		String statement_ctg1 = FIELDNAME_CTG1 + "=" + cuid;
+		String statement_ctg2 = FIELDNAME_CTG2 + "=" + cuid;
+		String statement_reg1 = FIELDNAME_START1 + "<" + end;
+		String statement_reg2 = FIELDNAME_END2 + ">=" + start;
+		
+		String statement_trareg1 = FIELDNAME_START1 + "<" + end;
+		String statement_trareg2 = FIELDNAME_START2 + ">=" + start;
+		String statement_trareg3 = FIELDNAME_END1 + "<" + end;
+		String statement_trareg4 = FIELDNAME_END2 + ">=" + start;
+		
+		//Combine for full statement
+		/*
+		 *  (!TRA) && ctg1 && reg1 && reg2
+		 *  or
+		 *  TRA && ((ctg1 && treg1 && treg2) || (ctg2 && treg3 && treg4))
+		 */
+		
+		String nottra = "(NOT " + statement_type + ")";
+		String normQuery = nottra + " AND " + statement_ctg1 + " AND " + statement_reg1 + " AND " + statement_reg2;
+		String tQuery1 = statement_ctg1 + " AND " + statement_trareg1 + " AND " + statement_trareg2;
+		String tQuery2 = statement_ctg2 + " AND " + statement_trareg3 + " AND " + statement_trareg4;
+		String traQuery = statement_type + " AND ((" + tQuery1 + ") OR (" + tQuery2 + "))";
+		sqlQuery += "(" + normQuery + ") OR (" + traQuery + ");";
+				
 		try 
 		{
 			Statement cstat = connection.createStatement();
@@ -459,7 +698,8 @@ public class SQLVariantTable implements VariantTable{
 		return varlist;
 	}
 
-	@Override
+	/* ----- Analysis ----- */
+	
 	public Map<String, GeneHitCounter> generateGeneHitMap() 
 	{
 		List<Gene> glist = genes.getAllGenes();
@@ -499,23 +739,8 @@ public class SQLVariantTable implements VariantTable{
 		
 		return ghmap;
 	}
-
-	public boolean variantExists(long varUID)
-	{
-		String sqlQuery = ""; //TODO
-		
-		try 
-		{
-			Statement cstat = connection.createStatement();
-			ResultSet rs = cstat.executeQuery(sqlQuery);
-			return rs.next();
-		} 
-		catch (SQLException e) 
-		{
-			e.printStackTrace();
-			return false;
-		}
-	}
+	
+	/* ----- Variant Addition ----- */
 	
 	private long generateUID(Contig c, int pos)
 	{
@@ -533,28 +758,28 @@ public class SQLVariantTable implements VariantTable{
 		return id;
 	}
 	
-	private boolean removeVariants(Collection<Long> varUIDs)
-	{
-		//TODO
-		return false;
-	}
-	
-	private boolean removeSampleGenoRecord(int sampleID)
-	{
-		//TODO
-		return false;
-	}
-	
 	private boolean addOrUpdateVariant(DBVariant var, VariantGenotype vgeno, boolean isnew)
 	{
-		//TODO
-		return false;
-	}
-	
-	private boolean updateSampleGenoTable(Map<Integer, List<Long>> additions, Map<Integer, List<Long>> removes)
-	{
-		//TODO
-		return false;
+		try
+		{
+			String baseStatement = null;
+			if(isnew) baseStatement = generateFullVarInsertStatement(var, vgeno);
+			else {
+				var.noteGenes(genes);
+				baseStatement = generateAbridgedSetVarUpdateStatement(var, vgeno);
+			}
+			
+			Statement cstat = connection.createStatement();
+			int count = cstat.executeUpdate(baseStatement);
+			if(count != 1) return false;
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+			return false;
+		}
+		
+		return clearTempBlobs();
 	}
 	
 	@Override
@@ -766,45 +991,414 @@ public class SQLVariantTable implements VariantTable{
 		vcfReader.close();
 		return this.updateSampleGenoTable(sgAdd, sgDel);
 	}
+	
+	/* ----- Variant Deletion ----- */
+	
+	private boolean removeSampleGenoRecord(int sampleID)
+	{
+		String sqlQuery = "DELETE FROM " + TABLENAME_SAMPLEGENO;
+		sqlQuery += " WHERE " + FIELDNAME_SAMPLEUID + "=" + sampleID + ";";
+		
+		try 
+		{
+			Statement cstat = connection.createStatement();
+			int count = cstat.executeUpdate(sqlQuery);
+			return (count == 1);
+		} 
+		catch (SQLException e) 
+		{
+			e.printStackTrace();
+			return false;
+		}
+	}
+	
+	public boolean removeVariant(long varUID)
+	{
+		//Get genotype
+		VariantGenotype vg = getGenotype(varUID);
+		
+		String sqlQuery = "DELETE FROM " + TABLENAME_VARIANTS;
+		sqlQuery += " WHERE " + FIELDNAME_VARUID + "=" + varUID + ";";
+		
+		try 
+		{
+			Statement cstat = connection.createStatement();
+			int count = cstat.executeUpdate(sqlQuery);
+			
+			//Update sample geno table...
+			if(vg != null)
+			{
+				Set<Integer> samps = vg.getAllIndividuals();
+				Map<Integer, List<Long>> removes = new HashMap<Integer, List<Long>>();
+				for(Integer sid : samps)
+				{
+					List<Long> list = new LinkedList<Long>();
+					list.add(varUID);
+					removes.put(sid, list);
+				}
+				updateSampleGenoTable(null, removes);
+			}
+			
+			return (count == 1);
+		} 
+		catch (SQLException e) 
+		{
+			e.printStackTrace();
+			return false;
+		}
+		
+		
+	}
+	
+	public boolean removeVariants(Collection<Long> varUIDs)
+	{
+		if(varUIDs == null || varUIDs.isEmpty()) return false;
+		int sz = varUIDs.size();
+		
+		Collection<VariantGenotype> vglist = getGenotypes(varUIDs);
+		
+		String sqlQuery = "DELETE FROM " + TABLENAME_VARIANTS + " WHERE";
+		int i = 0;
+		int len = varUIDs.size();
+		for(Long vuid : varUIDs)
+		{
+			sqlQuery += " " + FIELDNAME_VARUID + "=" + vuid;
+			if(i < (len - 1)) sqlQuery += " OR";
+			else sqlQuery += ";";
+			i++;
+		}
+		
+		try 
+		{
+			Statement cstat = connection.createStatement();
+			int count = cstat.executeUpdate(sqlQuery);
 
-	@Override
+			//Update sample geno table...
+			if(vglist != null)
+			{
+				Map<Integer, List<Long>> removes = new HashMap<Integer, List<Long>>();
+				for(VariantGenotype vg : vglist)
+				{
+					Set<Integer> samps = vg.getAllIndividuals();
+					for(Integer sid : samps)
+					{
+						List<Long> list = new LinkedList<Long>();
+						list.add(vg.getVariantUID());
+						removes.put(sid, list);
+					}
+				}
+				updateSampleGenoTable(null, removes);	
+			}
+			
+			return (count == sz);
+		} 
+		catch (SQLException e) 
+		{
+			e.printStackTrace();
+			return false;
+		}
+		
+	}
+	
 	public boolean removeSample(FamilyMember sample) 
 	{
-		// TODO Auto-generated method stub
 		if(sample == null) return true;
 		int uid = sample.getUID();
 		
+		boolean b = true;
 		List<Long> sampleVars = getVariantIDsForSample(uid);
+		//See which ones only have this sample under genotypes
+		List<VariantGenotype> vglist = getGenotypes(sampleVars);
 		
-		return false;
+		//Remove sample geno record
+		b = b && removeSampleGenoRecord(uid);
+		
+		//Remove variants or geno records
+		if(vglist != null)
+		{
+			for(VariantGenotype vg : vglist)
+			{
+				SVDBGenotype gt = vg.removeGenotype(uid);
+				if(vg.isEmpty()) 
+				{
+					b = b && removeVariant(vg.getVariantUID());
+				}
+				else
+				{
+					//Pull variant and update counts
+					DBVariant dbv = getVariant(vg.getVariantUID());
+					boolean hom = gt.isHomozygous();
+					dbv.decrementTotalCount();
+					if(hom) dbv.decrementHomozygoteCount();
+					Collection<Population> poplist = sample.getPopulationTags();
+					for(Population p : poplist)
+					{
+						dbv.decrementTotalCount(p);
+						if(hom)dbv.decrementHomozygoteCount(p);
+					}
+					
+					b = b && addOrUpdateVariant(dbv, vg, false);
+				}
+			}
+		}
+		
+		return b;
 	}
 
 	@Override
 	public boolean removeFamily(Family fam) 
 	{
-		// TODO Auto-generated method stub
-		return false;
+		if(fam == null) return false;
+		boolean allgood = true;
+		List<FamilyMember> members = fam.getAllFamilyMembers();
+		for(FamilyMember mem : members)
+		{
+			allgood = allgood && removeSample(mem);
+		}
+		return allgood;
 	}
 
+	/* ----- Variant Modification ----- */
+	
+	private boolean updateSampleGenoTable(Map<Integer, List<Long>> additions, Map<Integer, List<Long>> removes)
+	{
+		if(additions == null && removes == null) return true;
+		
+		Set<Integer> sSet = new HashSet<Integer>();
+		if(additions != null) sSet.addAll(additions.keySet());
+		if(removes != null) sSet.addAll(removes.keySet());
+		
+		try 
+		{
+			for(Integer sid : sSet)
+			{
+				List<Long> a = null;
+				List<Long> d = null;
+				if(additions != null) a = additions.get(sid);
+				if(removes != null) d = removes.get(sid);
+			
+				//Fetch record, if there
+				List<Long> nowvars = this.getVariantIDsForSample(sid);
+				if(nowvars == null) 
+				{
+					Set<Long> vidset = new HashSet<Long>();
+					if(a != null && !a.isEmpty())
+					{
+						vidset.addAll(a);
+						//Create record and add all to blob!
+						FileBuffer hetblob = new FileBuffer(8, true);
+						FileBuffer homblob = new FileBuffer(8, true);
+						FileBuffer othblob = new FileBuffer(vidset.size()*8, true);
+						String path1 = this.generateBlobTempFilePath();
+						String path2 = this.generateBlobTempFilePath();
+						String path3 = this.generateBlobTempFilePath();
+						
+						String sqlCmd = "INSERT INTO " + TABLENAME_SAMPLEGENO;
+						sqlCmd += " VALUES (FILE_READ('" + path1 + "'), ";
+						sqlCmd += "FILE_READ('" + path2 + "'), ";
+						sqlCmd += "FILE_READ('" + path3 + "'));";
+						
+						hetblob.addToFile(-1L);
+						homblob.addToFile(-1L);
+						for(Long l : vidset) othblob.addToFile(l);
+						
+						homblob.writeFile(path1);
+						hetblob.writeFile(path2);
+						othblob.writeFile(path3);
+						
+						Statement cstat = connection.createStatement();
+						cstat.executeUpdate(sqlCmd);
+					}
+				}
+				else
+				{
+					//Make a set by combining all three...
+					Set<Long> vidset = new HashSet<Long>();
+					vidset.addAll(nowvars);
+					if(a != null && !a.isEmpty()) vidset.addAll(a);
+					if(d != null && !d.isEmpty()) vidset.removeAll(d);
+					
+					FileBuffer hetblob = new FileBuffer(8, true);
+					FileBuffer homblob = new FileBuffer(8, true);
+					FileBuffer othblob = new FileBuffer(vidset.size()*8, true);
+					String path1 = this.generateBlobTempFilePath();
+					String path2 = this.generateBlobTempFilePath();
+					String path3 = this.generateBlobTempFilePath();
+					
+					String sqlCmd = "UPDATE " + TABLENAME_SAMPLEGENO;
+					sqlCmd += " SET ";
+					sqlCmd += FIELDNAME_SVARLIST_HOM + " = FILE_READ('" + path1 + "), ";
+					sqlCmd += FIELDNAME_SVARLIST_HET + " = FILE_READ('" + path2 + "), ";
+					sqlCmd += FIELDNAME_SVARLIST_OTH + " = FILE_READ('" + path3 + ")";
+					sqlCmd += " WHERE " + FIELDNAME_SAMPLEUID + " = " + sid;
+					
+					hetblob.addToFile(-1L);
+					homblob.addToFile(-1L);
+					for(Long l : vidset) othblob.addToFile(l);
+					
+					homblob.writeFile(path1);
+					hetblob.writeFile(path2);
+					othblob.writeFile(path3);
+					
+					Statement cstat = connection.createStatement();
+					cstat.executeUpdate(sqlCmd);
+					
+				}
+				
+			
+			}
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+			clearTempBlobs();
+			return false;
+		}
+		
+		clearTempBlobs();
+		return true;
+	}
+	
+	private boolean updateSampleCountsForVariant(DBVariant dbv, DBSampleTable sampleTable)
+	{
+		boolean allgood = true;
+		
+		dbv.setTotalCount(0);
+		dbv.setHomozygoteCount(0);
+		
+		Population[] allpops = Population.values();
+		for(Population p : allpops)
+		{
+			dbv.setTotalCount(0, p);
+			dbv.setHomozygoteCount(0, p);
+		}
+		
+		VariantGenotype vg = getGenotype(dbv.getLongID());
+		Set<Integer> samples = vg.getAllIndividuals();
+		for(Integer sid : samples)
+		{
+			SVDBGenotype gt = vg.getGenotype(sid);
+			FamilyMember mem = sampleTable.getSample(sid);
+			if(mem == null || gt == null) continue;
+			
+			Collection<Population> pTags = mem.getPopulationTags();
+			boolean hom = gt.isHomozygous();
+			
+			dbv.incrementTotalCount();
+			if(hom)dbv.incrementHomozygoteCount();
+			for(Population p : pTags)
+			{
+				dbv.incrementTotalCount(p);
+				if(hom)dbv.incrementHomozygoteCount(p);
+			}
+		}
+		
+		String sqlcmd = this.generatePopulationSetVarUpdateStatement(dbv);
+		
+		try
+		{
+			Statement cstat = connection.createStatement();
+			int count = cstat.executeUpdate(sqlcmd);
+			allgood = allgood && (count == 1);
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+			return false;
+		}
+	
+		return allgood;
+	}
+	
 	@Override
 	public boolean updateSampleCounts(DBSampleTable sampleTable) 
 	{
-		// TODO Auto-generated method stub
-		return false;
+		String sqlQuery = "SELECT * FROM " + TABLENAME_VARIANTS;
+		boolean allgood = true;
+		
+		try 
+		{
+			Statement cstat = connection.createStatement();
+			ResultSet rs = cstat.executeQuery(sqlQuery);
+			while(rs.next())
+			{
+				DBVariant dbv = readFromResultSet(rs);
+				allgood = allgood && updateSampleCountsForVariant(dbv, sampleTable);
+			}
+
+		} 
+		catch (SQLException e) 
+		{
+			e.printStackTrace();
+			return false;
+		}
+		
+		return true;
 	}
 
 	@Override
 	public boolean updateSamplePopulationFlags(FamilyMember sample, Collection<Population> oldFlags) 
 	{
-		// TODO Auto-generated method stub
-		return false;
+		if(sample == null) return true;
+		
+		boolean allgood = true;
+		
+		List<Long> varlist = this.getVariantIDsForSample(sample.getUID());
+		for(Long vid : varlist)
+		{
+			DBVariant dbv = getVariant(vid);
+			VariantGenotype vg = getGenotype(vid);
+			SVDBGenotype gt = vg.getGenotype(sample.getUID());
+			boolean hom = gt.isHomozygous();
+			
+			if(oldFlags != null)
+			{
+				for(Population p : oldFlags)
+				{
+					dbv.decrementTotalCount(p);
+					if(hom) dbv.decrementHomozygoteCount(p);
+				}
+			}
+			
+			//New flags
+			Collection<Population> tags = sample.getPopulationTags();
+			for(Population p : tags)
+			{
+				dbv.incrementTotalCount(p);
+				if(hom) dbv.incrementHomozygoteCount(p);
+			}
+			
+			String sqlCmd = generatePopulationSetVarUpdateStatement(dbv);
+			try
+			{
+				Statement cstat = connection.createStatement();
+				int count = cstat.executeUpdate(sqlCmd);
+				allgood = allgood && (count == 1);
+			}
+			catch(Exception e)
+			{
+				e.printStackTrace();
+				return false;
+			}
+		}
+		
+		return allgood;
 	}
-
+	
+	/* ----- Cleanup ----- */
+	
+	private boolean clearTempBlobs()
+	{
+		try {for(String p : tempBlobFiles) Files.deleteIfExists(Paths.get(p));}
+		catch(IOException e) {e.printStackTrace(); return false;}
+		tempBlobFiles.clear();
+		return true;
+	}
+	
 	@Override
 	public void save() throws IOException 
 	{
-		// TODO Auto-generated method stub
-		
+		clearTempBlobs();
 	}
 
 }
