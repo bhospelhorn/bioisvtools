@@ -121,8 +121,10 @@ public class SVDatabase {
 		genes = GeneSet.loadRefGene(genome);
 		
 		sqlURL = sqlPath;
-		sqlUser = "svdb_bioi";
-		sqlPassword = "bIoI%pAsS";
+		//sqlUser = "svdb_bioi";
+		//sqlPassword = "bIoI%pAsS";
+		sqlUser = System.getProperty("user.name");
+		sqlPassword = "nopassword";
 		
 		sampleTable = new DBSampleTable(directory);
 		variantTable = new SQLVariantTable(sqlURL, sqlUser, sqlPassword, genome, genes);

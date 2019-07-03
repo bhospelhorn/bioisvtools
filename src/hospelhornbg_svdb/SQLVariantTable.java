@@ -136,6 +136,7 @@ public class SQLVariantTable implements VariantTable{
 		connect();
 		//Check for tables, create if not there
 		if(!varTableExists()) createVarTable();
+		if(!sampleGenoTableExists()) createSampleGenoTable();
 		tempBlobFiles = new LinkedList<String>();
 	}
 	
