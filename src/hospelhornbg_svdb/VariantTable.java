@@ -45,6 +45,7 @@ public interface VariantTable {
 		public int getPositionDivision(Contig c, int pos)
 		{
 			int divsz = (int)c.getLength()/0xFFFF;
+			if(divsz == 0) return 0;
 			return pos/divsz;
 		}
 		

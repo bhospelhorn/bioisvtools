@@ -1,5 +1,9 @@
 package hospelhornbg_svdb;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.sql.Blob;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
@@ -343,6 +347,7 @@ public class DBVariant implements Comparable<DBVariant>{
 		{
 			FileBuffer b = new FileBuffer(4);
 			b.addToFile(-1);
+			return b;
 		}
 		
 		int sz = lGenes.size() * 4;
@@ -358,12 +363,23 @@ public class DBVariant implements Comparable<DBVariant>{
 		return loader.getBytes();
 	}
 	
-	public void loadGeneListFromBLOB(byte[] data, GeneSet gs)
+	public byte[] getInsseqAsBLOBBytes()
 	{
-		if(data == null) return;
+		if(sAlt != null && !sAlt.isEmpty()) return sAlt.getBytes();
+		byte[] barr = {0};
+		return barr;
+	}
+	
+	public void loadGeneListFromBLOB(Blob blob, GeneSet gs) throws SQLException, IOException
+	{
+		if(blob == null) return;
 		//Wrap into FileBuffer
-		FileBuffer loader = new FileBuffer(data.length, true);
-		for(byte b : data) loader.addToFile(b);
+		FileBuffer loader = new FileBuffer((int)blob.length(), true);
+		//for(byte b : data) loader.addToFile(b);
+		InputStream is = blob.getBinaryStream();
+		int b = -1;
+		while((b = is.read()) != -1) loader.addToFile((byte)b);
+		is.close();
 		loadGeneListFromBLOB(loader, gs);
 	}
 	
@@ -374,6 +390,7 @@ public class DBVariant implements Comparable<DBVariant>{
 		long cpos = 0;
 		long bsz = data.getFileSize();
 		data.setEndian(true);
+		lGenes = new ArrayList<Gene>((int)(bsz/4) + 1);
 		while(cpos < bsz)
 		{
 			int tid = data.intFromFile(cpos); cpos += 4;
@@ -802,7 +819,7 @@ public class DBVariant implements Comparable<DBVariant>{
 	public void incrementTotalCount(Population p)
 	{
 		Integer i = this.mPopTotalCounts.get(p);
-		if (i == null) mPopTotalCounts.put(p, 0);
+		if (i == null) mPopTotalCounts.put(p, 1);
 		else this.mPopTotalCounts.put(p, i+1);
 	}
 	
@@ -824,7 +841,7 @@ public class DBVariant implements Comparable<DBVariant>{
 	public void incrementHomozygoteCount(Population p)
 	{
 		Integer i = this.mPopHomCounts.get(p);
-		if (i == null) mPopHomCounts.put(p, 0);
+		if (i == null) mPopHomCounts.put(p, 1);
 		else this.mPopHomCounts.put(p, i+1);
 	}
 	
@@ -913,7 +930,9 @@ public class DBVariant implements Comparable<DBVariant>{
 	
 	public int getIndividualCount(Population p)
 	{
-		return this.mPopTotalCounts.get(p);
+		Integer i = this.mPopTotalCounts.get(p);
+		if(i == null) return 0;
+		return i;
 	}
 	
 	public int getHomozygoteCount()
@@ -923,7 +942,9 @@ public class DBVariant implements Comparable<DBVariant>{
 	
 	public int getHomozygoteCount(Population p)
 	{
-		return this.mPopHomCounts.get(p);
+		Integer i = this.mPopHomCounts.get(p);
+		if(i == null) return 0;
+		return i;
 	}
 	
 	public double getCohortFreq()
@@ -933,7 +954,9 @@ public class DBVariant implements Comparable<DBVariant>{
 	
 	public double getCohortFreq(Population p)
 	{
-		return this.mPopFreqs.get(p);
+		Double d = mPopFreqs.get(p);
+		if(d == null) return 0.00;
+		return d;
 	}
 	
 	public String getValidationNotes()

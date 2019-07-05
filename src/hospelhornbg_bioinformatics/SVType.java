@@ -27,6 +27,7 @@ public enum SVType{
 	private SVType (String tWritten, int id)
 	{
 		abrv = tWritten;
+		eID = id;
 	}
 	
 	public String getString()

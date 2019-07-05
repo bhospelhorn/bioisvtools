@@ -1,6 +1,9 @@
 package hospelhornbg_svdb;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.sql.Blob;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -80,12 +83,16 @@ public class VariantGenotype {
 		return gt;
 	}
 	
-	public void readDataFromBLOB(byte[] data)
+	public void readDataFromBLOB(Blob blob) throws SQLException, IOException
 	{
-		if(data == null) return;
+		if(blob == null) return;
 		//Wrap into FileBuffer
-		FileBuffer loader = new FileBuffer(data.length, true);
-		for(byte b : data) loader.addToFile(b);
+		FileBuffer loader = new FileBuffer((int)blob.length(), true);
+		//for(byte b : data) loader.addToFile(b);
+		InputStream is = blob.getBinaryStream();
+		int b = -1;
+		while((b = is.read()) != -1) loader.addToFile((byte)b);
+		is.close();
 		readDataFromBLOB(loader);
 	}
 	

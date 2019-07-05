@@ -807,6 +807,8 @@ public class GeneSet
 			int sti = getFloorIndex(stPos, start.index);
 			int edi = end.index;
 			
+			if(sti == -1) sti = 0;
+			
 			for (int i = sti; i <= edi; i++)
 			{
 				Gene g = genes.get(i);

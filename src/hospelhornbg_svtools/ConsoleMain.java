@@ -767,13 +767,14 @@ public class ConsoleMain {
 				System.err.println("Tool Selected: " + TOOL_SVDB);
 				System.err.println();
 			}
-			GenomeBuild gb = loadBuild(homedir, genome, verbose);
-			if(gb == null)
-			{
-				System.err.println("Genome build for \"" + genome + "\" could not be loaded!");
-				printUsage();
-				System.exit(1);
-			}
+			GenomeBuild gb = null;
+			if(genome != null) gb = loadBuild(homedir, genome, verbose);
+			//if(gb == null)
+			//{
+			//	System.err.println("Genome build for \"" + genome + "\" could not be loaded!");
+			//	printUsage();
+			//	System.exit(1);
+			//}
 			ConsoleFrontEnd.runSVDB(args, gb, verbose);
 		}
 		else if (program.equals(TOOL_LRGMRG))
