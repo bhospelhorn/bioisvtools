@@ -291,6 +291,7 @@ public class StatementPrepper {
 			valStatement += SQLVariantTable.FIELDNAME_GENOTYPES + " = ?";
 			
 			String sqlQuery = "UPDATE " + SQLVariantTable.TABLENAME_VARIANTS + " SET " + valStatement + " WHERE " + SQLVariantTable.FIELDNAME_VARUID + " = ?";
+			//String sqlQuery = "UPDATE " + SQLVariantTable.TABLENAME_VARIANTS + " SET " + valStatement;
 			System.err.println("-DEBUG- Raw Query: " + sqlQuery);
 			short_update = connection.prepareStatement(sqlQuery);
 		}

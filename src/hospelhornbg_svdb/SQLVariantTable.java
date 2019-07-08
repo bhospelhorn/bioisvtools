@@ -42,48 +42,48 @@ public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Constants ----- */
 	
-	public static final String TABLENAME_VARIANTS = "Variants";
-	public static final String TABLENAME_SAMPLEGENO = "SampleGeno";
+	public static final String TABLENAME_VARIANTS = "VARIANTS";
+	public static final String TABLENAME_SAMPLEGENO = "SAMPLEGENO";
 	
-	public static final String FIELDNAME_VARUID = "VarUID";
-	public static final String FIELDNAME_CTG1 = "Contig1";
-	public static final String FIELDNAME_START1 = "Start1";
-	public static final String FIELDNAME_START2 = "Start2";
-	public static final String FIELDNAME_END1 = "End1";
-	public static final String FIELDNAME_END2 = "End2";
-	public static final String FIELDNAME_SVTYPE = "SVType";
-	public static final String FIELDNAME_POSEFF = "PosEff";
-	public static final String FIELDNAME_VARNAME = "VarName";
+	public static final String FIELDNAME_VARUID = "VARUID";
+	public static final String FIELDNAME_CTG1 = "CONTIG1";
+	public static final String FIELDNAME_START1 = "START1";
+	public static final String FIELDNAME_START2 = "START2";
+	public static final String FIELDNAME_END1 = "END1";
+	public static final String FIELDNAME_END2 = "END2";
+	public static final String FIELDNAME_SVTYPE = "SVTYPE";
+	public static final String FIELDNAME_POSEFF = "POSEFF";
+	public static final String FIELDNAME_VARNAME = "VARNAME";
 	
-	public static final String FIELDNAME_ACOUNT_TOT = "AlleleCount_Total";
-	public static final String FIELDNAME_HCOUNT_TOT = "HomozygoteCount_Total";
-	public static final String FIELDNAME_ACOUNT_NFE = "AlleleCount_NFE";
-	public static final String FIELDNAME_HCOUNT_NFE = "HomozygoteCount_NFE";
-	public static final String FIELDNAME_ACOUNT_AFR = "AlleleCount_AFR";
-	public static final String FIELDNAME_HCOUNT_AFR = "HomozygoteCount_AFR";
-	public static final String FIELDNAME_ACOUNT_AMR = "AlleleCount_AMR";
-	public static final String FIELDNAME_HCOUNT_AMR = "HomozygoteCount_AMR";
-	public static final String FIELDNAME_ACOUNT_FIN = "AlleleCount_FIN";
-	public static final String FIELDNAME_HCOUNT_FIN = "HomozygoteCount_FIN";
-	public static final String FIELDNAME_ACOUNT_EAS = "AlleleCount_EAS";
-	public static final String FIELDNAME_HCOUNT_EAS = "HomozygoteCount_EAS";
-	public static final String FIELDNAME_ACOUNT_SAS = "AlleleCount_SAS";
-	public static final String FIELDNAME_HCOUNT_SAS = "HomozygoteCount_SAS";
-	public static final String FIELDNAME_ACOUNT_ASJ = "AlleleCount_ASJ";
-	public static final String FIELDNAME_HCOUNT_ASJ = "HomozygoteCount_ASJ";
-	public static final String FIELDNAME_ACOUNT_OTH = "AlleleCount_OTH";
-	public static final String FIELDNAME_HCOUNT_OTH = "HomozygoteCount_OTH";
+	public static final String FIELDNAME_ACOUNT_TOT = "ALLELECOUNT_TOTAL";
+	public static final String FIELDNAME_HCOUNT_TOT = "HOMOZYGOTECOUNT_TOTAL";
+	public static final String FIELDNAME_ACOUNT_NFE = "ALLELECOUNT_NFE";
+	public static final String FIELDNAME_HCOUNT_NFE = "HOMOZYGOTECOUNT_NFE";
+	public static final String FIELDNAME_ACOUNT_AFR = "ALLELECOUNT_AFR";
+	public static final String FIELDNAME_HCOUNT_AFR = "HOMOZYGOTECOUNT_AFR";
+	public static final String FIELDNAME_ACOUNT_AMR = "ALLELECOUNT_AMR";
+	public static final String FIELDNAME_HCOUNT_AMR = "HOMOZYGOTECOUNT_AMR";
+	public static final String FIELDNAME_ACOUNT_FIN = "ALLELECOUNT_FIN";
+	public static final String FIELDNAME_HCOUNT_FIN = "HOMOZYGOTECOUNT_FIN";
+	public static final String FIELDNAME_ACOUNT_EAS = "ALLELECOUNT_EAS";
+	public static final String FIELDNAME_HCOUNT_EAS = "HOMOZYGOTECOUNT_EAS";
+	public static final String FIELDNAME_ACOUNT_SAS = "ALLELECOUNT_SAS";
+	public static final String FIELDNAME_HCOUNT_SAS = "HOMOZYGOTECOUNT_SAS";
+	public static final String FIELDNAME_ACOUNT_ASJ = "ALLELECOUNT_ASJ";
+	public static final String FIELDNAME_HCOUNT_ASJ = "HOMOZYGOTECOUNT_ASJ";
+	public static final String FIELDNAME_ACOUNT_OTH = "ALLELECOUNT_OTH";
+	public static final String FIELDNAME_HCOUNT_OTH = "HOMOZYGOTECOUNT_OTH";
 	
-	public static final String FIELDNAME_GENELIST = "Genes";
-	public static final String FIELDNAME_VALNOTES = "ValidationNotes";
-	public static final String FIELDNAME_CTG2 = "Contig2";
-	public static final String FIELDNAME_INSSEQ = "InsertionSequence";
-	public static final String FIELDNAME_GENOTYPES = "Genotypes";
+	public static final String FIELDNAME_GENELIST = "GENES";
+	public static final String FIELDNAME_VALNOTES = "VALIDATIONNOTES";
+	public static final String FIELDNAME_CTG2 = "CONTIG2";
+	public static final String FIELDNAME_INSSEQ = "INSERTION_SEQ";
+	public static final String FIELDNAME_GENOTYPES = "GENOTYPES";
 	
-	public static final String FIELDNAME_SAMPLEUID = "SampleUID";
-	public static final String FIELDNAME_SVARLIST_HOM = "HomVar";
-	public static final String FIELDNAME_SVARLIST_HET = "HetVar";
-	public static final String FIELDNAME_SVARLIST_OTH = "OthVar";
+	public static final String FIELDNAME_SAMPLEUID = "SAMPLEUID";
+	public static final String FIELDNAME_SVARLIST_HOM = "HOMVAR";
+	public static final String FIELDNAME_SVARLIST_HET = "HETVAR";
+	public static final String FIELDNAME_SVARLIST_OTH = "OTHVAR";
 	
 	
 	public static final String[][] VAR_COLUMNS = {
@@ -385,24 +385,24 @@ public class SQLVariantTable implements VariantTable{
 		pstat.setInt(StatementPrepper.SHORTUD_ED2, var.getEndPosition().getEnd()); System.err.println("End2 = " + var.getEndPosition().getEnd());
 		pstat.setInt(StatementPrepper.SHORTUD_POSEFF, var.getPositionEffect().getPriority()); System.err.println("PosEff = " + var.getPositionEffect().getPriority());
 		
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_TOT, var.getIndividualCount());
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_TOT, var.getHomozygoteCount());
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_NFE, var.getIndividualCount(Population.NFE));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_NFE, var.getHomozygoteCount(Population.NFE));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_AFR, var.getIndividualCount(Population.AFR));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_AFR, var.getHomozygoteCount(Population.AFR));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_AMR, var.getIndividualCount(Population.AMR));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_AMR, var.getHomozygoteCount(Population.AMR));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_FIN, var.getIndividualCount(Population.FIN));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_FIN, var.getHomozygoteCount(Population.FIN));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_EAS, var.getIndividualCount(Population.EAS));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_EAS, var.getHomozygoteCount(Population.EAS));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_SAS, var.getIndividualCount(Population.SAS));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_SAS, var.getHomozygoteCount(Population.SAS));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_ASJ, var.getIndividualCount(Population.ASJ));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_ASJ, var.getHomozygoteCount(Population.ASJ));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_OTH, var.getIndividualCount(Population.OTH));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_OTH, var.getHomozygoteCount(Population.OTH));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_TOT, var.getIndividualCount()); System.err.println("Total Allele = " + var.getIndividualCount());
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_TOT, var.getHomozygoteCount()); System.err.println("Total Hom = " + var.getHomozygoteCount());
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_NFE, var.getIndividualCount(Population.NFE)); System.err.println("NFE Count = " + var.getIndividualCount(Population.NFE));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_NFE, var.getHomozygoteCount(Population.NFE)); System.err.println("NFE Hom = " + var.getHomozygoteCount(Population.NFE));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_AFR, var.getIndividualCount(Population.AFR)); System.err.println("AFR Count = " + var.getIndividualCount(Population.AFR));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_AFR, var.getHomozygoteCount(Population.AFR)); System.err.println("AFR Hom = " + var.getHomozygoteCount(Population.AFR));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_AMR, var.getIndividualCount(Population.AMR)); System.err.println("AMR Count = " + var.getIndividualCount(Population.AMR));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_AMR, var.getHomozygoteCount(Population.AMR)); System.err.println("AMR Hom = " + var.getHomozygoteCount(Population.AMR));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_FIN, var.getIndividualCount(Population.FIN)); System.err.println("FIN Count = " + var.getIndividualCount(Population.FIN));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_FIN, var.getHomozygoteCount(Population.FIN)); System.err.println("FIN Hom = " + var.getHomozygoteCount(Population.FIN));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_EAS, var.getIndividualCount(Population.EAS)); System.err.println("EAS Count = " + var.getIndividualCount(Population.EAS));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_EAS, var.getHomozygoteCount(Population.EAS)); System.err.println("EAS Hom = " + var.getHomozygoteCount(Population.EAS));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_SAS, var.getIndividualCount(Population.SAS)); System.err.println("SAS Count = " + var.getIndividualCount(Population.SAS));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_SAS, var.getHomozygoteCount(Population.SAS)); System.err.println("SAS Hom = " + var.getHomozygoteCount(Population.SAS));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_ASJ, var.getIndividualCount(Population.ASJ)); System.err.println("ASJ Count = " + var.getIndividualCount(Population.ASJ));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_ASJ, var.getHomozygoteCount(Population.ASJ)); System.err.println("ASJ Hom = " + var.getHomozygoteCount(Population.ASJ));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_OTH, var.getIndividualCount(Population.OTH)); System.err.println("OTH Count = " + var.getIndividualCount(Population.OTH));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_OTH, var.getHomozygoteCount(Population.OTH)); System.err.println("OTH Hom = " + var.getHomozygoteCount(Population.OTH));
 		
 		Blob blob = sprepper.toBlob(var.getGeneListAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.SHORTUD_GENELIST, blob);
@@ -457,7 +457,9 @@ public class SQLVariantTable implements VariantTable{
 			PreparedStatement pstat = sprepper.getVarUIDCheckStatement();
 			pstat.setLong(StatementPrepper.VARUIDCHECK_VARUID, varUID);
 			ResultSet rs = pstat.executeQuery();
-			return rs.next();
+			boolean b = rs.next();
+			rs.close();
+			return b;
 		} 
 		catch (SQLException e) 
 		{
@@ -473,8 +475,9 @@ public class SQLVariantTable implements VariantTable{
 			PreparedStatement pstat = sprepper.getVarGetterStatement();
 			pstat.setLong(StatementPrepper.VARGET_VARUID, varUID);
 			ResultSet rs = pstat.executeQuery();
-			if(!rs.next()) return null;
+			if(!rs.next()) {rs.close(); return null;}
 			DBVariant var = readFromResultSet(rs);
+			rs.close();
 			return var;
 		} 
 		catch (Exception e) 
@@ -504,6 +507,7 @@ public class SQLVariantTable implements VariantTable{
 			{
 				vlist.add(readFromResultSet(rs));
 			}
+			rs.close();
 		} 
 		catch (Exception e) 
 		{
@@ -522,11 +526,11 @@ public class SQLVariantTable implements VariantTable{
 			PreparedStatement pstat = sprepper.getGenoGetterStatement();
 			pstat.setLong(StatementPrepper.GENOGET_VARUID, varUID);
 			ResultSet rs = pstat.executeQuery();
-			if(!rs.next()) return null;
+			if(!rs.next()) {rs.close(); return null;}
 			Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
 			VariantGenotype vg = new VariantGenotype(varUID);
 			vg.readDataFromBLOB(genoblob);
-			
+			rs.close();
 			return vg;
 		} 
 		catch (Exception e) 
@@ -561,6 +565,7 @@ public class SQLVariantTable implements VariantTable{
 				vg.readDataFromBLOB(genoblob);
 				glist.add(vg);
 			}
+			rs.close();
 		} 
 		catch (Exception e) 
 		{
@@ -578,7 +583,7 @@ public class SQLVariantTable implements VariantTable{
 			PreparedStatement pstat = sprepper.getSampleVarGetterStatement();
 			pstat.setInt(StatementPrepper.SVARGET_SAMPUID, sampleUID);
 			ResultSet rs = pstat.executeQuery();
-			if(!rs.next()) return null;
+			if(!rs.next()) {rs.close(); return null;}
 			
 			Set<Long> vars = new HashSet<Long>();
 			vars.addAll(readVarUIDListBlob(rs.getBlob(FIELDNAME_SVARLIST_HET)));
@@ -588,6 +593,7 @@ public class SQLVariantTable implements VariantTable{
 			List<Long> list = new ArrayList<Long>(vars.size() + 1);
 			list.addAll(vars);
 			Collections.sort(list);
+			rs.close();
 			return list;
 		}
 		catch(SQLException e)
@@ -689,6 +695,7 @@ public class SQLVariantTable implements VariantTable{
 				DBVariant var = readFromResultSet(rs);
 				if(var != null) varlist.add(var);
 			}
+			rs.close();
 		} 
 		catch (Exception e) 
 		{
@@ -813,7 +820,7 @@ public class SQLVariantTable implements VariantTable{
 			int bp = (int)Math.round(mfac * (double)svsz);
 			
 			//Grab variants in region to look up
-			int search_start = sv.getCIPosition(false, false, false) - bp;
+			int search_start = Math.max(0, sv.getCIPosition(false, false, false) - bp);
 			int search_end = sv.getCIPosition(true, false, true) + bp;
 			Collection<DBVariant> nearvars = this.getVariantsInRegion(sv.getChromosome(), search_start, search_end);
 			if(nearvars != null && !nearvars.isEmpty())
@@ -824,6 +831,7 @@ public class SQLVariantTable implements VariantTable{
 					if(dbv.svIsEquivalent(sv, mfac))
 					{
 						id = dbv.getLongID();
+						System.err.println("Match found: 0x" + Long.toHexString(id));
 						break;
 					}
 				}
@@ -991,7 +999,7 @@ public class SQLVariantTable implements VariantTable{
 			}
 			//System.exit(2);
 			debugctr++;
-			if(debugctr >= 1) System.exit(2);
+			if(debugctr >= 2) System.exit(2);
 		}
 		
 		vcfReader.close();
