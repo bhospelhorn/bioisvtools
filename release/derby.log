@@ -1,0 +1,13 @@
+----------------------------------------------------------------
+Thu Jul 11 13:49:48 EDT 2019:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.11.1.2 - (1629631): instance a816c00e-016b-e227-b5c7-0000020a0c88 
+on database directory C:\Users\Blythe\Documents\Bioinformatics\svdbTest\nomim\derby with class loader java.net.URLClassLoader@7f31245a 
+Loaded from jar:rsrc:derby.jar!/
+java.vendor=Oracle Corporation
+java.runtime.version=1.8.0_191-b12
+user.dir=C:\Users\Blythe\Documents\GitHub\bioisvtools\release
+os.name=Windows 10
+os.arch=amd64
+os.version=10.0
+derby.system.home=null
+Database Class Loader started - derby.database.classpath=''

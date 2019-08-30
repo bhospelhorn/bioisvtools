@@ -13,6 +13,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import hospelhornbg_bioinformatics.Genotype;
+import hospelhornbg_bioinformatics.SVType;
 import hospelhornbg_svdb.SVDBGenotype.SVDBAllele;
 import waffleoRai_Utils.FileBuffer;
 
@@ -226,6 +228,63 @@ public class VariantGenotype {
 	public boolean isEmpty()
 	{
 		return gMap.isEmpty();
+	}
+	
+	public Genotype getAsGenotypeObject(int sampleUID, SVType svtype, boolean hasData)
+	{
+		SVDBGenotype localg = gMap.get(sampleUID);
+		Genotype g = new Genotype();
+		if(localg == null)
+		{
+			//Ref/Ref or ./.
+			if(hasData) g.setAlleles("0/0");
+			else g.setAlleles("./.");	
+			g.setCopyNumber(2);
+		}
+		else
+		{
+			Collection<SVDBAllele> alist = localg.getAlleles();
+			//TODO maybe something more elegant some day...
+			//Right now, just make all alt counts a "1" allele?
+			int altcount = 0;
+			for(SVDBAllele a : alist)
+			{
+				altcount += a.getAlleleCount();
+			}
+			
+		
+			if (altcount == 1)
+			{
+				g.setAlleles("0/1");
+				if(svtype == SVType.DEL || svtype == SVType.DELME) g.setCopyNumber(1);
+				else if (svtype == SVType.DUP || svtype == SVType.TANDEM) g.setCopyNumber(3);
+				else g.setCopyNumber(2);
+			}
+			else if(altcount == 2)
+			{
+				g.setAlleles("1/1");
+				if(svtype == SVType.DEL || svtype == SVType.DELME) g.setCopyNumber(0);
+				else if (svtype == SVType.DUP || svtype == SVType.TANDEM) g.setCopyNumber(4);
+				else g.setCopyNumber(2);
+			}
+			else if (altcount > 2)
+			{
+				//Weird. Should probably refine if this ever comes up.
+				int[] aarr = new int[altcount];
+				for(int i = 0; i < altcount; i++) aarr[i] = 1;
+				g.setAlleles(aarr);
+				g.setCopyNumber(altcount);
+			}
+			else if(altcount == 0)
+			{
+				//Ref/ref
+				//Shouldn't come up if we get to this block, but just in case.
+				g.setAlleles("0/0");
+				g.setCopyNumber(2);
+			}
+		}
+		
+		return g;
 	}
 	
 }

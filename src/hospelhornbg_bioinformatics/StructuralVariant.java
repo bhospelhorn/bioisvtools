@@ -92,6 +92,12 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  *  
  * 1.5.2 -> 1.5.3 | February 26, 2019
  *  Added set end chrom method
+ *  
+ * 1.5.3 -> 1.5.4 | July 14, 2019
+ *  End flipping should NOT apply to TRA!!
+ *  
+ * 1.5.4 -> 1.5.5 | August 30, 2019
+ *  CI Interval setters were dumb
  * 
  */
 
@@ -105,8 +111,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * Container object extending the standard Variant to include information and methods
  * for easier processing of Structural Variants.
  * @author Blythe Hospelhorn
- * @version 1.5.3
- * @since February 26, 2019
+ * @version 1.5.5
+ * @since August 30, 2019
  *
  */
 public class StructuralVariant extends Variant implements Comparable<Variant>{
@@ -1283,6 +1289,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	public void setPosition(int pos)
 	{
 		super.setPosition(pos);
+		if(this.getType() == SVType.TRA) return;
 		if (end >= 0 && end < super.getPosition()) endLow = true;
 		else endLow = false;
 	}
@@ -1295,6 +1302,7 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	public void setEndPosition(int pos)
 	{
 		end = pos;
+		if(this.getType() == SVType.TRA) return;
 		if (end >= 0 && end < super.getPosition()) endLow = true;
 		else endLow = false;
 		if (SVlen == null) SVlen = new int[1];
@@ -1526,14 +1534,14 @@ public class StructuralVariant extends Variant implements Comparable<Variant>{
 	
 	public void setCIPOS(Interval i)
 	{
-		CIPosHi = i.getEnd();
-		CIPosLow = i.getStart();
+		CIPosHi = i.getEnd() - this.getPosition();
+		CIPosLow = i.getStart() - this.getPosition();
 	}
 	
 	public void setCIEND(Interval i)
 	{
-		CIEndHi = i.getEnd();
-		CIEndLow = i.getStart();
+		CIEndHi = i.getEnd() - this.getEndPosition();
+		CIEndLow = i.getStart() - this.getEndPosition();
 	}
 	
 	/* --- Comparing --- */

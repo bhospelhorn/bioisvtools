@@ -26,6 +26,7 @@ public class Contig implements Comparable<Contig>{
 	
 	private int sortClass;
 	
+	private int guid;
 	private long length;
 	
 	public Contig()
@@ -56,6 +57,11 @@ public class Contig implements Comparable<Contig>{
 		return UCSC_name;
 	}
 	
+	public int getUID()
+	{
+		return guid;
+	}
+	
 	public long getLength()
 	{
 		return length;
@@ -75,6 +81,11 @@ public class Contig implements Comparable<Contig>{
 	public void removeName(String name)
 	{
 		names.remove(name);
+	}
+	
+	public void setUID(int uid)
+	{
+		guid = uid;
 	}
 	
 	public void setUDPName(String name)
@@ -132,8 +143,9 @@ public class Contig implements Comparable<Contig>{
 		int namesSize = (int)altNames.getFileSize();
 		FileBuffer myContig = new FileBuffer(100 + namesSize, true);
 		
-		int bsz = 96 + namesSize + psz;
+		int bsz = 100 + namesSize + psz;
 		myContig.addToFile(bsz); //Contig block size excluding actual size record
+		myContig.addToFile(guid);
 		myContig.addToFile(length); //Contig length
 		myContig.addToFile(sortClass); //Type
 		//myContig.addToFile(localUID); //Contig ID
@@ -275,6 +287,7 @@ public class Contig implements Comparable<Contig>{
 		case SORTCLASS_UNKNOWN: s += "UNK\t"; break;
 		}
 		s += this.getLength() + "\t";
+		s += String.format("0x%08x", guid) + "\t";
 		s += "[";
 		int nNames = names.size();
 		int i = 0;

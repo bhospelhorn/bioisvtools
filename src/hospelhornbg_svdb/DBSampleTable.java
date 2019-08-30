@@ -1,6 +1,8 @@
 package hospelhornbg_svdb;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -678,11 +680,53 @@ public class DBSampleTable implements Iterable<Family>{
 		return this.importedSamples.contains(sampleID);
 	}
 	
-	public boolean writeToTSV(String path)
+	public boolean writeToCSV(String path)
 	{
 		//TODO
 		//Writes the contents of the sample table to tsv
-		return false;
+		try 
+		{
+			BufferedWriter bw = new BufferedWriter(new FileWriter(path));
+			//Header
+			bw.write("UID,SampleName,Family_UID,FamilyName,Sex,Affected,RelationToPB,Populations\n");
+			
+			//Data
+			for(Family f : fCache)
+			{
+				Collection<FamilyMember> members = f.getAllFamilyMembers();
+				for(FamilyMember m : members)
+				{
+					bw.write(Integer.toHexString(m.getUID()) + ",");
+					bw.write(m.getName() + ",");
+					bw.write(Integer.toHexString(famIdMap.get(m.getUID())) + ",");
+					bw.write(f.getFamilyName() + ",");
+					bw.write(m.getSex().name() + ",");
+					bw.write(m.getAffectedStatus().name() + ",");
+					bw.write(f.getProband().getRelationship(m).toString_English() + ",");
+					Collection<Population> plist = m.getPopulationTags();
+					if(plist == null || plist.isEmpty()) bw.write("[NONE]");
+					else
+					{
+						boolean first = true;
+						for(Population p : plist)
+						{
+							if(!first)bw.write(";");
+							first = false;
+							bw.write(p.getShortString());
+						}
+						bw.write("\n");
+					}
+				}
+			}
+			bw.close();
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+			return false;
+		}
+		
+		return true;
 	}
 	
 }

@@ -976,6 +976,8 @@ public class VCF {
 			String[] val = infos.remove(StructuralVariant.INFODEF_INFO_SVTYPE.getKey());
 			if (val.length >= 1) typeraw = val[0];
 			SVType t = SVType.getType(typeraw);
+			//System.err.println("-DEBUG- typeraw = " + typeraw);
+			//System.err.println("-DEBUG- Type = " + t.getString());
 			
 			//Initialize the SV
 			if(t == SVType.TRA) sv = new Translocation();
@@ -993,6 +995,8 @@ public class VCF {
 			
 			sv.setChromosome(gb.getContig(fields[0]));
 			sv.setPosition(Integer.parseInt(fields[1]));
+			//System.err.println("-DEBUG- Contig = " + fields[0]);
+			//System.err.println("-DEBUG- Pos = " + fields[1]);
 			
 			try
 			{

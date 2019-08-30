@@ -28,24 +28,24 @@ public class StatementPrepper {
 	public static final int FULLINS_SVTYPE = 7;
 	public static final int FULLINS_POSEFF = 8;
 	public static final int FULLINS_VARNAME = 9;
-	public static final int FULLINS_HCOUNT_TOT = 10;
-	public static final int FULLINS_ACOUNT_TOT = 11;
-	public static final int FULLINS_HCOUNT_NFE = 12;
-	public static final int FULLINS_ACOUNT_NFE = 13;
-	public static final int FULLINS_HCOUNT_AFR = 14;
-	public static final int FULLINS_ACOUNT_AFR = 15;
-	public static final int FULLINS_HCOUNT_AMR = 16;
-	public static final int FULLINS_ACOUNT_AMR = 17;
-	public static final int FULLINS_HCOUNT_FIN = 18;
-	public static final int FULLINS_ACOUNT_FIN = 19;
-	public static final int FULLINS_HCOUNT_EAS = 20;
-	public static final int FULLINS_ACOUNT_EAS = 21;
-	public static final int FULLINS_HCOUNT_SAS = 22;
-	public static final int FULLINS_ACOUNT_SAS = 23;
-	public static final int FULLINS_HCOUNT_ASJ = 24;
-	public static final int FULLINS_ACOUNT_ASJ = 25;
-	public static final int FULLINS_HCOUNT_OTH = 26;
-	public static final int FULLINS_ACOUNT_OTH = 27;
+	public static final int FULLINS_ACOUNT_TOT = 10;
+	public static final int FULLINS_HCOUNT_TOT = 11;
+	public static final int FULLINS_ACOUNT_NFE = 12;
+	public static final int FULLINS_HCOUNT_NFE = 13;
+	public static final int FULLINS_ACOUNT_AFR = 14;
+	public static final int FULLINS_HCOUNT_AFR = 15;
+	public static final int FULLINS_ACOUNT_AMR = 16;
+	public static final int FULLINS_HCOUNT_AMR = 17;
+	public static final int FULLINS_ACOUNT_FIN = 18;
+	public static final int FULLINS_HCOUNT_FIN = 19;
+	public static final int FULLINS_ACOUNT_EAS = 20;
+	public static final int FULLINS_HCOUNT_EAS = 21;
+	public static final int FULLINS_ACOUNT_SAS = 22;
+	public static final int FULLINS_HCOUNT_SAS = 23;
+	public static final int FULLINS_ACOUNT_ASJ = 24;
+	public static final int FULLINS_HCOUNT_ASJ = 25;
+	public static final int FULLINS_ACOUNT_OTH = 26;
+	public static final int FULLINS_HCOUNT_OTH = 27;
 	public static final int FULLINS_GENELIST = 28;
 	public static final int FULLINS_VALNOTES = 29;
 	public static final int FULLINS_CTG2 = 30;
@@ -57,47 +57,47 @@ public class StatementPrepper {
 	public static final int SHORTUD_ED1 = 3;
 	public static final int SHORTUD_ED2 = 4;
 	public static final int SHORTUD_POSEFF = 5;
-	public static final int SHORTUD_HCOUNT_TOT = 6;
-	public static final int SHORTUD_ACOUNT_TOT = 7;
-	public static final int SHORTUD_HCOUNT_NFE = 8;
-	public static final int SHORTUD_ACOUNT_NFE = 9;
-	public static final int SHORTUD_HCOUNT_AFR = 10;
-	public static final int SHORTUD_ACOUNT_AFR = 11;
-	public static final int SHORTUD_HCOUNT_AMR = 12;
-	public static final int SHORTUD_ACOUNT_AMR = 13;
-	public static final int SHORTUD_HCOUNT_FIN = 14;
-	public static final int SHORTUD_ACOUNT_FIN = 15;
-	public static final int SHORTUD_HCOUNT_EAS = 16;
-	public static final int SHORTUD_ACOUNT_EAS = 17;
-	public static final int SHORTUD_HCOUNT_SAS = 18;
-	public static final int SHORTUD_ACOUNT_SAS = 19;
-	public static final int SHORTUD_HCOUNT_ASJ = 20;
-	public static final int SHORTUD_ACOUNT_ASJ = 21;
-	public static final int SHORTUD_HCOUNT_OTH = 22;
-	public static final int SHORTUD_ACOUNT_OTH = 23;
+	public static final int SHORTUD_ACOUNT_TOT = 6;
+	public static final int SHORTUD_HCOUNT_TOT = 7;
+	public static final int SHORTUD_ACOUNT_NFE = 8;
+	public static final int SHORTUD_HCOUNT_NFE = 9;
+	public static final int SHORTUD_ACOUNT_AFR = 10;
+	public static final int SHORTUD_HCOUNT_AFR = 11;
+	public static final int SHORTUD_ACOUNT_AMR = 12;
+	public static final int SHORTUD_HCOUNT_AMR = 13;
+	public static final int SHORTUD_ACOUNT_FIN = 14;
+	public static final int SHORTUD_HCOUNT_FIN = 15;
+	public static final int SHORTUD_ACOUNT_EAS = 16;
+	public static final int SHORTUD_HCOUNT_EAS = 17;
+	public static final int SHORTUD_ACOUNT_SAS = 18;
+	public static final int SHORTUD_HCOUNT_SAS = 19;
+	public static final int SHORTUD_ACOUNT_ASJ = 20;
+	public static final int SHORTUD_HCOUNT_ASJ = 21;
+	public static final int SHORTUD_ACOUNT_OTH = 22;
+	public static final int SHORTUD_HCOUNT_OTH = 23;
 	public static final int SHORTUD_GENELIST = 24;
 	public static final int SHORTUD_VALNOTES = 25;
 	public static final int SHORTUD_GENOTYPES = 26;
 	public static final int SHORTUD_QUERYID = 27;
 	
-	public static final int POPUD_HCOUNT_TOT = 1;
-	public static final int POPUD_ACOUNT_TOT = 2;
-	public static final int POPUD_HCOUNT_NFE = 3;
-	public static final int POPUD_ACOUNT_NFE = 4;
-	public static final int POPUD_HCOUNT_AFR = 5;
-	public static final int POPUD_ACOUNT_AFR = 6;
-	public static final int POPUD_HCOUNT_AMR = 7;
-	public static final int POPUD_ACOUNT_AMR = 8;
-	public static final int POPUD_HCOUNT_FIN = 9;
-	public static final int POPUD_ACOUNT_FIN = 10;
-	public static final int POPUD_HCOUNT_EAS = 11;
-	public static final int POPUD_ACOUNT_EAS = 12;
-	public static final int POPUD_HCOUNT_SAS = 13;
-	public static final int POPUD_ACOUNT_SAS = 14;
-	public static final int POPUD_HCOUNT_ASJ = 15;
-	public static final int POPUD_ACOUNT_ASJ = 16;
-	public static final int POPUD_HCOUNT_OTH = 17;
-	public static final int POPUD_ACOUNT_OTH = 18;
+	public static final int POPUD_ACOUNT_TOT = 1;
+	public static final int POPUD_HCOUNT_TOT = 2;
+	public static final int POPUD_ACOUNT_NFE = 3;
+	public static final int POPUD_HCOUNT_NFE = 4;
+	public static final int POPUD_ACOUNT_AFR = 5;
+	public static final int POPUD_HCOUNT_AFR = 6;
+	public static final int POPUD_ACOUNT_AMR = 7;
+	public static final int POPUD_HCOUNT_AMR = 8;
+	public static final int POPUD_ACOUNT_FIN = 9;
+	public static final int POPUD_HCOUNT_FIN = 10;
+	public static final int POPUD_ACOUNT_EAS = 11;
+	public static final int POPUD_HCOUNT_EAS = 12;
+	public static final int POPUD_ACOUNT_SAS = 13;
+	public static final int POPUD_HCOUNT_SAS = 14;
+	public static final int POPUD_ACOUNT_ASJ = 15;
+	public static final int POPUD_HCOUNT_ASJ = 16;
+	public static final int POPUD_ACOUNT_OTH = 17;
+	public static final int POPUD_HCOUNT_OTH = 18;
 	public static final int POPUD_QUERYID = 19;
 	
 	public static final int SGENOINS_SID = 1;
@@ -109,6 +109,18 @@ public class StatementPrepper {
 	public static final int SGENOUD_HOM = 1;
 	public static final int SGENOUD_HET = 2;
 	public static final int SGENOUD_OTH = 3;
+	
+	public static final int GENEHIT_UID = 1;
+	public static final int GENEHIT_TOT = 2;
+	public static final int GENEHIT_EXON = 3;
+	public static final int GENEHIT_TOT_INDIV = 4;
+	public static final int GENEHIT_EXON_INDIV = 5;
+	
+	public static final int GENEHIT_UD_UID = 5;
+	public static final int GENEHIT_UD_TOT = 1;
+	public static final int GENEHIT_UD_EXON = 2;
+	public static final int GENEHIT_UD_TOT_INDIV = 3;
+	public static final int GENEHIT_UD_EXON_INDIV = 4;
 	
 	private Connection connection;
 	
@@ -128,6 +140,10 @@ public class StatementPrepper {
 	
 	private PreparedStatement sgeno_insert;
 	private PreparedStatement sgeno_update;
+	
+	private PreparedStatement gh_get_one;
+	private PreparedStatement gh_insert;
+	private PreparedStatement gh_update;
 
 	public StatementPrepper(Connection c)
 	{
@@ -202,7 +218,7 @@ public class StatementPrepper {
 	
 	public PreparedStatement getRegionVarGetterStatement() throws SQLException
 	{
-		if(sampvar_getter == null)
+		if(vars_in_reg == null)
 		{
 			String sqlQuery = "SELECT * FROM " + SQLVariantTable.TABLENAME_VARIANTS;
 			sqlQuery += " WHERE ";
@@ -233,6 +249,7 @@ public class StatementPrepper {
 			sqlQuery += "(" + normQuery + ") OR (" + traQuery + ")";
 			
 			vars_in_reg = connection.prepareStatement(sqlQuery);
+			//System.err.println("StatementPrepper.getRegionVarGetterStatement || Statement is null? " + (vars_in_reg == null));
 		}
 		return vars_in_reg;
 	}
@@ -249,7 +266,7 @@ public class StatementPrepper {
 			}
 			
 			String sqlQuery = "INSERT INTO " + SQLVariantTable.TABLENAME_VARIANTS + " VALUES (" + valStatement + ")";
-			System.err.println("-DEBUG- Raw Query: " + sqlQuery);
+			//System.err.println("-DEBUG- Raw Query: " + sqlQuery);
 			insert_full = connection.prepareStatement(sqlQuery);
 		}
 		return insert_full;
@@ -292,7 +309,7 @@ public class StatementPrepper {
 			
 			String sqlQuery = "UPDATE " + SQLVariantTable.TABLENAME_VARIANTS + " SET " + valStatement + " WHERE " + SQLVariantTable.FIELDNAME_VARUID + " = ?";
 			//String sqlQuery = "UPDATE " + SQLVariantTable.TABLENAME_VARIANTS + " SET " + valStatement;
-			System.err.println("-DEBUG- Raw Query: " + sqlQuery);
+			//System.err.println("-DEBUG- Raw Query: " + sqlQuery);
 			short_update = connection.prepareStatement(sqlQuery);
 		}
 		return short_update;
@@ -392,15 +409,96 @@ public class StatementPrepper {
 		return sgeno_update;
 	}
 	
-	public Blob toBlob(byte[] bytes) throws SQLException
+	public PreparedStatement getGeneHitGetterStatement() throws SQLException
 	{
-		System.err.println("Blob length: " + bytes.length);
-		Blob b = connection.createBlob();
-		int written = b.setBytes(1, bytes);
-		System.err.println("Blob written: " + written);
-		//b.setBytes(1, bytes);
-		return b;
+		if(gh_get_one == null)
+		{
+			String sqlQuery = "SELECT * FROM " + SQLVariantTable.TABLENAME_GENEHITS;
+			sqlQuery += " WHERE " + SQLVariantTable.FIELDNAME_GH_GENEUID + " = ?";
+			gh_get_one = connection.prepareStatement(sqlQuery);
+		}
+		return gh_get_one;
 	}
 	
+	public PreparedStatement getGeneHitGetAllStatement() throws SQLException
+	{
+		String sqlQuery = "SELECT * FROM " + SQLVariantTable.TABLENAME_GENEHITS;
+		return connection.prepareStatement(sqlQuery);
+	}
+	
+	public PreparedStatement getGeneHitInsertStatement() throws SQLException
+	{
+		if(gh_insert == null)
+		{
+			String valStatement = "";
+			for(int i = 0; i < SQLVariantTable.GENEHITS_COLUMNS.length; i++)
+			{
+				valStatement += "?";
+				if(i < SQLVariantTable.GENEHITS_COLUMNS.length-1) valStatement += ", ";
+			}
+			
+			String sqlQuery = "INSERT INTO " + SQLVariantTable.TABLENAME_GENEHITS + " VALUES (" + valStatement + ")";
+			gh_insert = connection.prepareStatement(sqlQuery);
+		}
+		return gh_insert;
+	}
+	
+	public PreparedStatement getGeneHitUpdateStatement() throws SQLException
+	{
+		if(gh_update == null)
+		{
+			String valStatement = "";
+			
+			valStatement += SQLVariantTable.FIELDNAME_GH_HITS_T + " = ?, ";
+			valStatement += SQLVariantTable.FIELDNAME_GH_HITS_E + " = ?, ";
+			valStatement += SQLVariantTable.FIELDNAME_GH_HITS_TI + " = ?, ";
+			valStatement += SQLVariantTable.FIELDNAME_GH_HITS_EI + " = ?";
+			
+			String sqlQuery = "UPDATE " + SQLVariantTable.TABLENAME_GENEHITS + " SET " + valStatement + " WHERE " + SQLVariantTable.FIELDNAME_GH_GENEUID + " = ?";
+			//System.err.println("SQL Query: " + sqlQuery);
+			gh_update = connection.prepareStatement(sqlQuery);
+		}
+		return gh_update;
+	}
+	
+	public PreparedStatement getGeneHitTableWipeStatement() throws SQLException
+	{
+		String sqlQuery = "DELETE FROM " + SQLVariantTable.TABLENAME_GENEHITS;
+		return connection.prepareStatement(sqlQuery);
+	}
+	
+	public PreparedStatement getVarTableWipeStatement() throws SQLException
+	{
+		String sqlQuery = "DELETE FROM " + SQLVariantTable.TABLENAME_VARIANTS;
+		return connection.prepareStatement(sqlQuery);
+	}
+	
+	public PreparedStatement getSampleGenoTableWipeStatement() throws SQLException
+	{
+		String sqlQuery = "DELETE FROM " + SQLVariantTable.TABLENAME_SAMPLEGENO;
+		return connection.prepareStatement(sqlQuery);
+	}
+	
+	public PreparedStatement getVariantGetAllStatement() throws SQLException
+	{
+		String sqlQuery = "SELECT * FROM " + SQLVariantTable.TABLENAME_VARIANTS;
+		return connection.prepareStatement(sqlQuery);
+	}
+	
+	public PreparedStatement getSGenoGetAllStatement() throws SQLException
+	{
+		String sqlQuery = "SELECT * FROM " + SQLVariantTable.TABLENAME_SAMPLEGENO;
+		return connection.prepareStatement(sqlQuery);
+	}
+	
+	public Blob toBlob(byte[] bytes) throws SQLException
+	{
+		//System.err.println("Blob length: " + bytes.length);
+		Blob b = connection.createBlob();
+		//int written = b.setBytes(1, bytes);
+		//System.err.println("Blob written: " + written);
+		b.setBytes(1, bytes);
+		return b;
+	}
 	
 }

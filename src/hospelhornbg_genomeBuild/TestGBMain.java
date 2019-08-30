@@ -8,6 +8,7 @@ public class TestGBMain {
 
 	public static void main(String[] args) 
 	{
+		
 		//String tbl37 = "C:\\Users\\Blythe\\GRCh37.txt";
 		//String tbl38 = "C:\\Users\\Blythe\\GRCh38.txt";
 		
@@ -18,46 +19,54 @@ public class TestGBMain {
 		
 		//For converting files
 		//String ingb = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\GRCh37.gbdh";
-		String ingb = "C:\\Users\\hospelhornbg\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\GRCh37.gbdh";
-		//String outgb = "C:\\Users\\Blythe\\Desktop\\GRCh38.gbdh";
-		String outgb = "C:\\Users\\hospelhornbg\\Desktop\\GRCh37.gbdh";
+		String ingb = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\GRCh37.gbdh";
+		String outgb = "C:\\Users\\Blythe\\Desktop\\GRCh37.gbdh";
 		
-		//String ings = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\grch37_refSeq.gbgd";
-		//String outgs = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq.gbgd";
-		//String outtbli = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_in.out";
-		//String outtblo = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_out.out";
+		String ings = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\grch37_refSeq.gbgd";
+		String outgs = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq.gbgd";
+		String outtbli = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_in.out";
+		String outtblo = "C:\\Users\\Blythe\\Desktop\\grch37_refSeq_out.out";
+		
+		/*String ingb = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\NCBI36.gbdh";
+		String outgb = "C:\\Users\\Blythe\\Desktop\\NCBI36.gbdh";
+		
+		String ings = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\ncbi36_refSeq.gbgd";
+		String outgs = "C:\\Users\\Blythe\\Desktop\\ncbi36_refSeq.gbgd";
+		String outtbli = "C:\\Users\\Blythe\\Desktop\\ncbi36_refSeq_in.out";
+		String outtblo = "C:\\Users\\Blythe\\Desktop\\ncbi36_refSeq_out.out";*/
+		
+		/*String ingb = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\GRCh38.gbdh";
+		String outgb = "C:\\Users\\Blythe\\Desktop\\GRCh38.gbdh";
+		
+		String ings = "C:\\Users\\Blythe\\eclipse-workspace\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\grch38_refSeq.gbgd";
+		String outgs = "C:\\Users\\Blythe\\Desktop\\grch38_refSeq.gbgd";
+		String outtbli = "C:\\Users\\Blythe\\Desktop\\grch38_refSeq_in.out";
+		String outtblo = "C:\\Users\\Blythe\\Desktop\\grch38_refSeq_out.out";*/
 		
 		try 
 		{
+			System.err.println("Read input genome build...");
 			GenomeBuild gb = new GenomeBuild(ingb);
-			//Contig X = gb.getContig("X");
-			//Contig Y = gb.getContig("Y");
+			System.err.println("Writing genome build version 4...");
+			gb.saveGLBD(outgb, true);
 			
-			//gb.addPARMapping(0, X, 60001, 2699520);
-			//gb.addPARMapping(0, Y, 10001, 2649520);
-			//gb.addPARMapping(1, X, 154931044, 155260560);
-			//gb.addPARMapping(1, Y, 59034050, 59363566);
-			
-			//gb.addPARMapping(0, X, 10001, 2781479);
-			//gb.addPARMapping(0, Y, 10001, 2781479);
-			//gb.addPARMapping(1, X, 155701383, 156030895);
-			//gb.addPARMapping(1, Y, 56887903, 57217415);
-			
-			gb.printMe();
-			//gb.setUID(GenomeBuildUID.GRCh37);
-			//gb.saveGLBD(outgb, true);
-			
-			//GeneSet gs = new GeneSet(ings, gb, true);
-			//gs.outputTable(outtbli);
-			//gs.serializeGBGD(outgs);
+			System.err.println("Read input gene set...");
+			GeneSet gs = new GeneSet(ings, gb, true);
+			System.err.println("Writing gene set table...");
+			gs.outputTable(outtbli);
+			System.err.println("Writing gene set version 3...");
+			gs.serializeGBGD(outgs);
 			
 			//Read back in
-			//gb = new GenomeBuild(outgb);
-			//System.err.println("\nReading back in...");
-			//gb.printMe();
-			
-			//gs = new GeneSet(ings, gb, true);
-			//gs.outputTable(outtblo);
+			System.err.println("Reading back in genome build...");
+			gb = new GenomeBuild(outgb);
+			System.err.println("Genome build read:");
+			gb.printMe();
+			System.err.println("Reading back input gene set...");
+			gs = new GeneSet(outgs, gb, true);
+			System.err.println("Writing gene set table...");
+			gs.outputTable(outtblo);
+			System.err.println("Done!");
 		} 
 		catch (IOException e) 
 		{

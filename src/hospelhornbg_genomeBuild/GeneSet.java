@@ -1,12 +1,19 @@
 package hospelhornbg_genomeBuild;
 
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -15,7 +22,9 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import hospelhornbg_bioinformatics.BreakendPair;
 import hospelhornbg_bioinformatics.StructuralVariant;
@@ -24,7 +33,7 @@ import hospelhornbg_bioinformatics.Variant;
 import hospelhornbg_bioinformatics.VariantPool;
 import hospelhornbg_bioinformatics.VariantPool.InfoDefinition;
 import hospelhornbg_genomeBuild.Gene.Exon;
-import waffleoRai_Utils.CompositeBuffer;
+
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Compression.huffman.Huffman;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -73,14 +82,18 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 	When looking up genes by name, generates a map for later use.
  * 		Faster, but more memory. Really needed the faster part, though. It was BAD.
  * 	
+ * 1.4.1 -> 1.5.0 | August 21, 2019
+ * 	Updated format to version 3 to include integer UIDs for transcripts.
+ * 	Also ditching the CompositeBuffers
+ * 
  */
 
 
 /**
  * A set of gene annotations for a genome build.
  * @author Blythe Hospelhorn
- * @version 1.4.1
- * @since May 29, 2019
+ * @version 1.5.0
+ * @since August 21, 2019
  *
  */
 public class GeneSet 
@@ -88,7 +101,7 @@ public class GeneSet
 	
 	/* --- Constants --- */
 	
-	public static final int CURRENT_VERSION = 2;
+	public static final int CURRENT_VERSION = 3;
 	
 	/**
 	 * Expected first four bytes (as ASCII string) in a compressed gbgd
@@ -177,7 +190,8 @@ public class GeneSet
 	
 	private Map<Contig, ChromSet> genemap;
 	
-	private Map<Integer, Gene> transcriptMap; //null until queried...
+	private Map<Integer, Gene> transcriptUIDMap;
+	private Map<String, Gene> tidMap; //null until queried...
 	private Map<String, List<Gene>> nameMap; //null until queried...
 	
 	/* --- Inner Structures --- */
@@ -404,8 +418,34 @@ public class GeneSet
 			//System.err.println("GeneSet.ChromSet.addGenes || Gene overlap mapped");
 		}
 		
-		public FileBuffer serializeMe(int UID)
+		public int serializeTo(int UID, OutputStream out)
 		{
+			// "CHRM" [4]
+			// Block Size [4]
+			// UID [4]
+			// Gene Count [4]
+			
+			// Index ---
+				// # Entries [4]
+				// Entries...
+					// Offset (From start of gene block) [4]
+			
+			// Gene Block ---
+				// Genes...
+					// Int UID [4] (gbdb v3+)
+					// Start Pos [4]
+					// End Pos [4]
+					// Coding Start [4]
+					// Coding End [4]
+					// Flags [1]
+					// PADDING 0x00 [1]
+					// Exon Count [2]
+					// Exons...
+						// Start Pos [4]
+						// End Pos [4]
+					// String ID [NT-VLS - Padded to WORD]
+					// Common Name [NT-VLS - Padded to WORD]
+			
 			//System.err.println("GeneSet.ChromSet.serializeMe || UID " + Integer.toHexString(UID));
 			int ngenes = genes.size();
 			List<FileBuffer> glist = new ArrayList<FileBuffer>(ngenes);
@@ -454,12 +494,32 @@ public class GeneSet
 			header.addToFile(ngenes);
 			
 			//Make a composite
-			FileBuffer CHRM = new CompositeBuffer(2 + ngenes);
+			/*FileBuffer CHRM = new CompositeBuffer(2 + ngenes);
 			CHRM.addToFile(header);
 			CHRM.addToFile(idx);
 			for (FileBuffer g : glist) CHRM.addToFile(g);
 			
-			return CHRM;
+			return CHRM;*/
+			int written = 0;
+			try 
+			{
+				out.write(header.getBytes());
+				written += header.getFileSize();
+				int sz = (int)idx.getFileSize();
+				out.write(idx.getBytes(0, sz)); written += sz;
+				for (FileBuffer g : glist) 
+				{
+					sz = (int)g.getFileSize();
+					out.write(g.getBytes(0, sz)); written += sz;
+				}
+			} 
+			catch (IOException e) 
+			{
+				e.printStackTrace();
+				return -1;
+			}
+			
+			return written;
 		}
 		
 		/*
@@ -1122,6 +1182,52 @@ public class GeneSet
 	
 	private void parseGBGD(FileBuffer myFile, GenomeBuild gb, boolean strictBuildMatch) throws UnsupportedFileTypeException, IOException
 	{
+
+		//Multi byte fields are Big-Endian
+		
+		// ASCII "GBGD" [4]
+		// Version [4] (v2+)
+		// Genome Build
+			// GB UID [4] (v2+)
+			// GB Name [12] (v1)
+		//Database Name [16]
+		
+		// Contig Table ---
+			// # Contigs [4]
+			// Entries...
+				// Internal UID [4]
+				// Contig Name [40]
+				// File Offset (Relative to start of CHRM chunk) [4]
+		
+		// CHRM Chunk ---
+			// Entries...
+				// "CHRM" [4]
+				// Block Size [4]
+				// UID [4]
+				// Gene Count [4]
+					
+				// Index ---
+					// # Entries [4]
+					// Entries...
+						// Offset (From start of gene block) [4]
+					
+				// Gene Block ---
+					// Genes...
+						// Int UID [4] (gbdb v3+)
+						// Start Pos [4]
+						// End Pos [4]
+						// Coding Start [4]
+						// Coding End [4]
+						// Flags [1]
+						// PADDING 0x00 [1]
+						// Exon Count [2]
+						// Exons...
+							// Start Pos [4]
+							// End Pos [4]
+						// String ID [NT-VLS - Padded to WORD]
+						// Common Name [NT-VLS - Padded to WORD]
+		
+		
 		//System.err.println("GeneSet.parseGBGD || DEBUG: Method entered...");
 		// --- Header
 		//Check magic, decompress, and check for inner magic
@@ -1130,18 +1236,18 @@ public class GeneSet
 		//System.err.println("GeneSet.parseGBGD || DEBUG: Compressed Magic found...");
 		FileBuffer compressed = myFile;
 		myFile = Huffman.HuffDecodeFile(compressed, cPos + 4);
+		//myFile.writeFile("C:\\Users\\Blythe\\Desktop\\grch37_refSeq_decompressed.gbgd");
 		cPos = myFile.findString(0, 0x10, MAGIC_GBGD);
 		if (cPos < 0) throw new UnsupportedFileTypeException();
 		//System.err.println("GeneSet.parseGBGD || DEBUG: Decompressed Magic found...");
 		cPos = 4;
 		//DEBUG
-		//myFile.writeFile("C:\\Users\\Blythe\\Documents\\Work\\Bioinformatics\\References\\grch37_refSeq_redecompressed.gbgd");
 		//myFile.writeFile("C:\\Users\\Blythe\\Documents\\GitHub\\bioisvtools\\src\\hospelhornbg_genomeBuild\\resources\\grch37_refSeq_decomp.gbgd");	
 		
 		
 		//Check for the "version" field
 		int version = myFile.intFromFile(cPos);
-		if (version != 2) version = 1;
+		if (version < 2 || version > CURRENT_VERSION) version = 1;
 		//System.err.println("GeneSet.parseGBGD || DEBUG: Version: " + version);
 				
 		//Get genome build UID and confirm with desired build (v2+)
@@ -1168,6 +1274,7 @@ public class GeneSet
 		if (namematch) genome = gb;
 		else genome = new GenomeBuild("unknown", gbName, null);
 				
+		transcriptUIDMap = new ConcurrentHashMap<Integer, Gene>();
 				
 		//Get database name
 		name = myFile.getASCII_string(cPos, 16); cPos += 16;
@@ -1195,6 +1302,7 @@ public class GeneSet
 				c.setUCSCName(cName);
 				c.setUDPName(cName);
 				c.setType(Contig.SORTCLASS_UNKNOWN);
+				c.setUID(UID);
 				//Length estimated from block readings...
 				genome.addContig(c);
 			}
@@ -1228,6 +1336,8 @@ public class GeneSet
 					
 			for (int j = 0; j < geneCount; j++)
 			{
+				int guid = 0;
+				if(version >= 3) {guid = myFile.intFromFile(cPos); cPos += 4;}
 				int gSt = myFile.intFromFile(cPos); cPos += 4;
 				int gEd = myFile.intFromFile(cPos); cPos += 4;
 				int tSt = myFile.intFromFile(cPos); cPos += 4;
@@ -1249,8 +1359,21 @@ public class GeneSet
 				String gName = myFile.getASCII_string(cPos, '\0');
 				cPos += gName.length() + 1;
 				if (gName.length() % 2 == 0) cPos++;
+				
+				if(guid == 0) guid = gID.hashCode();
+				
+				while(transcriptUIDMap.containsKey(guid))
+				{
+					//Generate a new one
+					System.err.println("GeneSet.parseGBGD || Duplicate GUID found! 0x" + Integer.toHexString(guid));
+					Random r = new Random();
+					guid = r.nextInt();
+					System.err.println("GeneSet.parseGBGD || Reset to 0x" + Integer.toHexString(guid));
+					System.err.println("GeneSet.parseGBGD || (Change must be saved to disk)");
+				}
 						
 				Gene g = new Gene(nExons);
+				g.setGUID(guid);
 				g.setChromosome(c);
 				g.setStart(gSt);
 				g.setEnd(gEd);
@@ -1263,6 +1386,7 @@ public class GeneSet
 				g.addExons(eList);
 						
 				glist.add(g);
+				transcriptUIDMap.put(g.getGUID(), g);
 			}
 					
 			ChromSet chr = null;
@@ -1299,7 +1423,7 @@ public class GeneSet
 		if (uid == null) header.addToFile(-1);
 		else header.addToFile(uid.getUID());
 		
-		String gname = genome.getBuildName();
+		//String gname = genome.getBuildName();
 		//if (gname.length() > 12) gname = gname.substring(0, 12);
 		//header.printASCIIToFile(gname);
 		//for (int i = gname.length(); i < 12; i++) header.addToFile((byte)0x00);
@@ -1320,13 +1444,16 @@ public class GeneSet
 		
 		//Contig Table/Blocks
 		FileBuffer contigmap = new FileBuffer(cttblsize, true);
-		FileBuffer chrmchunk = new CompositeBuffer(nChrom);
+		//FileBuffer chrmchunk = new CompositeBuffer(nChrom);
 		contigmap.addToFile(nChrom);
 		int pos = 0;
 		//System.err.println("GeneSet.serializeGBGD || Contig table/blocks initialize");
+		String chrm_temp = FileBuffer.generateTemporaryPath("geneset_chrm");
+		BufferedOutputStream chrm_stream = new BufferedOutputStream(new FileOutputStream(chrm_temp));
 		for (Contig c : clist)
 		{
-			int UID = c.hashCode() ^ gname.hashCode();
+			//int UID = c.hashCode() ^ gname.hashCode();
+			int UID = c.getUID();
 			
 			//Map
 			contigmap.addToFile(UID);
@@ -1337,13 +1464,17 @@ public class GeneSet
 			contigmap.addToFile(pos);
 			
 			//Block
-			FileBuffer CHRM = genemap.get(c).serializeMe(UID);
-			chrmchunk.addToFile(CHRM);
+			//FileBuffer CHRM = genemap.get(c).serializeMe(UID);
+			//chrmchunk.addToFile(CHRM);
+			int c_written = genemap.get(c).serializeTo(UID, chrm_stream);
+			if(c_written < 0) throw new IOException();
+			else pos += c_written;
 			
 			//Track position...
-			pos += CHRM.getFileSize();
+			//pos += CHRM.getFileSize();
 			//System.err.println("GeneSet.serializeGBGD || Chrom " + c.getUDPName() + " block generated");
 		}
+		chrm_stream.close();
 		//int msz = (int)contigmap.getFileSize();
 		//int csz = (int)chrmchunk.getFileSize();
 		//System.err.println("GeneSet.serializeGBGD || contigmap - size = 0x" + Integer.toHexString(msz));
@@ -1351,24 +1482,35 @@ public class GeneSet
 		//System.err.println("GeneSet.serializeGBGD || total expected size = 0x" + Integer.toHexString(csz + msz + hsz));
 		
 		//Composite
-		FileBuffer fullfile = new CompositeBuffer(3);
+		/*FileBuffer fullfile = new CompositeBuffer(3);
 		fullfile.addToFile(header);
 		fullfile.addToFile(contigmap);
-		fullfile.addToFile(chrmchunk);
+		fullfile.addToFile(chrmchunk);*/
 		//System.err.println("GeneSet.serializeGBGD || Composite complete");
 		//System.err.println("GeneSet.serializeGBGD || composite size = 0x" + Long.toHexString(fullfile.getFileSize()));
+		String temp_path = FileBuffer.generateTemporaryPath("gbdb_tempout");
+		BufferedOutputStream outstream = new BufferedOutputStream(new FileOutputStream(temp_path));
+		outstream.write(header.getBytes(), 0, (int)header.getFileSize());
+		outstream.write(contigmap.getBytes(), 0, (int)contigmap.getFileSize());
+		BufferedInputStream bis = new BufferedInputStream(new FileInputStream(chrm_temp));
+		int b = -1;
+		while((b = bis.read()) != -1) outstream.write(b);
+		bis.close();
+		outstream.close();
 		
 		//fullfile.writeFile(gbdbPath + "_decompressed.gbgd");
 		//System.err.println("GeneSet.serializeGBGD || Decompressed file write complete");
 		
 		//Compress
-		FileBuffer compressed = Huffman.HuffEncodeFile(fullfile, 8, MAGIC_GBGD_COMPRESSED);
+		//FileBuffer compressed = Huffman.HuffEncodeFile(fullfile, 8, MAGIC_GBGD_COMPRESSED);
 		//System.err.println("GeneSet.serializeGBGD || Compression complete");
+		Huffman.HuffEncodeFileStream(Paths.get(temp_path), Paths.get(gbdbPath), 8, 0, FileBuffer.fileSize(temp_path), MAGIC_GBGD_COMPRESSED);
 		
 		//Write
-		compressed.writeFile(gbdbPath);
+		//compressed.writeFile(gbdbPath);
 		//System.err.println("GeneSet.serializeGBGD || Write complete");
-		
+		Files.deleteIfExists(Paths.get(temp_path));
+		Files.deleteIfExists(Paths.get(chrm_temp));
 	}
 	
 	/**
@@ -1435,6 +1577,18 @@ public class GeneSet
 		
 		HitRecord posHit = cGenes.search(st, true, false);
 		HitRecord endHit = cGenes.search(ed, false, true);
+		if(posHit == null)
+		{
+			System.err.println("ERROR - POSHIT NULL");
+			System.err.println("Search: CHROM " + c.getUDPName() + " | " + st + "-" + ed);
+			System.exit(2);
+		}
+		if(endHit == null)
+		{
+			System.err.println("ERROR - ENDHIT NULL");
+			System.err.println("Search: CHROM " + c.getUDPName() + " | " + st + "-" + ed);
+			System.exit(2);
+		}
 		
 		AnnoRecord rec = new AnnoRecord();
 		
@@ -2100,29 +2254,37 @@ public class GeneSet
 	
 	public void clearTranscriptMap()
 	{
-		this.transcriptMap = null;
+		this.tidMap = null;
 	}
 	
 	private void populateTranscriptMap()
 	{
-		this.transcriptMap = new HashMap<Integer, Gene>();
+		this.tidMap = new HashMap<String, Gene>();
 		List<Gene> allgenes = getAllGenes();
 		for (Gene g : allgenes)
 		{
-			transcriptMap.put(g.getID().hashCode(), g);
+			tidMap.put(g.getID(), g);
 		}
 	}
 	
 	public Gene getGeneByTranscriptID(String transcriptID)
 	{
-		if (this.transcriptMap == null) populateTranscriptMap();
-		return transcriptMap.get(transcriptID.hashCode());
+		if (this.tidMap == null) populateTranscriptMap();
+		return tidMap.get(transcriptID);
 	}
-	
-	public Gene getGeneByTranscriptHashUID(int uid)
+
+	public Gene getGeneByTranscriptGUID(int uid)
 	{
-		if (this.transcriptMap == null) populateTranscriptMap();
-		return transcriptMap.get(uid);
+		if(transcriptUIDMap == null)
+		{
+			transcriptUIDMap = new HashMap<Integer, Gene>();
+			List<Gene> allgenes = getAllGenes();
+			for (Gene g : allgenes)
+			{
+				transcriptUIDMap.put(g.getGUID(), g);
+			}
+		}
+		return transcriptUIDMap.get(uid);
 	}
 	
 	public List<Gene> getGenesInRegion(Contig c, int stPos, int edPos)

@@ -68,6 +68,9 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * 1.3.2 -> 1.3.3 | February 1, 2019
  * 	Support data is now mapped by individual...
  * 
+ * 1.3.4 -> 1.4.0 | August 30, 2019
+ * 	Added GUID field. Optional. Doesn't do anything except store GUID.
+ * 
  */
 
 /*
@@ -83,8 +86,8 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * <br>Providing InfoDefinition instances allows for parsing of these INFO annotations into 
  * integers, floats, and flags. By default, they are all stored as either strings or flags.
  * @author Blythe Hospelhorn
- * @version 1.3.4
- * @since March 12, 2019
+ * @version 1.4.0
+ * @since August 30, 2019
  *
  */
 public class Variant implements Comparable<Variant>{
@@ -143,6 +146,10 @@ public class Variant implements Comparable<Variant>{
 	 * A field for giving the variant a name. This may be used to mark a variant found in a database.
 	 */
 	private String variantID;
+	/**
+	 * A field for giving the variant a long GUID
+	 */
+	private long longID;
 	
 	/**
 	 * The reference allele for this variant (as a string).
@@ -215,6 +222,8 @@ public class Variant implements Comparable<Variant>{
 	 * save memory.
 	 */
 	private Map<Integer, CandidateFlags> cflagsMap;
+	
+	
 	
 	/* --- Construction/Parsing --- */
 	
@@ -548,6 +557,15 @@ public class Variant implements Comparable<Variant>{
 	public String getVarID()
 	{
 		return variantID;
+	}
+	
+	/**
+	 * Get the long GUID for the variant, if it has been set.
+	 * @return Long GUID for variant, or 0 if unset.
+	 */
+	public long getGUID()
+	{
+		return this.longID;
 	}
 	
 	/**
@@ -1093,6 +1111,15 @@ public class Variant implements Comparable<Variant>{
 	public void setVariantName(String ID)
 	{
 		this.variantID = ID;
+	}
+	
+	/**
+	 * Set a long GUID for the variant.
+	 * @param uid GUID to set.
+	 */
+	public void setLongGUID(long uid)
+	{
+		this.longID = uid;
 	}
 	
 	/**

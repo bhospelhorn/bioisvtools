@@ -23,6 +23,8 @@ public class ConsoleFrontEnd {
 	public static final String PROG_REMOVEFAM = "removefam";
 	public static final String PROG_DUMPFAM = "famvardump";
 	public static final String PROG_ADDVARS = "addvars";
+	public static final String PROG_CLEARVARS = "clearvars";
+	public static final String PROG_SEEVARS = "seevars";
 	
 	public static final String PROG_VARINFO = "varinfo"; //Dumps all info on a single variant, including all genotypes!
 	
@@ -44,6 +46,8 @@ public class ConsoleFrontEnd {
 	
 	public static final String OP_UID = "-I"; //Can be used for sample or variant IDs
 
+	public static final String OP_NOTRA = "--ignoreTRA";
+	
 	public static final int DEFO_MERGE_FACTOR = 50;
 	
 	/* ----- Usage Message ----- */
@@ -93,11 +97,23 @@ public class ConsoleFrontEnd {
 		db.dumpFamily(fam, outpath, verbose);
 	}
 	
-	public static void addVCF(String dbDir, String vcfPath, boolean verbose) throws IOException, SQLException
+	public static void addVCF(String dbDir, String vcfPath, boolean verbose, boolean ignoreTRA) throws IOException, SQLException
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
-		db.addVCF(vcfPath, verbose);
+		db.addVCF(vcfPath, verbose, ignoreTRA);
 		db.saveDatabase();
+	}
+	
+	public static void clearVariants(String dbDir) throws IOException, SQLException
+	{
+		SVDatabase db = SVDatabase.loadDatabase(dbDir);
+		db.clearVariantTable();
+	}
+	
+	public static void dumpVars(String dbDir, String outDir) throws IOException, SQLException
+	{
+		SVDatabase db = SVDatabase.loadDatabase(dbDir);
+		db.dumpVariantTable(outDir);
 	}
 	
 	/* ----- Main Method ----- */
@@ -124,6 +140,7 @@ public class ConsoleFrontEnd {
 		String omimPath = null;
 		String sqlPath = null;
 		int mFactor = DEFO_MERGE_FACTOR;
+		boolean notra = false;
 		
 		for (int i = 0; i < args.length; i++)
 		{
@@ -197,6 +214,20 @@ public class ConsoleFrontEnd {
 					System.exit(1);
 				}
 				omimPath = args[i+1];
+			}
+			else if (s.equals(OP_OUTPUTPATH))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_OUTPUTPATH + " flag MUST be followed by an output directory path!");
+					printUsage();
+					System.exit(1);
+				}
+				outPath = args[i+1];
+			}
+			else if (s.equals(OP_NOTRA))
+			{
+				notra = true;
 			}
 		}
 		
@@ -395,7 +426,7 @@ public class ConsoleFrontEnd {
 			
 			try 
 			{
-				addVCF(dbdir, vcfPath, verbose);
+				addVCF(dbdir, vcfPath, verbose, notra);
 			} 
 			catch (IOException e) 
 			{
@@ -410,6 +441,44 @@ public class ConsoleFrontEnd {
 				System.exit(1);
 			}
 			
+		}
+		else if(mode.equals(PROG_CLEARVARS))
+		{
+			try 
+			{
+				clearVariants(dbdir);
+			} 
+			catch (IOException e) 
+			{
+				System.err.println(PROG_CLEARVARS + " ERROR | Variant table could not be cleared!!");
+				e.printStackTrace();
+				System.exit(1);
+			} 
+			catch (SQLException e) 
+			{
+				System.err.println(PROG_CLEARVARS + " ERROR | Variant table could not be cleared! (Could not connect to SQL database!)");
+				e.printStackTrace();
+				System.exit(1);
+			}
+		}
+		else if(mode.equals(PROG_SEEVARS))
+		{
+			try 
+			{
+				dumpVars(dbdir, outPath);
+			} 
+			catch (IOException e) 
+			{
+				System.err.println(PROG_SEEVARS + " ERROR | Variant table could not be dumped!!");
+				e.printStackTrace();
+				System.exit(1);
+			} 
+			catch (SQLException e) 
+			{
+				System.err.println(PROG_SEEVARS + " ERROR | Variant table could not be dumped! (Could not connect to SQL database!)");
+				e.printStackTrace();
+				System.exit(1);
+			}
 		}
 		else
 		{

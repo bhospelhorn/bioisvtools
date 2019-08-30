@@ -78,11 +78,15 @@ public interface VariantTable {
 	public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end);
 	public Map<String, GeneHitCounter> generateGeneHitMap();
 	
-	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor) throws IOException;
+	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor, boolean ignoreTRA) throws IOException;
 	public boolean removeSample(FamilyMember sample);
 	public boolean removeFamily(Family fam);
 	public boolean updateSampleCounts(DBSampleTable sampleTable);
 	public boolean updateSamplePopulationFlags(FamilyMember sample, Collection<Population> oldFlags);
 	public void save() throws IOException;
+	
+	public void dumpTable(String directory);
+	public void clearVariantTable();
 
+	
 }

@@ -34,13 +34,16 @@ import waffleoRai_Utils.FileBuffer;
  * 
  * 1.3.1 -> 1.4.0 | April 24, 2019
  * 		Added generic annotation map
+ * 
+ * 1.4.0 -> 1.5.0 | August 21, 2019
+ * 		Added UID field
  */
 
 /**
  * A container for basic gene information - location and exons.
  * @author Blythe Hospelhorn
- * @version 1.4.0
- * @since April 24, 2019
+ * @version 1.5.0
+ * @since August 21, 2019
  *
  */
 public class Gene implements Comparable<Gene>{
@@ -59,6 +62,7 @@ public class Gene implements Comparable<Gene>{
 	private boolean strand;
 	private boolean isNCRNA;
 	private String ID;
+	private int guid;
 	
 	private int stPos; //Transcript start
 	private int edPos; //Transcript end
@@ -270,6 +274,15 @@ public class Gene implements Comparable<Gene>{
 	}
 	
 	/**
+	 * Get the integer UID (if has been set) for this transcript.
+	 * @return Integer UID for transcript, or 0 if unset.
+	 */
+	public int getGUID()
+	{
+		return guid;
+	}
+	
+	/**
 	 * Get the strand the gene is on.
 	 * @return True - Plus(+) strand.
 	 * <br>False - Minus(-) strand.
@@ -383,6 +396,16 @@ public class Gene implements Comparable<Gene>{
 	public void setID(String newID)
 	{
 		ID = newID;
+	}
+	
+	/**
+	 * Set an integer GUID for the gene. This can be used for mapping
+	 * or shorthand.
+	 * @param uid Integer to set for UID. Behaves unsigned.
+	 */
+	public void setGUID(int uid)
+	{
+		guid = uid;
 	}
 	
 	/**
@@ -501,6 +524,20 @@ public class Gene implements Comparable<Gene>{
 	 */
 	public FileBuffer serializeMe()
 	{
+		// Int UID [4] (gbdb v3+)
+		// Start Pos [4]
+		// End Pos [4]
+		// Coding Start [4]
+		// Coding End [4]
+		// Flags [1]
+		// PADDING 0x00 [1]
+		// Exon Count [2]
+		// Exons...
+			// Start Pos [4]
+			// End Pos [4]
+		// String ID [NT-VLS - Padded to WORD]
+		// Common Name [NT-VLS - Padded to WORD]
+		
 		boolean padid = false;
 		boolean padn = false;
 		int IDlen = ID.length() + 1;
@@ -515,7 +552,8 @@ public class Gene implements Comparable<Gene>{
 		}
 		int nexons = exons.size();
 		
-		FileBuffer myGene = new FileBuffer((4*4) + (2+2) + IDlen + nlen + (nexons * 8), true);
+		FileBuffer myGene = new FileBuffer(4 + (4*4) + (2+2) + IDlen + nlen + (nexons * 8), true);
+		myGene.addToFile(guid);
 		myGene.addToFile(stPos);
 		myGene.addToFile(edPos);
 		myGene.addToFile(tlStart);
@@ -556,8 +594,23 @@ public class Gene implements Comparable<Gene>{
 	 * @return FileBuffer object (byte string wrapper) containing the serialized
 	 * gene.
 	 */
-	public FileBuffer serializeMe(int chromUID)
+	public FileBuffer serializeMeWithChromID(int chromUID)
 	{
+		// Int UID [4] (gbdb v3+)
+		// Chrom UID [4]
+		// Start Pos [4]
+		// End Pos [4]
+		// Coding Start [4]
+		// Coding End [4]
+		// Flags [1]
+		// PADDING 0x00 [1]
+		// Exon Count [2]
+		// Exons...
+			// Start Pos [4]
+			// End Pos [4]
+		// String ID [NT-VLS - Padded to WORD]
+		// Common Name [NT-VLS - Padded to WORD]
+		
 		boolean padid = false;
 		boolean padn = false;
 		int IDlen = ID.length() + 1;
@@ -572,7 +625,8 @@ public class Gene implements Comparable<Gene>{
 		}
 		int nexons = exons.size();
 		
-		FileBuffer myGene = new FileBuffer(4 + (4*4) + (2+2) + IDlen + nlen + (nexons * 8), true);
+		FileBuffer myGene = new FileBuffer(8 + (4*4) + (2+2) + IDlen + nlen + (nexons * 8), true);
+		myGene.addToFile(guid);
 		myGene.addToFile(chromUID);
 		myGene.addToFile(stPos);
 		myGene.addToFile(edPos);
@@ -1061,6 +1115,7 @@ public class Gene implements Comparable<Gene>{
 	public String printInfo()
 	{
 		String line = "";
+		line += String.format("0x%08x", getGUID()) + "\t";
 		line += getID() + "\t";
 		line += getName() + "\t";
 		if (this.is_ncRNA()) line += "ncRNA\t";

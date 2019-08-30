@@ -310,11 +310,14 @@ public class SVDatabase {
 			if(line.isEmpty()) continue;
 			if(line.startsWith("#CHROM"))
 			{
+				//System.err.println("Line: " + line);
 				String[] fields = line.split("\t");
 				if(fields.length > 9)
 				{
+					//System.err.println("Fields: " + fields.length);
 					for(int i = 9; i < fields.length; i++)
 					{
+						//System.err.println("Field i: " + fields[i]);
 						slist.add(fields[i]);
 					}
 				}
@@ -327,7 +330,7 @@ public class SVDatabase {
 		return slist;
 	}
 	
-	public boolean addVCF(String vcfpath, boolean verbose) throws IOException
+	public boolean addVCF(String vcfpath, boolean verbose, boolean ignoreTRA) throws IOException
 	{
 		//See if VCF even exists
 		if(!FileBuffer.fileExists(vcfpath)) return false;
@@ -337,18 +340,26 @@ public class SVDatabase {
 		Map<String, FamilyMember> smap = new HashMap<String, FamilyMember>();
 		for(String s : snames)
 		{
+			if(verbose) System.err.println("SVDatabase.addVCF || Looking for sample " + s);
 			FamilyMember fm = sampleTable.getSample(s);
 			if (fm == null) 
 			{
 				if(verbose) System.err.println("SVDatabase.addVCF || WARNING: Sample \"" + s + "\" was not found in database! Skipping...");
 				continue;
 			}
+			if(verbose) System.err.println("SVDatabase.addVCF || Found sample " + s + "! UID = 0x" + Integer.toHexString(fm.getUID()));
 			smap.put(s, fm);
 			sampleTable.markSample(fm.getUID());
 		}
-		
+		//System.exit(2);
 		//Add to variant table...
-		return variantTable.addVCF(vcfpath, smap, mergeFactor);
+		return variantTable.addVCF(vcfpath, smap, mergeFactor, ignoreTRA);
+	}
+	
+	public void clearVariantTable()
+	{
+		variantTable.clearVariantTable();
+		//TODO sampleTable.unmarkSample(sampleID);
 	}
 	
 	/* ----- Family Data Dumping ----- */
@@ -519,17 +530,17 @@ public class SVDatabase {
 		if(verbose) System.err.println("Loading variants...");
 		List<FamilyMember> members = f.getAllFamilyMembers();
 		VariantPool pool = new VariantPool(f.countMembers());
-		Map<String, Long> vidMap = new HashMap<String, Long>();
+		//Map<String, Long> vidMap = new HashMap<String, Long>();
 		for(Long vid : varIDList)
 		{
 			DBVariant v = variantTable.getVariant(vid);
 			VariantGenotype vg = variantTable.getGenotype(vid);
-			vidMap.put(v.getName(), vid);
+			//vidMap.put(v.getName(), vid);
 			
 			StructuralVariant sv = v.toStructuralVariant();
 			for(FamilyMember m : members)
 			{
-				SVDBGenotype dbg = vg.getGenotype(m.getUID());
+				/*SVDBGenotype dbg = vg.getGenotype(m.getUID());
 				Genotype g = new Genotype();
 				if(dbg == null)
 				{
@@ -550,7 +561,7 @@ public class SVDatabase {
 					}
 					j = 0;
 					int acount = alleles.size();
-					int[] aarr = new int[acount];
+					int[] aarr = new int[acount]; //TODO
 					if (acount < 2) {
 						aarr[j] = 0;
 						acount++; //Put a ref in there
@@ -558,12 +569,13 @@ public class SVDatabase {
 					}
 					for(Integer i : alleles)
 					{
-						aarr[j] = i;
+						aarr[j] = i; //TODO
 						j++;
 					}
 					g.setCopyNumber(acount);
 					g.setAlleles(aarr);
-				}
+				}*/
+				Genotype g = vg.getAsGenotypeObject(m.getUID(), sv.getType(), sampleTable.sampleHasData(m.getUID()));
 				sv.addGenotype(m.getName(), g);
 			}
 			pool.addVariant(sv);
@@ -612,7 +624,8 @@ public class SVDatabase {
 			if(c.getAllele() == 0) continue; //Skip ref allele candidates
 			
 			//Get variant & geno data
-			Long vid = vidMap.get(c.getVariant().getVarID());
+			//Long vid = vidMap.get(c.getVariant().getVarID());
+			long vid = c.getVariant().getGUID();
 			DBVariant dbv = variantTable.getVariant(vid);
 			VariantGenotype vg = variantTable.getGenotype(vid);
 			
@@ -675,15 +688,16 @@ public class SVDatabase {
 			for(Individual a : aff) 
 			{
 				List<Candidate> partners = c.getAllPartners(a);
-				if(partners == null || partners.isEmpty()) sb.append(c.getInheritancePattern(a)+ "N/A\t");
+				if(partners == null || partners.isEmpty()) sb.append("[N/A]\t");
 				else
 				{
 					boolean first = true;
 					for(Candidate p : partners)
 					{
 						if(!first)sb.append(";");
-						String vname = p.getVariant().getVarID();
-						long pid = vidMap.get(vname);
+						//String vname = p.getVariant().getVarID();
+						//long pid = vidMap.get(vname);
+						long pid = p.getVariant().getGUID();
 						sb.append(Long.toHexString(pid));
 						first = false;
 					}
@@ -738,11 +752,17 @@ public class SVDatabase {
 				priTable.write(record + "\n");
 			}
 			cCount++;
-			if(verbose && cCount % 200 == 0)  System.err.println("Records processed: " + cCount);
+			if(verbose && cCount % 5000 == 0)  System.err.println("Records processed: " + cCount);
 		}
 		fullTable.close();
 		priTable.close();
 		if(verbose) System.err.println("Family table dump complete!");
+	}
+
+	public void dumpVariantTable(String dir)
+	{
+		this.sampleTable.writeToCSV(dir + File.separator + "samples.csv");
+		this.variantTable.dumpTable(dir);
 	}
 	
 	public void setOMIMTablePath(String path)

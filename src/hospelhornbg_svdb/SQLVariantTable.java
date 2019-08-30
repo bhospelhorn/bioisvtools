@@ -1,7 +1,12 @@
 package hospelhornbg_svdb;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.sql.Blob;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -22,13 +27,19 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentMap;
 
 import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.SVType;
 import hospelhornbg_bioinformatics.StructuralVariant;
+import hospelhornbg_bioinformatics.Translocation;
 import hospelhornbg_bioinformatics.VCFReadStreamer;
 import hospelhornbg_genomeBuild.Contig;
 import hospelhornbg_genomeBuild.Gene;
+import hospelhornbg_genomeBuild.Gene.Exon;
 import hospelhornbg_genomeBuild.GeneFunc;
 import hospelhornbg_genomeBuild.GeneSet;
 import hospelhornbg_genomeBuild.GenomeBuild;
@@ -44,6 +55,7 @@ public class SQLVariantTable implements VariantTable{
 	
 	public static final String TABLENAME_VARIANTS = "VARIANTS";
 	public static final String TABLENAME_SAMPLEGENO = "SAMPLEGENO";
+	public static final String TABLENAME_GENEHITS = "GENES";
 	
 	public static final String FIELDNAME_VARUID = "VARUID";
 	public static final String FIELDNAME_CTG1 = "CONTIG1";
@@ -85,6 +97,12 @@ public class SQLVariantTable implements VariantTable{
 	public static final String FIELDNAME_SVARLIST_HET = "HETVAR";
 	public static final String FIELDNAME_SVARLIST_OTH = "OTHVAR";
 	
+	public static final String FIELDNAME_GH_GENEUID = "TRANSCRIPT_UID"; //int
+	public static final String FIELDNAME_GH_HITS_T = "TOTAL_VARS"; //int
+	public static final String FIELDNAME_GH_HITS_E = "EXON_VARS"; //int
+	public static final String FIELDNAME_GH_HITS_TI = "TOTAL_INDIVS"; //blob
+	public static final String FIELDNAME_GH_HITS_EI = "EXON_INDIVS"; //blob
+	
 	
 	public static final String[][] VAR_COLUMNS = {
 			{FIELDNAME_VARUID, "BIGINT"},{FIELDNAME_CTG1, "INTEGER"},{FIELDNAME_START1, "INTEGER"},
@@ -107,6 +125,12 @@ public class SQLVariantTable implements VariantTable{
 			{FIELDNAME_SVARLIST_HET, "BLOB"},
 			{FIELDNAME_SVARLIST_OTH, "BLOB"},};
 	
+	public static final String[][] GENEHITS_COLUMNS = {{FIELDNAME_GH_GENEUID, "INTEGER"},
+													   {FIELDNAME_GH_HITS_T, "INTEGER"},
+													   {FIELDNAME_GH_HITS_E, "INTEGER"},
+													   {FIELDNAME_GH_HITS_TI, "BLOB"},
+													   {FIELDNAME_GH_HITS_EI, "BLOB"},};
+	
 	/* ----- Instance Variables ----- */
 	
 	private String dbURL;
@@ -119,6 +143,9 @@ public class SQLVariantTable implements VariantTable{
 	private GenomeBuild genome;
 	private GeneSet genes;
 	private GenomeIndex uidIndex;
+	
+	private ReadCache read_cache;
+	private RegionSearchCache rs_cache;
 	
 	//private List<String> tempBlobFiles;
 	
@@ -133,6 +160,8 @@ public class SQLVariantTable implements VariantTable{
 		dbURL = url;
 		username = user;
 		password = pw;
+		read_cache = new ReadCache();
+		rs_cache = new RegionSearchCache();
 		System.err.println("Now connecting...");
 		connect();
 		System.err.println("Connection successful!");
@@ -140,6 +169,7 @@ public class SQLVariantTable implements VariantTable{
 		//Check for tables, create if not there
 		if(!varTableExists()) createVarTable();
 		if(!sampleGenoTableExists()) createSampleGenoTable();
+		if(!geneHitTableExists()) createGeneHitTable();
 		//tempBlobFiles = new LinkedList<String>();
 	}
 	
@@ -156,11 +186,14 @@ public class SQLVariantTable implements VariantTable{
 		DatabaseMetaData meta = connection.getMetaData();
 		String[] ttypes = {"TABLE"};
 		ResultSet rs = meta.getTables(null, null, TABLENAME_VARIANTS.toUpperCase(), ttypes);
-		return rs.next();
+		boolean b = rs.next();
+		rs.close();
+		return b;
 	}
 	
 	private void createVarTable() throws SQLException
 	{
+		System.err.println("Variant table not found. Creating variant table...");
 		String sqlcmd = "CREATE TABLE " + SQLVariantTable.TABLENAME_VARIANTS + "(";
 		boolean first = true;
 		for(String[] field : VAR_COLUMNS)
@@ -175,6 +208,7 @@ public class SQLVariantTable implements VariantTable{
 		//System.exit(1);
 		Statement cstat = connection.createStatement();
 		cstat.executeUpdate(sqlcmd);
+		cstat.closeOnCompletion();
 	}
 	
 	private boolean sampleGenoTableExists() throws SQLException
@@ -182,11 +216,14 @@ public class SQLVariantTable implements VariantTable{
 		DatabaseMetaData meta = connection.getMetaData();
 		String[] ttypes = {"TABLE"};
 		ResultSet rs = meta.getTables(null, null, TABLENAME_SAMPLEGENO.toUpperCase(), ttypes);
-		return rs.next();
+		boolean b = rs.next();
+		rs.close();
+		return b;
 	}
 	
 	private void createSampleGenoTable() throws SQLException
 	{
+		System.err.println("Sample geno table not found. Creating table...");
 		String sqlcmd = "CREATE TABLE " + SQLVariantTable.TABLENAME_SAMPLEGENO + "(";
 		boolean first = true;
 		for(String[] field : SAMPLEGENO_COLUMNS)
@@ -198,6 +235,64 @@ public class SQLVariantTable implements VariantTable{
 		sqlcmd += ")";
 		Statement cstat = connection.createStatement();
 		cstat.executeUpdate(sqlcmd);
+		cstat.closeOnCompletion();
+	}
+	
+	private boolean geneHitTableExists() throws SQLException
+	{
+		DatabaseMetaData meta = connection.getMetaData();
+		String[] ttypes = {"TABLE"};
+		ResultSet rs = meta.getTables(null, null, TABLENAME_GENEHITS.toUpperCase(), ttypes);
+		boolean b = rs.next();
+		rs.close();
+		return b;
+	}
+	
+	private void createGeneHitTable() throws SQLException
+	{
+		System.err.println("Gene hit not found. Creating table...");
+		String sqlcmd = "CREATE TABLE " + SQLVariantTable.TABLENAME_GENEHITS + "(";
+		boolean first = true;
+		for(String[] field : GENEHITS_COLUMNS)
+		{
+			if(!first) sqlcmd += ",";
+			sqlcmd += field[0] + " " + field[1];
+			first = false;
+		}
+		sqlcmd += ")";
+		Statement cstat = connection.createStatement();
+		cstat.executeUpdate(sqlcmd);
+		cstat.closeOnCompletion();
+		
+		//Add all genes with 0's
+		zeroGeneHitTable();
+	}
+	
+	private void zeroGeneHitTable() throws SQLException
+	{
+		//
+		List<Gene> glist = genes.getAllGenes();
+		PreparedStatement gh_insert = sprepper.getGeneHitInsertStatement();
+		int dbc = 0;
+		Set<Integer> uidset = new TreeSet<Integer>();
+		for(Gene g : glist)
+		{
+			gh_insert.setInt(StatementPrepper.GENEHIT_UID, g.getGUID());
+			gh_insert.setInt(StatementPrepper.GENEHIT_TOT, 0);
+			gh_insert.setInt(StatementPrepper.GENEHIT_EXON, 0);
+			
+			byte[] neg1 = {-1, -1, -1, -1};
+			Blob b1 = sprepper.toBlob(neg1);
+			gh_insert.setBlob(StatementPrepper.GENEHIT_TOT_INDIV, b1);
+			Blob b2 = sprepper.toBlob(neg1);
+			gh_insert.setBlob(StatementPrepper.GENEHIT_EXON_INDIV, b2);
+			
+			gh_insert.executeUpdate();
+			dbc++;
+			uidset.add(g.getGUID());
+		}
+		System.err.println("Gene hit table zeroing complete! " + dbc + " records written!");
+		System.err.println("Unique IDs: " + uidset.size());
 	}
 	
 	/* ----- Parsing Retrieved ----- */
@@ -314,7 +409,7 @@ public class SQLVariantTable implements VariantTable{
 		Contig ctg = var.getChrom();
 		
 		pstat.setLong(StatementPrepper.FULLINS_VARUID, var.getLongID());
-		pstat.setInt(StatementPrepper.FULLINS_CHR1, ctg.getUDPName().hashCode());
+		pstat.setInt(StatementPrepper.FULLINS_CHR1, ctg.getUID());
 		pstat.setInt(StatementPrepper.FULLINS_ST1, var.getStartPosition().getStart());
 		pstat.setInt(StatementPrepper.FULLINS_ST2, var.getStartPosition().getEnd());
 		pstat.setInt(StatementPrepper.FULLINS_ED1, var.getEndPosition().getStart());
@@ -323,8 +418,8 @@ public class SQLVariantTable implements VariantTable{
 		pstat.setInt(StatementPrepper.FULLINS_POSEFF, var.getPositionEffect().getPriority());
 		pstat.setString(StatementPrepper.FULLINS_VARNAME, var.getName());
 		
-		pstat.setInt(StatementPrepper.FULLINS_ACOUNT_TOT, var.getIndividualCount());
-		pstat.setInt(StatementPrepper.FULLINS_HCOUNT_TOT, var.getHomozygoteCount());
+		pstat.setInt(StatementPrepper.FULLINS_ACOUNT_TOT, var.getIndividualCount()); //System.err.println("Total Indiv Count: " + var.getIndividualCount());
+		pstat.setInt(StatementPrepper.FULLINS_HCOUNT_TOT, var.getHomozygoteCount()); //System.err.println("Homozygote Count: " + var.getHomozygoteCount());
 		pstat.setInt(StatementPrepper.FULLINS_ACOUNT_NFE, var.getIndividualCount(Population.NFE));
 		pstat.setInt(StatementPrepper.FULLINS_HCOUNT_NFE, var.getHomozygoteCount(Population.NFE));
 		pstat.setInt(StatementPrepper.FULLINS_ACOUNT_AFR, var.getIndividualCount(Population.AFR));
@@ -352,7 +447,7 @@ public class SQLVariantTable implements VariantTable{
 		
 		Contig ctg2 = var.getEndChrom();
 		if(ctg2 == null) pstat.setInt(StatementPrepper.FULLINS_CTG2, ctg.getUDPName().hashCode());
-		else pstat.setInt(StatementPrepper.FULLINS_CTG2, ctg2.getUDPName().hashCode());
+		else pstat.setInt(StatementPrepper.FULLINS_CTG2, ctg2.getUID());
 		
 		//String insseq = var.getAltAlleleString();
 		//if(insseq == null) insseq = "N/A";
@@ -379,43 +474,43 @@ public class SQLVariantTable implements VariantTable{
 		
 		PreparedStatement pstat = sprepper.getShortUpdateStatement();
 		
-		pstat.setInt(StatementPrepper.SHORTUD_ST1, var.getStartPosition().getStart()); System.err.println("Start1 = " + var.getStartPosition().getStart());
-		pstat.setInt(StatementPrepper.SHORTUD_ST2, var.getStartPosition().getEnd()); System.err.println("Start2 = " + var.getStartPosition().getEnd());
-		pstat.setInt(StatementPrepper.SHORTUD_ED1, var.getEndPosition().getStart()); System.err.println("End1 = " + var.getEndPosition().getStart());
-		pstat.setInt(StatementPrepper.SHORTUD_ED2, var.getEndPosition().getEnd()); System.err.println("End2 = " + var.getEndPosition().getEnd());
-		pstat.setInt(StatementPrepper.SHORTUD_POSEFF, var.getPositionEffect().getPriority()); System.err.println("PosEff = " + var.getPositionEffect().getPriority());
+		pstat.setInt(StatementPrepper.SHORTUD_ST1, var.getStartPosition().getStart()); //System.err.println("Start1 = " + var.getStartPosition().getStart());
+		pstat.setInt(StatementPrepper.SHORTUD_ST2, var.getStartPosition().getEnd()); //System.err.println("Start2 = " + var.getStartPosition().getEnd());
+		pstat.setInt(StatementPrepper.SHORTUD_ED1, var.getEndPosition().getStart()); //System.err.println("End1 = " + var.getEndPosition().getStart());
+		pstat.setInt(StatementPrepper.SHORTUD_ED2, var.getEndPosition().getEnd()); //System.err.println("End2 = " + var.getEndPosition().getEnd());
+		pstat.setInt(StatementPrepper.SHORTUD_POSEFF, var.getPositionEffect().getPriority()); //System.err.println("PosEff = " + var.getPositionEffect().getPriority());
 		
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_TOT, var.getIndividualCount()); System.err.println("Total Allele = " + var.getIndividualCount());
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_TOT, var.getHomozygoteCount()); System.err.println("Total Hom = " + var.getHomozygoteCount());
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_NFE, var.getIndividualCount(Population.NFE)); System.err.println("NFE Count = " + var.getIndividualCount(Population.NFE));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_NFE, var.getHomozygoteCount(Population.NFE)); System.err.println("NFE Hom = " + var.getHomozygoteCount(Population.NFE));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_AFR, var.getIndividualCount(Population.AFR)); System.err.println("AFR Count = " + var.getIndividualCount(Population.AFR));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_AFR, var.getHomozygoteCount(Population.AFR)); System.err.println("AFR Hom = " + var.getHomozygoteCount(Population.AFR));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_AMR, var.getIndividualCount(Population.AMR)); System.err.println("AMR Count = " + var.getIndividualCount(Population.AMR));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_AMR, var.getHomozygoteCount(Population.AMR)); System.err.println("AMR Hom = " + var.getHomozygoteCount(Population.AMR));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_FIN, var.getIndividualCount(Population.FIN)); System.err.println("FIN Count = " + var.getIndividualCount(Population.FIN));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_FIN, var.getHomozygoteCount(Population.FIN)); System.err.println("FIN Hom = " + var.getHomozygoteCount(Population.FIN));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_EAS, var.getIndividualCount(Population.EAS)); System.err.println("EAS Count = " + var.getIndividualCount(Population.EAS));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_EAS, var.getHomozygoteCount(Population.EAS)); System.err.println("EAS Hom = " + var.getHomozygoteCount(Population.EAS));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_SAS, var.getIndividualCount(Population.SAS)); System.err.println("SAS Count = " + var.getIndividualCount(Population.SAS));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_SAS, var.getHomozygoteCount(Population.SAS)); System.err.println("SAS Hom = " + var.getHomozygoteCount(Population.SAS));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_ASJ, var.getIndividualCount(Population.ASJ)); System.err.println("ASJ Count = " + var.getIndividualCount(Population.ASJ));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_ASJ, var.getHomozygoteCount(Population.ASJ)); System.err.println("ASJ Hom = " + var.getHomozygoteCount(Population.ASJ));
-		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_OTH, var.getIndividualCount(Population.OTH)); System.err.println("OTH Count = " + var.getIndividualCount(Population.OTH));
-		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_OTH, var.getHomozygoteCount(Population.OTH)); System.err.println("OTH Hom = " + var.getHomozygoteCount(Population.OTH));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_TOT, var.getIndividualCount()); //System.err.println("Total Allele = " + var.getIndividualCount());
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_TOT, var.getHomozygoteCount()); //System.err.println("Total Hom = " + var.getHomozygoteCount());
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_NFE, var.getIndividualCount(Population.NFE)); //System.err.println("NFE Count = " + var.getIndividualCount(Population.NFE));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_NFE, var.getHomozygoteCount(Population.NFE)); //System.err.println("NFE Hom = " + var.getHomozygoteCount(Population.NFE));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_AFR, var.getIndividualCount(Population.AFR)); //System.err.println("AFR Count = " + var.getIndividualCount(Population.AFR));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_AFR, var.getHomozygoteCount(Population.AFR)); //System.err.println("AFR Hom = " + var.getHomozygoteCount(Population.AFR));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_AMR, var.getIndividualCount(Population.AMR)); //System.err.println("AMR Count = " + var.getIndividualCount(Population.AMR));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_AMR, var.getHomozygoteCount(Population.AMR)); //System.err.println("AMR Hom = " + var.getHomozygoteCount(Population.AMR));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_FIN, var.getIndividualCount(Population.FIN)); //System.err.println("FIN Count = " + var.getIndividualCount(Population.FIN));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_FIN, var.getHomozygoteCount(Population.FIN)); //System.err.println("FIN Hom = " + var.getHomozygoteCount(Population.FIN));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_EAS, var.getIndividualCount(Population.EAS)); //System.err.println("EAS Count = " + var.getIndividualCount(Population.EAS));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_EAS, var.getHomozygoteCount(Population.EAS)); //System.err.println("EAS Hom = " + var.getHomozygoteCount(Population.EAS));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_SAS, var.getIndividualCount(Population.SAS)); //System.err.println("SAS Count = " + var.getIndividualCount(Population.SAS));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_SAS, var.getHomozygoteCount(Population.SAS)); //System.err.println("SAS Hom = " + var.getHomozygoteCount(Population.SAS));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_ASJ, var.getIndividualCount(Population.ASJ)); //System.err.println("ASJ Count = " + var.getIndividualCount(Population.ASJ));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_ASJ, var.getHomozygoteCount(Population.ASJ)); //System.err.println("ASJ Hom = " + var.getHomozygoteCount(Population.ASJ));
+		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_OTH, var.getIndividualCount(Population.OTH)); //System.err.println("OTH Count = " + var.getIndividualCount(Population.OTH));
+		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_OTH, var.getHomozygoteCount(Population.OTH)); //System.err.println("OTH Hom = " + var.getHomozygoteCount(Population.OTH));
 		
 		Blob blob = sprepper.toBlob(var.getGeneListAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.SHORTUD_GENELIST, blob);
 		
 		String valnotes = var.getValidationNotes();
 		if(valnotes == null) valnotes = "N/A";
-		System.err.println("ValNotes = " + valnotes);
+		//System.err.println("ValNotes = " + valnotes);
 		pstat.setString(StatementPrepper.SHORTUD_VALNOTES, valnotes);
 		
 		blob = sprepper.toBlob(vgeno.getGenotypesAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.SHORTUD_GENOTYPES, blob);
 		
-		pstat.setLong(StatementPrepper.SHORTUD_QUERYID, var.getLongID()); System.err.println("VarUID = " + Long.toHexString(var.getLongID()));
+		pstat.setLong(StatementPrepper.SHORTUD_QUERYID, var.getLongID()); //System.err.println("VarUID = " + Long.toHexString(var.getLongID()));
 		
 		return pstat;
 	}
@@ -448,6 +543,657 @@ public class SQLVariantTable implements VariantTable{
 		return pstat;
 	}
 	
+	/* ----- Caching ----- */
+	
+	private class ReadCache
+	{
+		public static final int CACHE_SIZE = 2048;
+		
+		private ConcurrentMap<Long, DBVariant> v_map;
+		private ConcurrentMap<Long, VariantGenotype> g_map;
+		
+		private ConcurrentLinkedQueue<Long> v_queue;
+		private ConcurrentLinkedQueue<Long> g_queue;
+		
+		public ReadCache()
+		{
+			v_map = new ConcurrentHashMap<Long, DBVariant>();
+			g_map = new ConcurrentHashMap<Long, VariantGenotype>();
+			v_queue = new ConcurrentLinkedQueue<Long>();
+			g_queue = new ConcurrentLinkedQueue<Long>();
+		}
+		
+		public DBVariant getVariant(long uid)
+		{
+			DBVariant v = v_map.get(uid);
+			if(v != null) 
+			{
+				v_queue.remove(uid);
+				v_queue.add(uid);
+				return v;
+			}
+			
+			//Cache miss
+			try 
+			{
+				PreparedStatement pstat = sprepper.getVarGetterStatement();
+				pstat.setLong(StatementPrepper.VARGET_VARUID, uid);
+				ResultSet rs = pstat.executeQuery();
+				if(!rs.next()) {rs.close(); return null;}
+				DBVariant var = readFromResultSet(rs);
+				rs.close();
+				
+				//Cache
+				if(v_map.size() >= CACHE_SIZE)
+				{
+					long id = v_queue.poll();
+					v_map.remove(id);
+				}
+				v_map.put(var.getLongID(), var);
+				v_queue.add(uid);
+				
+				//Return
+				return var;
+			} 
+			catch (Exception e) 
+			{
+				e.printStackTrace();
+				return null;
+			}
+		}
+		
+		public List<DBVariant> getVariants(Collection<Long> varUIDs)
+		{
+			Set<Long> misses = new TreeSet<Long>();
+			List<DBVariant> out = new LinkedList<DBVariant>();
+			
+			for(Long vid : varUIDs)
+			{
+				DBVariant v = v_map.get(vid);
+				if(v != null) 
+				{
+					v_queue.remove(vid);
+					v_queue.add(vid);
+					out.add(v);
+				}
+				else misses.add(vid);
+			}
+			
+			//Get misses
+			if(!misses.isEmpty())
+			{
+				int len = misses.size();
+				try 
+				{
+					PreparedStatement pstat = sprepper.generateMultiVarGetterStatement(len);
+					int i = 1;
+					for(Long vid : misses)
+					{
+						pstat.setLong(i, vid);
+						i++;
+					}
+					ResultSet rs = pstat.executeQuery();
+					while(rs.next())
+					{
+						DBVariant v = readFromResultSet(rs);
+						
+						if(v_map.size() >= CACHE_SIZE)
+						{
+							long id = v_queue.poll();
+							v_map.remove(id);
+						}
+						
+						v_map.put(v.getLongID(), v);
+						v_queue.add(v.getLongID());
+						out.add(v);
+					}
+					rs.close();
+				} 
+				catch (Exception e) 
+				{
+					e.printStackTrace();
+					return out;
+				}	
+			}
+			
+			
+			return out;
+		}
+		
+		public VariantGenotype getGenotype(long var_uid)
+		{
+			VariantGenotype vg = g_map.get(var_uid);
+			if(vg != null) 
+			{
+				g_queue.remove(var_uid);
+				g_queue.add(var_uid);
+				return vg;
+			}
+			
+			//Cache miss
+			try 
+			{
+				PreparedStatement pstat = sprepper.getGenoGetterStatement();
+				pstat.setLong(StatementPrepper.GENOGET_VARUID, var_uid);
+				ResultSet rs = pstat.executeQuery();
+				if(!rs.next()) {rs.close(); return null;}
+				Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
+				vg = new VariantGenotype(var_uid);
+				vg.readDataFromBLOB(genoblob);
+				rs.close();
+				
+				//Cache
+				if(g_map.size() >= CACHE_SIZE)
+				{
+					long id = g_queue.poll();
+					g_map.remove(id);
+				}
+				g_map.put(vg.getVariantUID(), vg);
+				g_queue.add(vg.getVariantUID());
+				
+				return vg;
+			} 
+			catch (Exception e) 
+			{
+				e.printStackTrace();
+				return null;
+			}
+		}
+		
+		public List<VariantGenotype> getGenotypes(Collection<Long> varUIDs)
+		{
+			Set<Long> misses = new TreeSet<Long>();
+			List<VariantGenotype> out = new LinkedList<VariantGenotype>();
+			
+			for(Long vid : varUIDs)
+			{
+				VariantGenotype vg = g_map.get(vid);
+				if(vg != null) 
+				{
+					g_queue.remove(vid);
+					g_queue.add(vid);
+					out.add(vg);
+				}
+				else misses.add(vid);
+			}
+			
+			//Get misses
+			if(!misses.isEmpty())
+			{
+				int len = misses.size();
+				try 
+				{
+					PreparedStatement pstat = sprepper.generateMultiGenoGetterStatement(len);
+					int i = 1;
+					for(Long vid : varUIDs)
+					{
+						pstat.setLong(i, vid);
+						i++;
+					}
+					ResultSet rs = pstat.executeQuery();
+					while(rs.next())
+					{
+						long varUID = rs.getLong(FIELDNAME_VARUID);
+						Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
+						VariantGenotype vg = new VariantGenotype(varUID);
+						vg.readDataFromBLOB(genoblob);
+						
+						if(g_map.size() >= CACHE_SIZE)
+						{
+							long id = g_queue.poll();
+							g_map.remove(id);
+						}
+						
+						g_map.put(vg.getVariantUID(), vg);
+						g_queue.add(vg.getVariantUID());
+						
+						out.add(vg);
+					}
+					rs.close();
+				} 
+				catch (Exception e) 
+				{
+					e.printStackTrace();
+					return out;
+				}
+			}
+			return out;
+		}
+		
+		public void clear()
+		{
+			v_map.clear();
+			g_map.clear();
+			v_queue.clear();
+			g_queue.clear();
+		}
+		
+	}
+	
+	private class RegionSearchCache
+	{
+		//public static final int MAX_REG_SIZE_HELD = 10000000;
+		
+		private Contig lastq_contig;
+		private int lastq_start;
+		private int lastq_end;
+		
+		//private volatile Collection<Long> last_ids;
+		private Collection<DBVariant> last_vars;
+		
+		private class DiskGopher implements Runnable
+		{
+
+			private Contig chr;
+			private int start;
+			private int end;
+			
+			private Collection<DBVariant> output;
+			
+			public DiskGopher(Contig c, int s, int e, Collection<DBVariant> targ)
+			{
+				chr = c;
+				start = s;
+				end = e;
+				output = targ;
+			}
+			
+			@Override
+			public void run() 
+			{
+				try{
+					Collection<DBVariant> col = getFromDisk(chr, start, end); 
+				output.addAll(col);
+				}
+				catch(Exception e)
+				{
+					e.printStackTrace();
+					return;
+				}
+			}
+			
+		}
+		
+		private Collection<DBVariant> scanLastQuery(int start, int end)
+		{
+			Collection<DBVariant> out = new LinkedList<DBVariant>();
+			if(lastq_contig == null) return out;
+			if(last_vars == null || last_vars.isEmpty()) return out;
+			
+			for(DBVariant v : last_vars)
+			{
+				if(v.getType() != SVType.TRA && v.getType() != SVType.BND)
+				{
+					int vst = v.getStartPosition().getStart();
+					int ved = v.getEndPosition().getEnd();
+					
+					if(end <= vst) continue;
+					if(start >= ved) continue;
+					
+					out.add(v);
+				}
+				else
+				{
+					Contig c1 = v.getChrom();
+					if(lastq_contig.equals(c1))
+					{
+						int vst = v.getStartPosition().getStart();
+						int ved = v.getStartPosition().getEnd();
+						
+						if(end > vst && start < ved) {out.add(v); continue;}
+					}
+					
+					Contig c2 = v.getEndChrom();
+					if(c2 == null) c2 = c1;
+					if(lastq_contig.equals(c2))
+					{
+						int vst = v.getEndPosition().getStart();
+						int ved = v.getEndPosition().getEnd();
+						
+						if(end > vst && start < ved) {out.add(v); continue;}
+					}
+				}
+				
+			}
+			
+			return out;
+		}
+		
+		private Collection<DBVariant> getFromDisk(Contig c, int start, int end)
+		{
+			List<DBVariant> varlist = new LinkedList<DBVariant>();
+			if(c == null) return varlist;
+			//System.err.println("-DEBUG- Disk Query-- " + c.getUDPName() + ":" + start + "-" + end);
+			
+			int cuid = c.getUID();
+			
+			try 
+			{
+				PreparedStatement pstat = sprepper.getRegionVarGetterStatement();
+				if(pstat == null) 
+				{
+					System.err.println("Statement prep failed.");
+					System.exit(1);
+				}
+				for(int i : StatementPrepper.VARS_REG_CUID) pstat.setInt(i, cuid);
+				for(int i : StatementPrepper.VARS_REG_START) pstat.setInt(i, start);
+				for(int i : StatementPrepper.VARS_REG_END) pstat.setInt(i, end);
+				ResultSet rs = pstat.executeQuery();
+				while(rs.next())
+				{
+					DBVariant var = readFromResultSet(rs);
+					if(var != null) varlist.add(var);
+				}
+				rs.close();
+			} 
+			catch (Exception e) 
+			{
+				e.printStackTrace();
+			}
+			
+			return varlist;
+		}
+		
+		public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end)
+		{
+			//System.err.println("-DEBUG- Searching region-- " + c.getUDPName() + ":" + start + "-" + end);
+			if(lastq_contig != null && lastq_contig.equals(c))
+			{
+				//System.err.println("-DEBUG- Contig matches last search!");
+				//Check for overlap
+				if(start == lastq_start && end == lastq_end)
+				{
+					//Exact same query
+					//if(lastq_end - lastq_start <= MAX_REG_SIZE_HELD) return last_vars;
+					//else return getVariants(last_ids);
+					return last_vars;
+				}
+				
+				int in_s = -1;
+				int in_e = -1;
+				int ex_s = -1;
+				int ex_e = -1;
+				
+				Collection<DBVariant> out = null;
+				
+				if(start <= lastq_start)
+				{
+					if(end >= lastq_end)
+					{
+						//Includes full last query
+						out = new LinkedList<DBVariant>();
+						out.addAll(last_vars);
+						//Query front
+						if(start < lastq_start) out.addAll(getFromDisk(c, start, lastq_start));
+						//Query back
+						if(end > lastq_end) out.addAll(getFromDisk(c, lastq_end, end));
+					}
+					else
+					{
+						//Includes first part
+						in_s = lastq_start;
+						in_e = end;
+						if(start < lastq_start)
+						{
+							ex_s = start;
+							ex_e = lastq_start;
+						}
+					}
+				}
+				else
+				{
+					if(start < lastq_end)
+					{
+						//Start is in between last query start and end
+						in_s = start;
+						in_e = lastq_end;
+						if(end > lastq_end)
+						{
+							ex_s = lastq_end;
+							ex_e = end;
+						}
+					}
+					else
+					{
+						//Completely outside
+						ex_s = start;
+						ex_e = end;
+					}
+				}
+				
+				boolean doin = (in_s > -1 && in_e > -1);
+				boolean doex = (ex_s > -1 && ex_e > -1);
+				
+				if(doin && doex)
+				{
+					//Do the DB fetching and cache scan in a different threads
+					out = new ConcurrentLinkedQueue<DBVariant>();
+					DiskGopher runner = new DiskGopher(c, ex_s, ex_e, out);
+					Thread t = new Thread(runner);
+					t.start();
+					out.addAll(scanLastQuery(in_s, in_e));
+					
+					try {t.join();} 
+					catch (InterruptedException e) 
+					{
+						//Shouldn't happen, maybe?
+						e.printStackTrace();
+					}
+				}
+				else if (doin && !doex)
+				{
+					out = scanLastQuery(in_s, in_e);
+				}
+				else if (doex && !doin)
+				{
+					out = getFromDisk(c, ex_s, ex_e);
+				}
+				
+				lastq_start = start;
+				lastq_end = end;
+				last_vars = out;
+				return out;
+				
+			}
+			
+			//System.err.println("-DEBUG- New search!");
+			//Completely new query
+			Collection<DBVariant> out = getFromDisk(c, start, end);
+			lastq_contig = c;
+			lastq_start = start;
+			lastq_end = end;
+			last_vars = out;
+			return out;
+		}
+		
+		public void flush()
+		{
+			lastq_contig = null;
+			lastq_start = -1;
+			lastq_end = -1;
+			last_vars = null;
+		}
+		
+	}
+	
+	/* ----- Gene Hit Cache ----- */
+	
+	private Map<Integer, GeneHitCounter> ghc_cache;
+	private boolean ghc_cache_dirty;
+	
+	private boolean loadGeneHitTable()
+	{
+		ghc_cache = new ConcurrentHashMap<Integer, GeneHitCounter>();
+		try
+		{
+			//int dbc = 0;
+			PreparedStatement s = sprepper.getGeneHitGetAllStatement();
+			ResultSet rs = s.executeQuery();
+			while(rs.next())
+			{
+				int guid = rs.getInt(FIELDNAME_GH_GENEUID);
+				GeneHitCounter ghc = readFromTableRecord(rs);
+				ghc_cache.put(guid, ghc);
+				//dbc++;
+			}
+			rs.close();
+		//	System.err.println("-DEBUG: Gene hit records read: " + dbc);
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+			return false;
+		}
+		
+		return true;
+	}
+	
+	private GeneHitCounter readFromTableRecord(ResultSet rs) throws SQLException
+	{
+		GeneHitCounter ghc = new GeneHitCounter();
+		ghc.total_hits_var = rs.getInt(FIELDNAME_GH_HITS_T);
+		ghc.exon_hits_var = rs.getInt(FIELDNAME_GH_HITS_E);
+		
+		//Blobs
+		Blob b = rs.getBlob(FIELDNAME_GH_HITS_TI);
+		ByteBuffer bb = ByteBuffer.wrap(b.getBytes(1, (int)b.length()));
+		bb.order(ByteOrder.BIG_ENDIAN);
+		while(bb.hasRemaining())
+		{
+			int i = bb.getInt();
+			if(i == -1) break;
+			ghc.total_hits_indiv.add(i);
+		}
+		
+		b = rs.getBlob(FIELDNAME_GH_HITS_EI);
+		bb = ByteBuffer.wrap(b.getBytes(1, (int)b.length()));
+		bb.order(ByteOrder.BIG_ENDIAN);
+		while(bb.hasRemaining())
+		{
+			int i = bb.getInt();
+			if(i == -1) break;
+			ghc.total_hits_indiv.add(i);
+		}
+		
+		return ghc;
+	}
+	
+	private boolean saveGeneHitTable()
+	{
+		if(ghc_cache == null) return false;
+		
+		int dbc = 0;
+		boolean b = true;
+		Integer badid = null;
+		try 
+		{	
+			//Wipe table
+			//It seems to be faster to just rewrite the table from scratch
+			//(That way it doesn't have to look up the records to edit...)
+			PreparedStatement delstatement = sprepper.getGeneHitTableWipeStatement();
+			delstatement.executeUpdate();
+			
+			
+			List<Integer> ids = new ArrayList<Integer>(ghc_cache.size() + 1);
+			ids.addAll(ghc_cache.keySet());
+			for(Integer id : ids)
+			{
+				GeneHitCounter ghc = ghc_cache.get(id);
+				b = b && updateGeneHitRecord(id, ghc);
+				dbc++;
+				badid = id;
+				//System.err.println("-DEBUG: Gene hit records written: " + dbc);
+			}
+			ghc_cache_dirty = false;
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+			System.err.println("-DEBUG: Gene hit records written: " + dbc);
+			System.err.println("-- DEBUG INFO --");
+			System.err.println("Bad Gene UID Is Null?: " + (badid == null));
+			if(badid != null)
+			{
+				System.err.println("Bad Gene UID: 0x" + Integer.toHexString(badid));
+				Gene g = genes.getGeneByTranscriptGUID(badid);
+				System.err.println("Bad Gene Is Null?: " + (g == null));
+				System.err.println("Bad Gene: " + g.getName() + " (" + g.getID() + ")");
+			}
+			return false;
+		}
+		System.err.println("-DEBUG: Gene hit records written: " + dbc);
+		
+		return b;
+	}
+	
+	private boolean updateGeneHitRecord(int guid, GeneHitCounter ghc) throws SQLException
+	{
+		//Prepare blobs
+		int ti_count = ghc.total_hits_indiv.size();
+		Blob ti_blob = null;
+		if(ti_count < 1)
+		{
+			byte[] neg1 = {-1, -1, -1, -1};
+			ti_blob = sprepper.toBlob(neg1);
+		}
+		else
+		{
+			FileBuffer buff = new FileBuffer(ti_count * 4, true);
+			for(Integer i : ghc.total_hits_indiv) buff.addToFile(i);
+			ti_blob = sprepper.toBlob(buff.getBytes());
+		}
+		
+		int ei_count = ghc.exon_hits_indiv.size();
+		Blob ei_blob = null;
+		if(ei_count < 1)
+		{
+			byte[] neg1 = {-1, -1, -1, -1};
+			ei_blob = sprepper.toBlob(neg1);
+		}
+		else
+		{
+			FileBuffer buff = new FileBuffer(ei_count * 4, true);
+			for(Integer i : ghc.exon_hits_indiv) buff.addToFile(i);
+			ei_blob = sprepper.toBlob(buff.getBytes());
+		}
+		
+		/*PreparedStatement ps = sprepper.getGeneHitUpdateStatement();
+		
+		ps.setInt(StatementPrepper.GENEHIT_UD_TOT, ghc.total_hits_var);
+		ps.setInt(StatementPrepper.GENEHIT_UD_EXON, ghc.exon_hits_var);
+		ps.setBlob(StatementPrepper.GENEHIT_UD_TOT_INDIV, ti_blob);
+		ps.setBlob(StatementPrepper.GENEHIT_UD_EXON_INDIV, ei_blob);
+		ps.setInt(StatementPrepper.GENEHIT_UD_UID, guid);*/
+		
+		PreparedStatement ps = sprepper.getGeneHitInsertStatement();
+		
+		ps.setInt(StatementPrepper.GENEHIT_UID, guid);
+		ps.setInt(StatementPrepper.GENEHIT_TOT, ghc.total_hits_var);
+		ps.setInt(StatementPrepper.GENEHIT_EXON, ghc.exon_hits_var);
+		ps.setBlob(StatementPrepper.GENEHIT_TOT_INDIV, ti_blob);
+		ps.setBlob(StatementPrepper.GENEHIT_EXON_INDIV, ei_blob);
+		
+		int count = ps.executeUpdate();
+		
+		return (count == 1);
+	}
+	
+	public static boolean variantExonic(DBVariant var, Gene g)
+	{
+		if(var == null || g == null) return false;
+		if(var.getType() == SVType.TRA || var.getType() == SVType.BND)
+		{
+			if(g.getRelativeRegionLocationEffect(var.getStartPosition().getStart(), var.getStartPosition().getEnd()) == GeneFunc.EXONIC) return true;
+			if(g.getRelativeRegionLocationEffect(var.getEndPosition().getStart(), var.getEndPosition().getEnd()) == GeneFunc.EXONIC) return true;
+		}
+		else
+		{
+			if(g.getRelativeRegionLocationEffect(var.getStartPosition().getStart(), var.getEndPosition().getEnd()) == GeneFunc.EXONIC) return true;
+		}
+		
+		return false;
+	}
+	
 	/* ----- Getters ----- */
 	
 	public boolean variantExists(long varUID)
@@ -470,110 +1216,25 @@ public class SQLVariantTable implements VariantTable{
 	
 	public DBVariant getVariant(long varUID) 
 	{	
-		try 
-		{
-			PreparedStatement pstat = sprepper.getVarGetterStatement();
-			pstat.setLong(StatementPrepper.VARGET_VARUID, varUID);
-			ResultSet rs = pstat.executeQuery();
-			if(!rs.next()) {rs.close(); return null;}
-			DBVariant var = readFromResultSet(rs);
-			rs.close();
-			return var;
-		} 
-		catch (Exception e) 
-		{
-			e.printStackTrace();
-			return null;
-		}
+		return read_cache.getVariant(varUID);
 	}
 
 	public List<DBVariant> getVariants(Collection<Long> varUIDs)
 	{
 		if(varUIDs == null || varUIDs.isEmpty()) return null;
-		List<DBVariant> vlist = new LinkedList<DBVariant>();
-		int len = varUIDs.size();
-		
-		try 
-		{
-			PreparedStatement pstat = sprepper.generateMultiVarGetterStatement(len);
-			int i = 1;
-			for(Long vid : varUIDs)
-			{
-				pstat.setLong(i, vid);
-				i++;
-			}
-			ResultSet rs = pstat.executeQuery();
-			while(rs.next())
-			{
-				vlist.add(readFromResultSet(rs));
-			}
-			rs.close();
-		} 
-		catch (Exception e) 
-		{
-			e.printStackTrace();
-			return null;
-		}
-		
-		return vlist;
+		return read_cache.getVariants(varUIDs);
 	}
 	
 	@Override
 	public VariantGenotype getGenotype(long varUID) 
 	{
-		try 
-		{
-			PreparedStatement pstat = sprepper.getGenoGetterStatement();
-			pstat.setLong(StatementPrepper.GENOGET_VARUID, varUID);
-			ResultSet rs = pstat.executeQuery();
-			if(!rs.next()) {rs.close(); return null;}
-			Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
-			VariantGenotype vg = new VariantGenotype(varUID);
-			vg.readDataFromBLOB(genoblob);
-			rs.close();
-			return vg;
-		} 
-		catch (Exception e) 
-		{
-			e.printStackTrace();
-			return null;
-		}
+		return read_cache.getGenotype(varUID);
 	}
 
 	public List<VariantGenotype> getGenotypes(Collection<Long> varUIDs)
 	{
 		if(varUIDs == null || varUIDs.isEmpty()) return null;
-		List<VariantGenotype> glist = new LinkedList<VariantGenotype>();
-		
-		int len = varUIDs.size();
-		
-		try 
-		{
-			PreparedStatement pstat = sprepper.generateMultiGenoGetterStatement(len);
-			int i = 1;
-			for(Long vid : varUIDs)
-			{
-				pstat.setLong(i, vid);
-				i++;
-			}
-			ResultSet rs = pstat.executeQuery();
-			while(rs.next())
-			{
-				long varUID = rs.getLong(FIELDNAME_VARUID);
-				Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
-				VariantGenotype vg = new VariantGenotype(varUID);
-				vg.readDataFromBLOB(genoblob);
-				glist.add(vg);
-			}
-			rs.close();
-		} 
-		catch (Exception e) 
-		{
-			e.printStackTrace();
-			return null;
-		}
-		
-		return glist;
+		return read_cache.getGenotypes(varUIDs);
 	}
 	
 	public List<Long> getVariantIDsForSample(int sampleUID) 
@@ -649,72 +1310,116 @@ public class SQLVariantTable implements VariantTable{
 
 	public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end) 
 	{
-		List<DBVariant> varlist = new LinkedList<DBVariant>();
-		if(c == null) return varlist;
-		
-		//Don't forget to check the other end of TRAs!
-		int cuid = c.getUDPName().hashCode();
-		/*String sqlQuery = "SELECT * FROM " + TABLENAME_VARIANTS;
-		sqlQuery += " WHERE ";
-		
-		String statement_type = FIELDNAME_SVTYPE + "=" + SVType.TRA.getID() + " OR " + FIELDNAME_SVTYPE + "=" + SVType.BND.getID();
-		String statement_ctg1 = FIELDNAME_CTG1 + "=" + cuid;
-		String statement_ctg2 = FIELDNAME_CTG2 + "=" + cuid;
-		String statement_reg1 = FIELDNAME_START1 + "<" + end;
-		String statement_reg2 = FIELDNAME_END2 + ">=" + start;
-		
-		String statement_trareg1 = FIELDNAME_START1 + "<" + end;
-		String statement_trareg2 = FIELDNAME_START2 + ">=" + start;
-		String statement_trareg3 = FIELDNAME_END1 + "<" + end;
-		String statement_trareg4 = FIELDNAME_END2 + ">=" + start;
-		
-		//Combine for full statement
-		*
-		 *  (!TRA) && ctg1 && reg1 && reg2
-		 *  or
-		 *  TRA && ((ctg1 && treg1 && treg2) || (ctg2 && treg3 && treg4))
-		 
-		
-		String nottra = "(NOT " + statement_type + ")";
-		String normQuery = nottra + " AND " + statement_ctg1 + " AND " + statement_reg1 + " AND " + statement_reg2;
-		String tQuery1 = statement_ctg1 + " AND " + statement_trareg1 + " AND " + statement_trareg2;
-		String tQuery2 = statement_ctg2 + " AND " + statement_trareg3 + " AND " + statement_trareg4;
-		String traQuery = statement_type + " AND ((" + tQuery1 + ") OR (" + tQuery2 + "))";
-		sqlQuery += "(" + normQuery + ") OR (" + traQuery + ")";*/
-		//System.err.println("-DEBUG- sqlQuery: " + sqlQuery);
-				
-		try 
-		{
-			PreparedStatement pstat = sprepper.getRegionVarGetterStatement();
-			for(int i : StatementPrepper.VARS_REG_CUID) pstat.setInt(i, cuid);
-			for(int i : StatementPrepper.VARS_REG_START) pstat.setInt(i, start);
-			for(int i : StatementPrepper.VARS_REG_END) pstat.setInt(i, end);
-			ResultSet rs = pstat.executeQuery();
-			while(rs.next())
-			{
-				DBVariant var = readFromResultSet(rs);
-				if(var != null) varlist.add(var);
-			}
-			rs.close();
-		} 
-		catch (Exception e) 
-		{
-			e.printStackTrace();
-		}
-		
-		return varlist;
+		return rs_cache.getVariantsInRegion(c, start, end);
+	}
+
+	public GeneHitCounter getGeneHitCounts(int transcriptUID)
+	{
+		if(ghc_cache == null) loadGeneHitTable();
+		return ghc_cache.get(transcriptUID);
 	}
 
 	/* ----- Analysis ----- */
 	
-	public Map<String, GeneHitCounter> generateGeneHitMap() 
+	public boolean variantInRegion(DBVariant var, Contig c, int start, int end)
 	{
+		if(var == null) return false;
+		if(c == null) return false;
+		
+		boolean tra = var.getType() == SVType.TRA || var.getType() == SVType.BND;
+		if(tra)
+		{
+			//Check start
+			if(c.equals(var.getChrom()))
+			{
+				boolean b = 
+						(var.getStartPosition().getStart() < end) &&
+						(var.getStartPosition().getEnd() > start);
+				if(b) return true;
+			}
+			//Check end
+			if(c.equals(var.getEndChrom()))
+			{
+				boolean b = 
+						(var.getEndPosition().getStart() < end) &&
+						(var.getEndPosition().getEnd() > start);
+				if(b) return true;
+			}
+			return false;
+		}
+		else
+		{
+			if(!c.equals(var.getChrom())) return false;
+			if(var.getEndPosition().getEnd() <= start) return false;
+			if(var.getStartPosition().getStart() >= end) return false;
+		}
+		
+		return true;
+	}
+	
+	public boolean sampleHasVariantInGene(int sampleUID, Gene g)
+	{
+		if(g == null) return false;
+		
+		List<Long> svars = getVariantIDsForSample(sampleUID);
+		if(svars == null) return false;
+		
+		Collection<DBVariant> regvars = this.getVariantsInRegion(g.getChromosome(), g.getTranscriptStart(), g.getTranscriptEnd());
+		if(regvars == null || regvars.isEmpty()) return false;
+		
+		for(DBVariant v : regvars)
+		{
+			if(svars.contains(v.getLongID())) return true;
+		}
+		
+		return false;
+	}
+	
+	public boolean sampleHasExonicVariantInGene(int sampleUID, Gene g)
+	{
+		if(g == null) return false;
+		
+		List<Long> svars = getVariantIDsForSample(sampleUID);
+		if(svars == null) return false;
+		
+		//Now do by exon...
+		int ecount = g.getExonCount();
+		for(int i = 0; i < ecount; i++)
+		{
+			Exon e = g.getExon(i);
+			Collection<DBVariant> regvars = this.getVariantsInRegion(g.getChromosome(), e.getStart(), e.getEnd());
+			if(regvars == null || regvars.isEmpty()) return false;
+			
+			for(DBVariant v : regvars)
+			{
+				if(svars.contains(v.getLongID())) return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	public boolean regenerateGeneHitMap()
+	{
+		//Analyzes variants to regenerate hit map anew
+		
+		//Clear cache
+		if(ghc_cache == null)
+		{
+			ghc_cache = new ConcurrentHashMap<Integer, GeneHitCounter>();
+		}
+		else ghc_cache.clear();
+		
 		List<Gene> glist = genes.getAllGenes();
-		Map<String, GeneHitCounter> ghmap = new HashMap<String, GeneHitCounter>();
+		int debugctr = 0;
+		System.err.println("Analyzing genes... ");
+		//Map<String, GeneHitCounter> ghmap = new HashMap<String, GeneHitCounter>();
 		for(Gene g : glist)
 		{
+			//System.err.println("SQLVariantTable.generateGeneHitMap || -DEBUG- Loop: " + debugctr);
 			GeneHitCounter ghc = new GeneHitCounter();
-			ghmap.put(g.getID(), ghc);
+			//ghmap.put(g.getID(), ghc);
+			ghc_cache.put(g.getGUID(), ghc);
 			
 			Collection<DBVariant> hits = getVariantsInRegion(g.getChromosome(), g.getTranscriptStart(), g.getTranscriptEnd());
 			if(hits == null) continue;
@@ -730,21 +1435,298 @@ public class SQLVariantTable implements VariantTable{
 			}
 			ghc.exon_hits_var = exonhits.size();
 			
+			Map<Long, VariantGenotype> vgmap = new HashMap<Long, VariantGenotype>();
 			for(DBVariant var : hits)
 			{
 				VariantGenotype vg = getGenotype(var.getLongID());
 				if(vg != null) ghc.total_hits_indiv.addAll(vg.getAllIndividuals());
+				vgmap.put(vg.getVariantUID(), vg);
 			}
 			
 			for(DBVariant var : exonhits)
 			{
-				VariantGenotype vg = getGenotype(var.getLongID());
+				//VariantGenotype vg = getGenotype(var.getLongID());
+				VariantGenotype vg = vgmap.get(var.getLongID());
 				if(vg != null) ghc.exon_hits_indiv.addAll(vg.getAllIndividuals());
 			}
-			
+			debugctr++;
+			if(debugctr%1000 == 0) System.err.println(debugctr + " transcripts analyzed...");
 		}
 		
-		return ghmap;
+		//save
+		return saveGeneHitTable();
+	}
+	
+	public Map<String, GeneHitCounter> generateGeneHitMap() 
+	{
+		if(ghc_cache == null) loadGeneHitTable();
+		
+		//Remap to string transcript IDs
+		Map<String, GeneHitCounter> smap = new HashMap<String, GeneHitCounter>();
+		List<Gene> glist = genes.getAllGenes();
+		for(Gene g : glist)
+		{
+			smap.put(g.getID(), ghc_cache.get(g.getGUID()));
+		}
+		
+		return smap;
+	}
+	
+	public void dumpTable(String directory)
+	{
+		//TODO
+		//To see what's inside
+		String vtpath = directory + File.separator + "vartbl.csv";
+		String stpath = directory + File.separator + "sgenotbl.csv";
+		String gtpath = directory + File.separator + "genehittbl.csv";
+		
+		try
+		{
+			System.err.println("Dumping variants...");
+			PreparedStatement ps = sprepper.getVariantGetAllStatement();
+			ResultSet rs = ps.executeQuery();
+			
+			BufferedWriter bw = new BufferedWriter(new FileWriter(vtpath));
+			//Header
+			boolean first = true;
+			for(String[] spair : VAR_COLUMNS) {
+				if(!first)bw.write(",");
+				bw.write(spair[0]); 
+				first = false;
+			}
+			bw.write("\n");
+			//Records
+			while(rs.next())
+			{
+				DBVariant v = readFromResultSet(rs);
+				bw.write("0x" + Long.toHexString(v.getLongID()) + ",");
+				bw.write(v.getChrom().getUDPName() + ",");
+				bw.write(v.getStartPosition().getStart() + ",");
+				bw.write(v.getStartPosition().getEnd() + ",");
+				bw.write(v.getEndPosition().getStart() + ",");
+				bw.write(v.getEndPosition().getEnd() + ",");
+				bw.write(v.getType().getString() + ",");
+				bw.write(v.getPositionEffect().name() + ",");
+				bw.write(v.getName() + ",");
+				
+				bw.write(v.getIndividualCount() + ",");
+				bw.write(v.getHomozygoteCount() + ",");
+				
+				bw.write(v.getIndividualCount(Population.NFE) + ",");
+				bw.write(v.getHomozygoteCount(Population.NFE) + ",");
+				bw.write(v.getIndividualCount(Population.AFR) + ",");
+				bw.write(v.getHomozygoteCount(Population.AFR) + ",");
+				bw.write(v.getIndividualCount(Population.AMR) + ",");
+				bw.write(v.getHomozygoteCount(Population.AMR) + ",");
+				bw.write(v.getIndividualCount(Population.FIN) + ",");
+				bw.write(v.getHomozygoteCount(Population.FIN) + ",");
+				bw.write(v.getIndividualCount(Population.EAS) + ",");
+				bw.write(v.getHomozygoteCount(Population.EAS) + ",");
+				bw.write(v.getIndividualCount(Population.SAS) + ",");
+				bw.write(v.getHomozygoteCount(Population.SAS) + ",");
+				bw.write(v.getIndividualCount(Population.ASJ) + ",");
+				bw.write(v.getHomozygoteCount(Population.ASJ) + ",");
+				bw.write(v.getIndividualCount(Population.OTH) + ",");
+				bw.write(v.getHomozygoteCount(Population.OTH) + ",");
+				
+				//Gene list...
+				List<Gene> glist = v.getGeneListReference();
+				if(glist == null || glist.isEmpty()) bw.write("[NONE],");
+				else
+				{
+					first = true;
+					Set<String> nset = new HashSet<String>();
+					for(Gene g : glist)
+					{
+						//if(!first)bw.write(";");
+						//first = false;
+						//bw.write(g.getName() + "(" + g.getID() + ")");
+						//bw.write(g.getName());
+						nset.add(g.getName());
+					}
+					List<String> gnames = new ArrayList<String>(nset.size()+1);
+					gnames.addAll(nset);
+					Collections.sort(gnames);
+					for(String n : gnames)
+					{
+						if(!first)bw.write(";");
+						first = false;
+						bw.write(n);
+					}
+					bw.write(",");
+				}
+				
+				bw.write(v.getValidationNotes() + ",");
+				if(v.getType() == SVType.TRA || v.getType() == SVType.BND)
+				{
+					Contig c2 = v.getEndChrom();
+					if(c2 == null) c2 = v.getChrom();
+					bw.write(c2.getUDPName() + ",");
+				}
+				else
+				{
+					bw.write("N/A,");
+				}
+				
+				if(v.getType() == SVType.INS || v.getType() == SVType.INSME)
+				{
+					bw.write(v.getAltAlleleString() + ",");
+				}
+				else
+				{
+					bw.write("N/A,");
+				}
+				
+				//Genotypes
+				VariantGenotype vg = getGenotype(v.getLongID());
+				Collection<Integer> sids = vg.getAllIndividuals();
+				first = true;
+				for(Integer sid : sids)
+				{
+					Genotype g = vg.getAsGenotypeObject(sid, v.getType(), true);
+					if(!first)bw.write(";");
+					first = false;
+					bw.write(Integer.toHexString(sid) + "=" + g.getField("GT"));
+				}
+				
+				bw.write("\n");
+			}
+			rs.close();
+			bw.close();
+			
+			System.err.println("Dumping sample genotype table...");
+			ps = sprepper.getSGenoGetAllStatement();
+			rs = ps.executeQuery();
+			
+			bw = new BufferedWriter(new FileWriter(stpath));
+			//Header
+			first = true;
+			for(String[] spair : SAMPLEGENO_COLUMNS) {
+				if(!first)bw.write(",");
+				bw.write(spair[0]); 
+				first = false;
+			}
+			bw.write("\n");
+			
+			while(rs.next())
+			{
+				bw.write("0x" + Integer.toHexString(rs.getInt(FIELDNAME_SAMPLEUID)) + ",");
+		
+				//vars.addAll(readVarUIDListBlob(rs.getBlob(FIELDNAME_SVARLIST_HET)));
+				List<Long> vlist = this.readVarUIDListBlob(rs.getBlob(FIELDNAME_SVARLIST_HOM));
+				if(vlist == null || vlist.isEmpty()) bw.write("[NONE]");
+				else
+				{
+					first = true;
+					for(Long l : vlist)
+					{
+						if(!first)bw.write(";");
+						first = false;
+						bw.write(Long.toHexString(l));
+					}
+				}
+				bw.write(",");
+				
+				vlist = this.readVarUIDListBlob(rs.getBlob(FIELDNAME_SVARLIST_HET));
+				if(vlist == null || vlist.isEmpty()) bw.write("[NONE]");
+				else
+				{
+					first = true;
+					for(Long l : vlist)
+					{
+						if(!first)bw.write(";");
+						first = false;
+						bw.write(Long.toHexString(l));
+					}
+				}
+				bw.write(",");
+				
+				vlist = this.readVarUIDListBlob(rs.getBlob(FIELDNAME_SVARLIST_OTH));
+				if(vlist == null || vlist.isEmpty()) bw.write("[NONE]");
+				else
+				{
+					first = true;
+					for(Long l : vlist)
+					{
+						if(!first)bw.write(";");
+						first = false;
+						bw.write(Long.toHexString(l));
+					}
+				}
+				bw.write("\n");
+				
+			}
+			rs.close();
+			bw.close();
+			
+			System.err.println("Dumping gene hit table...");
+			ps = sprepper.getGeneHitGetAllStatement();
+			rs = ps.executeQuery();
+			
+			bw = new BufferedWriter(new FileWriter(gtpath));
+			//Header
+			first = true;
+			for(String[] spair : GENEHITS_COLUMNS) {
+				if(!first)bw.write(",");
+				bw.write(spair[0]); 
+				first = false;
+			}
+			bw.write("GENE_NAME,");
+			bw.write("TRANSCRIPT_ID\n");
+			
+			while(rs.next())
+			{
+				int guid = rs.getInt(FIELDNAME_GH_GENEUID);
+				Gene g = genes.getGeneByTranscriptGUID(guid);
+				
+				bw.write("0x" + Integer.toHexString(guid) + ",");
+				
+				//bw.write(rs.getInt(FIELDNAME_GH_HITS_T) + ",");
+				//bw.write(rs.getInt(FIELDNAME_GH_HITS_E) + ",");
+				GeneHitCounter ghc = this.readFromTableRecord(rs);
+				bw.write(ghc.total_hits_var + ",");
+				bw.write(ghc.exon_hits_var + ",");
+				
+				if(ghc.total_hits_indiv == null || ghc.total_hits_indiv.isEmpty()) bw.write("[NONE],");
+				else
+				{
+					first = true;
+					for(Integer i : ghc.total_hits_indiv)
+					{
+						if(!first) bw.write(";");
+						first = false;
+						bw.write(Integer.toHexString(i));
+					}
+					bw.write(",");
+				}
+				
+				if(ghc.exon_hits_indiv == null || ghc.exon_hits_indiv.isEmpty()) bw.write("[NONE],");
+				else
+				{
+					first = true;
+					for(Integer i : ghc.exon_hits_indiv)
+					{
+						if(!first) bw.write(";");
+						first = false;
+						bw.write(Integer.toHexString(i));
+					}
+					bw.write(",");
+				}
+				
+				bw.write(g.getName() + ",");
+				bw.write(g.getID() + "\n");
+				
+			}
+			
+			rs.close();
+			bw.close();
+			
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+			return;
+		}
 	}
 	
 	/* ----- Variant Addition ----- */
@@ -787,11 +1769,42 @@ public class SQLVariantTable implements VariantTable{
 			return false;
 		}
 		
+		//Update gene hit counts...
+		List<Gene> glist = var.getGeneListReference();
+		if(glist != null && !glist.isEmpty())
+		{
+			for(Gene g : glist)
+			{
+				GeneHitCounter ghc = this.getGeneHitCounts(g.getGUID());
+				if(ghc == null) continue;
+				ghc.total_hits_indiv.addAll(vgeno.getAllIndividuals());
+				if(isnew) ghc.total_hits_var++;
+				//If exonic...
+				boolean exonic = false;
+				if(var.getType() == SVType.TRA || var.getType() == SVType.BND)
+				{
+					exonic = g.getRelativeRegionLocationEffect(var.getStartPosition().getStart(), var.getStartPosition().getEnd()) == GeneFunc.EXONIC;
+					if(!exonic) exonic = g.getRelativeRegionLocationEffect(var.getEndPosition().getStart(), var.getEndPosition().getEnd()) == GeneFunc.EXONIC;
+				}
+				else
+				{
+					exonic = g.getRelativeRegionLocationEffect(var.getStartPosition().getStart(), var.getEndPosition().getEnd()) == GeneFunc.EXONIC;
+				}
+				
+				if(exonic) 
+				{
+					ghc.exon_hits_indiv.addAll(vgeno.getAllIndividuals());
+					if(isnew) ghc.exon_hits_var++;
+				}
+				ghc_cache_dirty = true;
+			}
+		}
+		
 		return true;
 	}
 	
 	@Override
-	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor) throws IOException 
+	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor, boolean ignoreTRA) throws IOException 
 	{
 		if(vcfpath == null) return false;
 		if(sampleMap == null) return false;
@@ -806,12 +1819,16 @@ public class SQLVariantTable implements VariantTable{
 		VCFReadStreamer vcfReader = new VCFReadStreamer(vcfpath, genome);
 		vcfReader.open();
 		
-		int debugctr = 0;
+		//int debugctr = 0;
 		
 		Iterator<StructuralVariant> sviter = vcfReader.getSVIterator();
+		Contig lastChrom = null; //For progress tracking
 		while(sviter.hasNext())
 		{
+			//debugctr++;
 			StructuralVariant sv = sviter.next();
+			if(ignoreTRA && (sv.getType() == SVType.TRA || sv.getType() == SVType.BND)) continue;
+			
 			//Look for merge candidates...
 			long id = -1L;
 			//Calculate merge distance in bp...
@@ -821,8 +1838,30 @@ public class SQLVariantTable implements VariantTable{
 			
 			//Grab variants in region to look up
 			int search_start = Math.max(0, sv.getCIPosition(false, false, false) - bp);
-			int search_end = sv.getCIPosition(true, false, true) + bp;
-			Collection<DBVariant> nearvars = this.getVariantsInRegion(sv.getChromosome(), search_start, search_end);
+			int search_end = -1;
+			Contig searchChrom = null;
+			if(sv instanceof Translocation) 
+			{
+				searchChrom = ((Translocation)sv).getChromosome1();
+				search_end = sv.getCIPosition(false, false, true) + bp;
+				//System.err.println("-DEBUG- SV Chrom: " + searchChrom.getUDPName());
+				//System.err.println("-DEBUG- SV Pos: " + sv.getPosition());
+				//System.err.println("-DEBUG- SV Chrom2: " + sv.getEndChromosome().getUDPName());
+				//System.err.println("-DEBUG- SV End: " + sv.getEndPosition());
+			}
+			else 
+			{
+				searchChrom = sv.getChromosome();
+				search_end = sv.getCIPosition(true, false, true) + bp;
+			}
+			if(searchChrom != lastChrom)
+			{
+				lastChrom = searchChrom;
+				System.err.println("Now reading variants from chromosome " + searchChrom.getUDPName());
+			}
+			//System.err.println("-DEBUG- Region search: " + searchChrom.getUDPName() + ":" + search_start + "-" + search_end);
+			Collection<DBVariant> nearvars = getVariantsInRegion(searchChrom, search_start, search_end);
+			//if(nearvars != null) System.err.println("-DEBUG- Hits: " + nearvars.size());
 			if(nearvars != null && !nearvars.isEmpty())
 			{
 				//Look for matches
@@ -831,17 +1870,21 @@ public class SQLVariantTable implements VariantTable{
 					if(dbv.svIsEquivalent(sv, mfac))
 					{
 						id = dbv.getLongID();
-						System.err.println("Match found: 0x" + Long.toHexString(id));
+						//System.err.println("Match found: 0x" + Long.toHexString(id));
+						//System.err.println("Match: " + sv.toString() + " ---> " + dbv.toString());
 						break;
 					}
 				}
 			}
+			//if(debugctr >= 5) System.exit(2);
 			
 			//If matched, need to update record.
 			//If not matched, need new record.
 			boolean newvar = (id == -1L);
 			if(!newvar)
 			{
+				//We merging!
+				
 				DBVariant dbv = this.getVariant(id);
 				//Update start/end
 				int npos = sv.getCIPosition(false, false, false);
@@ -862,6 +1905,7 @@ public class SQLVariantTable implements VariantTable{
 				VariantGenotype vg = this.getGenotype(id);
 				for(String sample : samples)
 				{
+					//TODO
 					FamilyMember mem = sampleMap.get(sample);
 					if(mem == null) continue;
 					//See if already has genotype...
@@ -871,6 +1915,7 @@ public class SQLVariantTable implements VariantTable{
 					{
 						//See if homref.
 						//If so remove if there or continue
+									
 						if(geno.isGenotypeUnknown() || (geno.isHomozygous() && geno.hasAllele(0)))
 						{
 							if(g != null)
@@ -960,10 +2005,27 @@ public class SQLVariantTable implements VariantTable{
 					}
 				}
 				this.addOrUpdateVariant(dbv, vg, false);
+				
+				//If the variant hits any genes, update those gene hit counts!
+				/*List<Gene> glist = dbv.getGeneListReference();
+				if(glist != null && !glist.isEmpty())
+				{
+					for(Gene g : glist)
+					{
+						GeneHitCounter ghc = this.getGeneHitCounts(g.getGUID());
+						if(ghc == null) continue;
+						ghc.total_hits_indiv.addAll(vg.getAllIndividuals());
+						//If exonic...
+						if(dbv.getPositionEffect() == GeneFunc.EXONIC) ghc.exon_hits_indiv.addAll(vg.getAllIndividuals());
+						ghc_cache_dirty = true;
+					}
+				}*/
 			}
 			else
 			{
-				id = generateUID(sv.getChromosome(), sv.getPosition());
+				//New variant!
+				
+				id = generateUID(searchChrom, sv.getPosition());
 				DBVariant dbv = DBVariant.getFromVariant(sv, sv.getVarID());
 				dbv.setLongUID(id);
 				dbv.noteGenes(genes);
@@ -971,14 +2033,19 @@ public class SQLVariantTable implements VariantTable{
 				
 				for(String sample : samples)
 				{
+					//TODO
 					FamilyMember mem = sampleMap.get(sample);
 					if(mem == null) continue;
+					//System.err.println("Family member found for sample " + sample + "! 0x" + Integer.toHexString(mem.getUID()));
+					//System.exit(2);
 					Genotype gt = sv.getSampleGenotype(sample);
 					if(gt == null) continue;
 					if(gt.isGenotypeUnknown()) continue;
 					if(gt.isHomozygous() && gt.hasAllele(0)) continue;
 					SVDBGenotype g = SVDBGenotype.generateGenotype(mem.getUID(), gt, sv);
 					vg.addGenotype(g);
+					//System.err.println("Genotype generated: " + g.isHomozygous() + " | " + Integer.toHexString(g.getIndividualUID()));
+					//System.exit(2);
 					
 					boolean homalt = g.isHomozygous();
 					Collection<Population> pflags = mem.getPopulationTags();
@@ -998,8 +2065,8 @@ public class SQLVariantTable implements VariantTable{
 				addOrUpdateVariant(dbv, vg, true);
 			}
 			//System.exit(2);
-			debugctr++;
-			if(debugctr >= 2) System.exit(2);
+			//debugctr++;
+			//if(debugctr >= 2) System.exit(2);
 		}
 		
 		vcfReader.close();
@@ -1027,7 +2094,8 @@ public class SQLVariantTable implements VariantTable{
 	
 	public boolean removeVariant(long varUID)
 	{
-		//Get genotype
+		//Get variant so can remove gene hit info
+		DBVariant var = getVariant(varUID);
 		VariantGenotype vg = getGenotype(varUID);
 		
 		try 
@@ -1052,6 +2120,25 @@ public class SQLVariantTable implements VariantTable{
 				updateSampleGenoTable(null, removes);
 			}
 			
+			List<Gene> vgenes = var.getGeneListReference();
+			if(vgenes != null)
+			{
+				for(Gene g : vgenes)
+				{
+					ghc_cache_dirty = true;
+					GeneHitCounter ghc = getGeneHitCounts(g.getGUID());
+					boolean exonic = variantExonic(var, g);
+					ghc.total_hits_var--;
+					if(exonic) ghc.exon_hits_var--;
+					
+					for(Integer sid : vg.getAllIndividuals())
+					{
+						if(!this.sampleHasVariantInGene(sid, g)) ghc.total_hits_indiv.remove(sid);
+						if(exonic && !this.sampleHasExonicVariantInGene(sid, g)) ghc.exon_hits_indiv.remove(sid);
+					}
+				}
+			}
+			
 			return (count == 1);
 		} 
 		catch (SQLException e) 
@@ -1059,8 +2146,6 @@ public class SQLVariantTable implements VariantTable{
 			e.printStackTrace();
 			return false;
 		}
-		
-		
 	}
 	
 	public boolean removeVariants(Collection<Long> varUIDs)
@@ -1069,6 +2154,7 @@ public class SQLVariantTable implements VariantTable{
 		int sz = varUIDs.size();
 		
 		Collection<VariantGenotype> vglist = getGenotypes(varUIDs);
+		Collection<DBVariant> varlist = getVariants(varUIDs);
 		
 		int len = varUIDs.size();
 		
@@ -1100,6 +2186,38 @@ public class SQLVariantTable implements VariantTable{
 				updateSampleGenoTable(null, removes);	
 			}
 			
+			for(DBVariant v : varlist)
+			{
+				List<Gene> vgenes = v.getGeneListReference();
+				if(vgenes != null && !vgenes.isEmpty())
+				{
+					//Gene genotype
+					VariantGenotype vg = null;
+					for(VariantGenotype itr : vglist)
+					{
+						if(itr.getVariantUID() == v.getLongID())
+						{
+							vg = itr;
+							break;
+						}
+					}
+					for(Gene g : vgenes)
+					{
+						ghc_cache_dirty = true;
+						GeneHitCounter ghc = getGeneHitCounts(g.getGUID());
+						boolean exonic = variantExonic(v, g);
+						ghc.total_hits_var--;
+						if(exonic) ghc.exon_hits_var--;
+						
+						for(Integer sid : vg.getAllIndividuals())
+						{
+							if(!this.sampleHasVariantInGene(sid, g)) ghc.total_hits_indiv.remove(sid);
+							if(exonic && !this.sampleHasExonicVariantInGene(sid, g)) ghc.exon_hits_indiv.remove(sid);
+						}
+					}
+				}
+			}
+			
 			return (count == sz);
 		} 
 		catch (SQLException e) 
@@ -1122,6 +2240,16 @@ public class SQLVariantTable implements VariantTable{
 		
 		//Remove sample geno record
 		b = b && removeSampleGenoRecord(uid);
+		
+		//Remove individual from gene hit counts
+		ghc_cache_dirty = true;
+		List<Gene> glist = genes.getAllGenes();
+		for(Gene g : glist)
+		{
+			GeneHitCounter ghc = getGeneHitCounts(g.getGUID());
+			ghc.exon_hits_indiv.remove(uid);
+			ghc.total_hits_indiv.remove(uid);
+		}
 		
 		//Remove variants or geno records
 		if(vglist != null)
@@ -1393,10 +2521,50 @@ public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Cleanup ----- */
 	
+	public void flushCache()
+	{
+		read_cache.clear();
+		rs_cache.flush();
+	}
+	
 	@Override
 	public void save() throws IOException 
 	{
-		//Shouldn't need to do anything???
+		if(ghc_cache_dirty && ghc_cache != null)
+		{
+			System.err.println("Saving database updates...");
+			saveGeneHitTable();
+		}
 	}
 
+	public void clearVariantTable()
+	{
+		try
+		{
+			System.err.println("Deleting variants...");
+			PreparedStatement ps = sprepper.getVarTableWipeStatement();
+			ps.executeUpdate();
+			ps.close();
+			
+			System.err.println("Deleting sample genotype mapping data...");
+			ps = sprepper.getSampleGenoTableWipeStatement();
+			ps.executeUpdate();
+			ps.close();
+			
+			System.err.println("Deleting gene hit data...");
+			ps = sprepper.getGeneHitTableWipeStatement();
+			ps.executeUpdate();
+			ps.close();
+			
+			this.zeroGeneHitTable();
+			System.err.println("Variant table reset complete!");
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+		}
+		
+		
+	}
+	
 }

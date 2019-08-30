@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -49,19 +50,22 @@ import waffleoRai_Compression.huffman.Huffman;
  * 1.5.1 | April 15, 2019
  * 	Contigs now held in threadsafe map objects
  * 
+ * 1.6.0 | August 21, 2019
+ *  File format version 4 - now records contig UIDs (as ints)
+ * 
  */
 
 /**
  * A container for information about a genome build, such as the contigs present, their
  * various aliases, and their lengths.
  * @author Blythe Hospelhorn
- * @version 1.5.1
- * @since April 15, 2019
+ * @version 1.6.0
+ * @since August 21, 2019
  *
  */
 public class GenomeBuild {
 
-	public static final int CURRENT_VERSION = 3;
+	public static final int CURRENT_VERSION = 4;
 	
 	public static final String GBLD_MAGIC = "GBLD";
 	public static final String GBDH_MAGIC = "GBDH";
@@ -204,6 +208,7 @@ public class GenomeBuild {
 		
 		// Contig block
 			// Contig block size [4]
+			// Contig UID [4] (v4+)
 			// Contig length [8]
 			// Contig type [4]
 			// # PARs [4] (Version 3+, if sexchrom)
@@ -270,6 +275,8 @@ public class GenomeBuild {
 			long sPos = cPos + 4;
 			int bSz = genome.intFromFile(cPos); cPos += 4;
 			//System.err.println("GenomeBuild.parseGBLD || DEBUG -- Block Size: " + bSz);
+			int cuid = 0;
+			if(version >= 4) {cuid = genome.intFromFile(cPos); cPos+=4;}
 			long cLen = genome.longFromFile(cPos); cPos += 8;
 			//System.err.println("GenomeBuild.parseGBLD || DEBUG -- Contig Length: " + cLen);
 			int cType = genome.intFromFile(cPos); cPos += 4;
@@ -296,6 +303,16 @@ public class GenomeBuild {
 			String UCSC = genome.getASCII_string(cPos, FIELDLEN_UCSCNAME); cPos += FIELDLEN_UCSCNAME;
 			//System.err.println("GenomeBuild.parseGBLD || DEBUG -- UCSC Name: " + UCSC);
 			String UDP = genome.getASCII_string(cPos, FIELDLEN_UDPNAME); cPos += FIELDLEN_UDPNAME;
+			if(cuid == 0) cuid = UDP.hashCode() ^ buildName.hashCode();
+			
+			while(UIDMap.containsKey(cuid))
+			{
+				System.err.println("GenomeBuild.parseGBLD || Duplicate GUID found! 0x" + Integer.toHexString(cuid));
+				Random r = new Random();
+				cuid = r.nextInt();
+				System.err.println("GenomeBuild.parseGBLD || GUID Reset to 0x" + Integer.toHexString(cuid));
+				System.err.println("GenomeBuild.parseGBLD || (Changes must be saved to file)");
+			}
 			//System.err.println("GenomeBuild.parseGBLD || DEBUG -- Standard Name: " + UDP);
 			
 			int nameCount = genome.intFromFile(cPos); cPos += 4;
@@ -314,6 +331,7 @@ public class GenomeBuild {
 			c.setType(cType);
 			c.setUCSCName(UCSC);
 			c.setUDPName(UDP);
+			c.setUID(cuid);
 			for (String n : nameSet) c.addName(n);
 			
 			addContig(c);
@@ -379,7 +397,7 @@ public class GenomeBuild {
 		{
 			contigMap.put(n, c);
 		}
-		UIDMap.put(c.getUDPName().hashCode(), c);
+		UIDMap.put(c.getUID(), c);
 	}
 	
 	public Contig getContig(String contigName)

@@ -17,6 +17,7 @@ import java.util.TreeSet;
 import hospelhornbg_bioinformatics.Interval;
 import hospelhornbg_bioinformatics.SVType;
 import hospelhornbg_bioinformatics.StructuralVariant;
+import hospelhornbg_bioinformatics.Translocation;
 import hospelhornbg_genomeBuild.Contig;
 import hospelhornbg_genomeBuild.Gene;
 import hospelhornbg_genomeBuild.GeneFunc;
@@ -201,13 +202,21 @@ public class DBVariant implements Comparable<DBVariant>{
 	{
 		//Does NOT do anything with population fields!!
 		//Does NOT do anything with gene information!
+		//System.err.println("-DEBUG- Converting variant!");
 		if (sv == null) return null;
 		DBVariant var = new DBVariant();
 		
 		var.sID = name;
 		var.regenerateIntegerID();
 		var.eType = sv.getType();
-		var.oChrom = sv.getChromosome();
+		
+		if(sv instanceof Translocation)
+		{
+			Translocation tra = (Translocation)sv;
+			var.oChrom = tra.getChromosome1();
+			//System.err.println("-DEBUG- Variant is translocation! Chrom 1 set to: " + var.oChrom);
+		}
+		else var.oChrom = sv.getChromosome();
 		
 		if(sv.isImprecise())
 		{
@@ -303,7 +312,7 @@ public class DBVariant implements Comparable<DBVariant>{
 			for(int i = 0; i < ngenes; i++)
 			{
 				int gid = record.intFromFile(cpos); cpos += 4;
-				Gene g = gs.getGeneByTranscriptHashUID(gid);
+				Gene g = gs.getGeneByTranscriptGUID(gid);
 				if(g != null) var.lGenes.add(g);
 			}
 		}
@@ -352,7 +361,7 @@ public class DBVariant implements Comparable<DBVariant>{
 		
 		int sz = lGenes.size() * 4;
 		FileBuffer loader = new FileBuffer(sz, true);
-		for(Gene g : lGenes) loader.addToFile(g.getID().hashCode());
+		for(Gene g : lGenes) loader.addToFile(g.getGUID());
 		return loader;
 	}
 	
@@ -395,7 +404,7 @@ public class DBVariant implements Comparable<DBVariant>{
 		{
 			int tid = data.intFromFile(cpos); cpos += 4;
 			if(tid == -1) return;
-			Gene g = gs.getGeneByTranscriptHashUID(tid);
+			Gene g = gs.getGeneByTranscriptGUID(tid);
 			lGenes.add(g);
 		}
 		
@@ -458,12 +467,32 @@ public class DBVariant implements Comparable<DBVariant>{
 	public void noteGenes(GeneSet gs)
 	{
 		this.ePosEff = GeneFunc.INTERGENIC;
-		List<Gene> glist = gs.getGenesInRegion(oChrom, iStart.getStart(), iEnd.getEnd());
-		lGenes= glist;
-		if (glist == null) return;
+		
+		if(eType == SVType.TRA || eType == SVType.BND)
+		{
+			//System.err.println("-DEBUG- Chr1 = " + oChrom.getUDPName());
+			//System.err.println("-DEBUG- Start: " + iStart.getStart());
+			//System.err.println("-DEBUG- End: " + iStart.getEnd());
+			List<Gene> glist = gs.getGenesInRegion(oChrom, iStart.getStart(), iStart.getEnd());
+			Contig chr2 = oChrom2!=null?oChrom2:oChrom;
+			//System.err.println("-DEBUG- Chr2 = " + chr2.getUDPName());
+			//System.err.println("-DEBUG- Start: " + iEnd.getStart());
+			//System.err.println("-DEBUG- End: " + iEnd.getEnd());
+			List<Gene> glist2 = gs.getGenesInRegion(chr2, iEnd.getStart(), iEnd.getEnd());
+			lGenes = glist;
+			if(lGenes != null) lGenes.addAll(glist2);
+			else lGenes = glist2;
+			if (lGenes == null) return;
+		}
+		else
+		{
+			List<Gene> glist = gs.getGenesInRegion(oChrom, iStart.getStart(), iEnd.getEnd());
+			lGenes= glist;
+			if (lGenes == null) return;
+		}
 		
 		//Get poseff
-		for (Gene g : glist)
+		for (Gene g : lGenes)
 		{
 			GeneFunc gf = g.getRelativeRegionLocationEffect(iStart.getStart(), iEnd.getEnd());
 			if (gf.getPriority() < ePosEff.getPriority()) ePosEff = gf;
@@ -720,11 +749,16 @@ public class DBVariant implements Comparable<DBVariant>{
 	
 	public boolean svIsEquivalent(StructuralVariant sv, double percLeeway)
 	{
+		//System.err.println("DBVariant.svIsEquivalent || -DEBUG- Comparing " + this.toString() + " to " + sv.toString());
+		//System.err.println("DBVariant.svIsEquivalent || -DEBUG- Leeway: " + percLeeway);
+		
 		//First, do type match
 		if(eType != sv.getType()) return false;
 		
 		//Check chrom 1
-		Contig c1 = sv.getChromosome();
+		Contig c1 = null;
+		if(sv instanceof Translocation) c1 = ((Translocation)sv).getChromosome1();
+		else c1 = sv.getChromosome();
 		if (oChrom == null && c1 != null) return false;
 		if (oChrom != null && c1 == null) return false;
 		if (oChrom != null && c1 != null)
@@ -861,6 +895,7 @@ public class DBVariant implements Comparable<DBVariant>{
 	public StructuralVariant toStructuralVariant()
 	{
 		StructuralVariant sv = new StructuralVariant();
+		sv.setLongGUID(this.getLongID());
 		sv.setChromosome(oChrom);
 		int st = iStart.getCenter();
 		int ed = iEnd.getCenter();
@@ -1046,6 +1081,11 @@ public class DBVariant implements Comparable<DBVariant>{
 	public void setInsSeq(String seq)
 	{
 		this.sAlt = seq;
+	}
+
+	public String toString()
+	{
+		return oChrom.getUDPName() + ":" + this.iStart.getStart() + "-" + this.iEnd.getEnd() + " [" + this.eType + "]";
 	}
 	
 }
