@@ -330,7 +330,7 @@ public class SVDatabase {
 		return slist;
 	}
 	
-	public boolean addVCF(String vcfpath, boolean verbose, boolean ignoreTRA) throws IOException
+	public boolean addVCF(String vcfpath, boolean verbose, boolean ignoreTRA, int threads) throws IOException
 	{
 		//See if VCF even exists
 		if(!FileBuffer.fileExists(vcfpath)) return false;
@@ -353,7 +353,7 @@ public class SVDatabase {
 		}
 		//System.exit(2);
 		//Add to variant table...
-		return variantTable.addVCF(vcfpath, smap, mergeFactor, ignoreTRA);
+		return variantTable.addVCF(vcfpath, smap, mergeFactor, ignoreTRA, threads);
 	}
 	
 	public void clearVariantTable()

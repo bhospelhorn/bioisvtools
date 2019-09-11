@@ -1833,7 +1833,7 @@ public class DBVariantTable implements VariantTable{
 	
 	/*----- Write -----*/
 	
-	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor, boolean ignoreTRA) throws IOException
+	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor, boolean ignoreTRA, int threads) throws IOException
 	{
 		VCFReadStreamer vcfStream = new VCFReadStreamer(vcfpath, varCache.genome);
 		

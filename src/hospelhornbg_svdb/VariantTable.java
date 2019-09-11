@@ -78,7 +78,7 @@ public interface VariantTable {
 	public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end);
 	public Map<String, GeneHitCounter> generateGeneHitMap();
 	
-	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor, boolean ignoreTRA) throws IOException;
+	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor, boolean ignoreTRA, int threads) throws IOException;
 	public boolean removeSample(FamilyMember sample);
 	public boolean removeFamily(Family fam);
 	public boolean updateSampleCounts(DBSampleTable sampleTable);

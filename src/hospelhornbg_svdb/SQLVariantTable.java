@@ -1804,7 +1804,7 @@ public class SQLVariantTable implements VariantTable{
 	}
 	
 	@Override
-	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor, boolean ignoreTRA) throws IOException 
+	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor, boolean ignoreTRA, int threads) throws IOException 
 	{
 		if(vcfpath == null) return false;
 		if(sampleMap == null) return false;

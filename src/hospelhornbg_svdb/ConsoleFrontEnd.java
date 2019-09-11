@@ -1,7 +1,11 @@
 package hospelhornbg_svdb;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.LinkedList;
+import java.util.List;
 
 import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_segregation.Family;
@@ -23,6 +27,7 @@ public class ConsoleFrontEnd {
 	public static final String PROG_REMOVEFAM = "removefam";
 	public static final String PROG_DUMPFAM = "famvardump";
 	public static final String PROG_ADDVARS = "addvars";
+	public static final String PROG_ADDVARBATCH = "addvarbatch";
 	public static final String PROG_CLEARVARS = "clearvars";
 	public static final String PROG_SEEVARS = "seevars";
 	
@@ -34,10 +39,12 @@ public class ConsoleFrontEnd {
 	public static final String OP_DBNAME = "-n";
 	public static final String OP_DBPATH = "-d";
 	
+	public static final String OP_INPUTFILE = "-i";
 	public static final String OP_INPUTFAMI = "-F";
 	public static final String OP_INPUTVCF = "-V";
 	public static final String OP_OMIMPATH = "-O";
 	
+	public static final String OP_THREADS = "-t";
 	public static final String OP_OUTPUTPATH = "-o";
 	
 	public static final String OP_LEEWAY = "-l";
@@ -97,11 +104,41 @@ public class ConsoleFrontEnd {
 		db.dumpFamily(fam, outpath, verbose);
 	}
 	
-	public static void addVCF(String dbDir, String vcfPath, boolean verbose, boolean ignoreTRA) throws IOException, SQLException
+	public static void addVCF(String dbDir, String vcfPath, boolean verbose, boolean ignoreTRA, int threads) throws IOException, SQLException
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
-		db.addVCF(vcfPath, verbose, ignoreTRA);
+		db.addVCF(vcfPath, verbose, ignoreTRA, threads);
 		db.saveDatabase();
+	}
+	
+	public static void addVCFBatch(String dbDir, String vcfListPath, boolean verbose, boolean ignoreTRA, int threads) throws IOException, SQLException
+	{
+		List<String> filelist = new LinkedList<String>();
+		BufferedReader br = new BufferedReader(new FileReader(vcfListPath));
+		String line = null;
+		while((line = br.readLine()) != null) filelist.add(line);
+		br.close();
+		
+		if(filelist.isEmpty())
+		{
+			if(verbose) System.err.println("ConsoleFrontEnd.addVCFBatch || No file paths were provided! Exiting...");
+			System.exit(0);
+		}
+		
+		int total = filelist.size();
+		if(verbose) System.err.println("ConsoleFrontEnd.addVCFBatch || " + total + " paths found!");
+		
+		SVDatabase db = SVDatabase.loadDatabase(dbDir);
+		//Do 10 and save
+		int counter = 0;
+		for(String p : filelist)
+		{
+			if(verbose) System.err.println("BATCH VCF ADD: Now adding " + p + " (" + (counter+1) + "/" + total + ")");
+			db.addVCF(p, verbose, ignoreTRA, threads);
+			counter++;
+			if(counter % 10 == 0) db.saveDatabase();
+		}
+		if(counter % 10 != 0) db.saveDatabase();
 	}
 	
 	public static void clearVariants(String dbDir) throws IOException, SQLException
@@ -130,6 +167,7 @@ public class ConsoleFrontEnd {
 			System.exit(1);
 		}
 		
+		String inpath = null;
 		String mode = args[1];
 		String famname = null;
 		String dbname = null;
@@ -140,6 +178,7 @@ public class ConsoleFrontEnd {
 		String omimPath = null;
 		String sqlPath = null;
 		int mFactor = DEFO_MERGE_FACTOR;
+		int threadCount = 1;
 		boolean notra = false;
 		
 		for (int i = 0; i < args.length; i++)
@@ -174,6 +213,16 @@ public class ConsoleFrontEnd {
 					System.exit(1);
 				}
 				sqlPath = args[i+1];
+			}
+			else if (s.equals(OP_INPUTFILE))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_INPUTFILE + " flag MUST be followed by an input file path!");
+					printUsage();
+					System.exit(1);
+				}
+				inpath = args[i+1];
 			}
 			else if (s.equals(OP_FAMILY))
 			{
@@ -228,6 +277,56 @@ public class ConsoleFrontEnd {
 			else if (s.equals(OP_NOTRA))
 			{
 				notra = true;
+			}
+			else if (s.equals(OP_LEEWAY))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_LEEWAY + " flag MUST be followed by an integer!");
+					printUsage();
+					System.exit(1);
+				}
+				try
+				{
+					mFactor = Integer.parseInt(args[i+1]);
+				}
+				catch(NumberFormatException e)
+				{
+					System.err.println("ERROR: " + OP_LEEWAY + " flag MUST be followed by an integer!");
+					printUsage();
+					System.exit(1);
+				}
+				if(mFactor < 0 || mFactor > 1000)
+				{
+					System.err.println("ERROR: " + OP_LEEWAY + " value must be between 0 and 1000!");
+					printUsage();
+					System.exit(1);
+				}
+			}
+			else if (s.equals(OP_THREADS))
+			{
+				if (i+1 >= args.length)
+				{
+					System.err.println("ERROR: " + OP_THREADS + " flag MUST be followed by an integer!");
+					printUsage();
+					System.exit(1);
+				}
+				try
+				{
+					threadCount = Integer.parseInt(args[i+1]);
+				}
+				catch(NumberFormatException e)
+				{
+					System.err.println("ERROR: " + OP_THREADS + " flag MUST be followed by an integer!");
+					printUsage();
+					System.exit(1);
+				}
+				if(threadCount < 0)
+				{
+					System.err.println("ERROR: " + OP_THREADS + " value must be positive!");
+					printUsage();
+					System.exit(1);
+				}
 			}
 		}
 		
@@ -426,7 +525,7 @@ public class ConsoleFrontEnd {
 			
 			try 
 			{
-				addVCF(dbdir, vcfPath, verbose, notra);
+				addVCF(dbdir, vcfPath, verbose, notra, 1);
 			} 
 			catch (IOException e) 
 			{
@@ -437,6 +536,40 @@ public class ConsoleFrontEnd {
 			catch (SQLException e) 
 			{
 				System.err.println(PROG_ADDVARS + " ERROR | VCF could not be added! (Could not connect to SQL database!)");
+				e.printStackTrace();
+				System.exit(1);
+			}
+			
+		}
+		else if(mode.equals(PROG_ADDVARBATCH))
+		{
+			//Need dbdir and vcfpath
+			if(dbdir == null || dbdir.isEmpty())
+			{
+				System.err.println(PROG_ADDVARBATCH + " ERROR | Database directory is required!");
+				printUsage();
+				System.exit(1);
+			}
+			if(inpath == null || inpath.isEmpty())
+			{
+				System.err.println(PROG_ADDVARBATCH + " ERROR | VCF list path is required!");
+				printUsage();
+				System.exit(1);
+			}
+			
+			try 
+			{
+				addVCFBatch(dbdir, inpath, verbose, notra, 1);
+			} 
+			catch (IOException e) 
+			{
+				System.err.println(PROG_ADDVARBATCH + " ERROR | VCF(s) could not be added!");
+				e.printStackTrace();
+				System.exit(1);
+			} 
+			catch (SQLException e) 
+			{
+				System.err.println(PROG_ADDVARBATCH + " ERROR | VCF(s) could not be added! (Could not connect to SQL database!)");
 				e.printStackTrace();
 				System.exit(1);
 			}
