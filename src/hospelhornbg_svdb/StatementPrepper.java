@@ -19,6 +19,15 @@ public class StatementPrepper {
 	public static final int[] VARS_REG_START = {3, 6, 9};
 	public static final int[] VARS_REG_END = {2, 5, 8};
 	
+	public static final int VARS_REG_NOTRA_CUID = 1;
+	public static final int VARS_REG_NOTRA_START = 2;
+	public static final int VARS_REG_NOTRA_END = 3;
+	
+	public static final int VARS_REG_TYPE_TYPE = 1;
+	public static final int VARS_REG_TYPE_CUID = 2;
+	public static final int VARS_REG_TYPE_START = 3;
+	public static final int VARS_REG_TYPE_END = 4;
+	
 	public static final int FULLINS_VARUID = 1;
 	public static final int FULLINS_CHR1 = 2;
 	public static final int FULLINS_ST1 = 3;
@@ -130,6 +139,8 @@ public class StatementPrepper {
 	private PreparedStatement sampvar_getter;
 	
 	private PreparedStatement vars_in_reg;
+	private PreparedStatement vars_in_reg_notra;
+	private PreparedStatement vars_in_reg_type;
 	
 	private PreparedStatement insert_full;
 	private PreparedStatement short_update;
@@ -252,6 +263,59 @@ public class StatementPrepper {
 			//System.err.println("StatementPrepper.getRegionVarGetterStatement || Statement is null? " + (vars_in_reg == null));
 		}
 		return vars_in_reg;
+	}
+	
+	public PreparedStatement getRegionNoTRAVarGetterStatement() throws SQLException
+	{
+		if(vars_in_reg_notra == null)
+		{
+			String sqlQuery = "SELECT * FROM " + SQLVariantTable.TABLENAME_VARIANTS;
+			sqlQuery += " WHERE ";
+			
+			String statement_type = SQLVariantTable.FIELDNAME_SVTYPE + "=" + SVType.TRA.getID() + " OR " + SQLVariantTable.FIELDNAME_SVTYPE + "=" + SVType.BND.getID();
+			String statement_ctg1 = SQLVariantTable.FIELDNAME_CTG1 + " = ?";// + cuid; 0 3
+			String statement_reg1 = SQLVariantTable.FIELDNAME_START1 + " < ?";// + end; 1
+			String statement_reg2 = SQLVariantTable.FIELDNAME_END2 + " >= ?";// + start; 2
+			
+			//Combine for full statement
+			/*
+			 *  (!TRA) && ctg1 && reg1 && reg2
+			 */
+			
+			String nottra = "(NOT " + statement_type + ")";
+			String normQuery = nottra + " AND " + statement_ctg1 + " AND " + statement_reg1 + " AND " + statement_reg2;
+			sqlQuery += normQuery;
+			
+			vars_in_reg_notra = connection.prepareStatement(sqlQuery);
+			//System.err.println("StatementPrepper.getRegionVarGetterStatement || Statement is null? " + (vars_in_reg == null));
+		}
+		return vars_in_reg_notra;
+	}
+	
+	public PreparedStatement getRegionNoTRAVarGetterStatement_ofType() throws SQLException
+	{
+		if(vars_in_reg_type == null)
+		{
+			String sqlQuery = "SELECT * FROM " + SQLVariantTable.TABLENAME_VARIANTS;
+			sqlQuery += " WHERE ";
+			
+			String statement_type = SQLVariantTable.FIELDNAME_SVTYPE + "= ?";
+			String statement_ctg1 = SQLVariantTable.FIELDNAME_CTG1 + " = ?";// + cuid; 0 3
+			String statement_reg1 = SQLVariantTable.FIELDNAME_START1 + " < ?";// + end; 1
+			String statement_reg2 = SQLVariantTable.FIELDNAME_END2 + " >= ?";// + start; 2
+			
+			//Combine for full statement
+			/*
+			 *  (!TRA) && ctg1 && reg1 && reg2
+			 */
+			
+			String normQuery = statement_type + " AND " + statement_ctg1 + " AND " + statement_reg1 + " AND " + statement_reg2;
+			sqlQuery += normQuery;
+			
+			vars_in_reg_type = connection.prepareStatement(sqlQuery);
+			//System.err.println("StatementPrepper.getRegionVarGetterStatement || Statement is null? " + (vars_in_reg == null));
+		}
+		return vars_in_reg_type;
 	}
 	
 	public PreparedStatement getFullInsertStatement() throws SQLException

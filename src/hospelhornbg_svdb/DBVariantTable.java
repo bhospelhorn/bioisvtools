@@ -226,16 +226,57 @@ public class DBVariantTable implements VariantTable{
 	
 	public static class GeneHitCounter
 	{
-		public Set<Integer> total_hits_indiv;
-		public Set<Integer> exon_hits_indiv;
-		public int total_hits_var;
-		public int exon_hits_var;
+		private Set<Integer> total_hits_indiv;
+		private Set<Integer> exon_hits_indiv;
+		private int total_hits_var;
+		private int exon_hits_var;
 		
 		public GeneHitCounter()
 		{
 			total_hits_indiv = new TreeSet<Integer>();
 			exon_hits_indiv = new TreeSet<Integer>();
 		}
+	
+		public void setTotalHits(int i){total_hits_var = i;}
+		public void setExonHits(int i){exon_hits_var = i;}
+		public void addIndivTotal(Integer uid) {total_hits_indiv.add(uid);}
+		public void addIndivExon(Integer uid) {exon_hits_indiv.add(uid);}
+		
+		public synchronized void addIndivTotal_sync(Integer uid) {total_hits_indiv.add(uid);}
+		public synchronized void addIndivExon_sync(Integer uid) {exon_hits_indiv.add(uid);}
+		
+		public int countIndivTotal() {return total_hits_indiv.size();}
+		public int countIndivExon() {return exon_hits_indiv.size();}
+		
+		public int getTotalHitsVar() {return total_hits_var;}
+		public int getExonHitsVar() {return exon_hits_var;}
+		public Set<Integer> getTotalHitsIndiv_setref(){return total_hits_indiv;}
+		public Set<Integer> getExonHitsIndiv_setref(){return exon_hits_indiv;}
+		
+		public void addIndividuals_Total(Collection<Integer> sids) {total_hits_indiv.addAll(sids);}
+		public void addIndividuals_Exon(Collection<Integer> sids) {exon_hits_indiv.addAll(sids);}
+		public synchronized void addIndividuals_Total_sync(Collection<Integer> sids) {total_hits_indiv.addAll(sids);}
+		public synchronized void addIndividuals_Exon_sync(Collection<Integer> sids) {exon_hits_indiv.addAll(sids);}
+		
+		public boolean removeIndividual_Total(int sid) {return this.total_hits_indiv.remove(sid);}
+		public boolean removeIndividual_Exon(int sid) {return this.exon_hits_indiv.remove(sid);}
+		public synchronized boolean removeIndividual_Total_sync(int sid) {return this.total_hits_indiv.remove(sid);}
+		public synchronized boolean removeIndividual_Exon_sync(int sid) {return this.exon_hits_indiv.remove(sid);}
+		
+		public void removeIndividuals_Total(Collection<Integer> sids) {total_hits_indiv.removeAll(sids);}
+		public void removeIndividuals_Exon(Collection<Integer> sids) {exon_hits_indiv.removeAll(sids);}
+		public synchronized void removeIndividuals_Total_sync(Collection<Integer> sids) {total_hits_indiv.removeAll(sids);}
+		public synchronized void removeIndividuals_Exon_sync(Collection<Integer> sids) {exon_hits_indiv.removeAll(sids);}
+		
+		public void incrementTotalHits() {total_hits_var++;}
+		public void decrementTotalHits() {total_hits_var--;}
+		public void incrementExonHits() {exon_hits_var++;}
+		public void decrementExonHits() {exon_hits_var--;}
+		
+		public synchronized void incrementTotalHits_sync() {total_hits_var++;}
+		public synchronized void decrementTotalHits_sync() {total_hits_var--;}
+		public synchronized void incrementExonHits_sync() {exon_hits_var++;}
+		public synchronized void decrementExonHits_sync() {exon_hits_var--;}
 	}
 	
 	/*----- Inner Classes (Major) -----*/

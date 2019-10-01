@@ -24,9 +24,9 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Random;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -35,7 +35,6 @@ import java.util.concurrent.ConcurrentMap;
 import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.SVType;
 import hospelhornbg_bioinformatics.StructuralVariant;
-import hospelhornbg_bioinformatics.Translocation;
 import hospelhornbg_bioinformatics.VCFReadStreamer;
 import hospelhornbg_genomeBuild.Contig;
 import hospelhornbg_genomeBuild.Gene;
@@ -47,6 +46,7 @@ import hospelhornbg_segregation.Family;
 import hospelhornbg_segregation.FamilyMember;
 import hospelhornbg_segregation.Population;
 import hospelhornbg_svdb.DBVariantTable.GeneHitCounter;
+import waffleoRai_Utils.Arunnable;
 import waffleoRai_Utils.FileBuffer;
 
 public class SQLVariantTable implements VariantTable{
@@ -138,12 +138,17 @@ public class SQLVariantTable implements VariantTable{
 	private String password;
 	
 	private Connection connection;
-	private StatementPrepper sprepper;
+	private SQLManager sqlManager;
+	//private StatementPrepper sprepper;
+	
+	private int mergeFactor;
+	private double percLeeway;
 
 	private GenomeBuild genome;
 	private GeneSet genes;
 	private GenomeIndex uidIndex;
 	
+	private boolean threadlock;
 	private ReadCache read_cache;
 	private RegionSearchCache rs_cache;
 	
@@ -151,7 +156,7 @@ public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Construction ----- */
 	
-	public SQLVariantTable(String url, String user, String pw, GenomeBuild gb, GeneSet gs) throws SQLException
+	public SQLVariantTable(String url, String user, String pw, GenomeBuild gb, GeneSet gs, int mf) throws SQLException
 	{
 		genome = gb;
 		genes = gs;
@@ -160,17 +165,21 @@ public class SQLVariantTable implements VariantTable{
 		dbURL = url;
 		username = user;
 		password = pw;
-		read_cache = new ReadCache();
+		read_cache = new ReadCache(false);
 		rs_cache = new RegionSearchCache();
 		System.err.println("Now connecting...");
 		connect();
 		System.err.println("Connection successful!");
-		sprepper = new StatementPrepper(connection);
+		sqlManager = new SQLManager(connection);
+		//sprepper = new StatementPrepper(connection);
 		//Check for tables, create if not there
 		if(!varTableExists()) createVarTable();
 		if(!sampleGenoTableExists()) createSampleGenoTable();
 		if(!geneHitTableExists()) createGeneHitTable();
 		//tempBlobFiles = new LinkedList<String>();
+		mergeFactor = mf;
+		
+		percLeeway = (double)mergeFactor / 1000.0;
 	}
 	
 	private void connect() throws SQLException
@@ -209,6 +218,12 @@ public class SQLVariantTable implements VariantTable{
 		Statement cstat = connection.createStatement();
 		cstat.executeUpdate(sqlcmd);
 		cstat.closeOnCompletion();
+		
+		/*Index*/
+		sqlcmd = "CREATE UNIQUE INDEX VARUID_INDEX ON " + SQLVariantTable.TABLENAME_VARIANTS + "(" + SQLVariantTable.FIELDNAME_VARUID + ")";
+		cstat = connection.createStatement();
+		cstat.executeUpdate(sqlcmd);
+		cstat.closeOnCompletion();
 	}
 	
 	private boolean sampleGenoTableExists() throws SQLException
@@ -234,6 +249,12 @@ public class SQLVariantTable implements VariantTable{
 		}
 		sqlcmd += ")";
 		Statement cstat = connection.createStatement();
+		cstat.executeUpdate(sqlcmd);
+		cstat.closeOnCompletion();
+		
+		/*Index*/
+		sqlcmd = "CREATE UNIQUE INDEX SGENOUID_INDEX ON " + SQLVariantTable.TABLENAME_SAMPLEGENO + "(" + SQLVariantTable.FIELDNAME_SAMPLEUID + ")";
+		cstat = connection.createStatement();
 		cstat.executeUpdate(sqlcmd);
 		cstat.closeOnCompletion();
 	}
@@ -266,12 +287,19 @@ public class SQLVariantTable implements VariantTable{
 		
 		//Add all genes with 0's
 		zeroGeneHitTable();
+		
+		/*Index*/
+		sqlcmd = "CREATE UNIQUE INDEX GENEUID_INDEX ON " + SQLVariantTable.TABLENAME_GENEHITS + "(" + SQLVariantTable.FIELDNAME_GH_GENEUID + ")";
+		cstat = connection.createStatement();
+		cstat.executeUpdate(sqlcmd);
+		cstat.closeOnCompletion();
 	}
 	
 	private void zeroGeneHitTable() throws SQLException
 	{
 		//
 		List<Gene> glist = genes.getAllGenes();
+		StatementPrepper sprepper = sqlManager.getStatementGenerator();
 		PreparedStatement gh_insert = sprepper.getGeneHitInsertStatement();
 		int dbc = 0;
 		Set<Integer> uidset = new TreeSet<Integer>();
@@ -402,9 +430,12 @@ public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Storage Prep ----- */
 	
-	private PreparedStatement generateFullVarInsertStatement(DBVariant var, VariantGenotype vgeno) throws IOException, SQLException
+	private PreparedStatement generateFullVarInsertStatement(DBVariant var, VariantGenotype vgeno, boolean threadlock) throws IOException, SQLException
 	{
-		PreparedStatement pstat = sprepper.getFullInsertStatement();
+		PreparedStatement pstat = null;
+		StatementPrepper sprepper = sqlManager.getStatementGenerator();
+		if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_INSERT);
+		else pstat = sqlManager.getStatementGenerator().getFullInsertStatement();
 		
 		Contig ctg = var.getChrom();
 		
@@ -462,7 +493,7 @@ public class SQLVariantTable implements VariantTable{
 		return pstat;
 	}
 	
-	private PreparedStatement generateAbridgedSetVarUpdateStatement(DBVariant var, VariantGenotype vgeno) throws IOException, SQLException
+	private PreparedStatement generateAbridgedSetVarUpdateStatement(DBVariant var, VariantGenotype vgeno, boolean threadlock) throws IOException, SQLException
 	{
 		//Updates:
 		//	Start, End
@@ -472,7 +503,12 @@ public class SQLVariantTable implements VariantTable{
 		//	Validation notes
 		//	Genotype
 		
-		PreparedStatement pstat = sprepper.getShortUpdateStatement();
+		//PreparedStatement pstat = sprepper.getShortUpdateStatement();
+		
+		PreparedStatement pstat = null;
+		StatementPrepper sprepper = sqlManager.getStatementGenerator();
+		if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_UPDATE_SHORT);
+		else pstat = sprepper.getShortUpdateStatement();
 		
 		pstat.setInt(StatementPrepper.SHORTUD_ST1, var.getStartPosition().getStart()); //System.err.println("Start1 = " + var.getStartPosition().getStart());
 		pstat.setInt(StatementPrepper.SHORTUD_ST2, var.getStartPosition().getEnd()); //System.err.println("Start2 = " + var.getStartPosition().getEnd());
@@ -515,9 +551,14 @@ public class SQLVariantTable implements VariantTable{
 		return pstat;
 	}
 	
-	private PreparedStatement generatePopulationSetVarUpdateStatement(DBVariant dbv) throws SQLException
+	private PreparedStatement generatePopulationSetVarUpdateStatement(DBVariant dbv, boolean threadlock) throws SQLException
 	{
-		PreparedStatement pstat = sprepper.getPopUpdateStatement();
+		//PreparedStatement pstat = sprepper.getPopUpdateStatement();
+		
+		PreparedStatement pstat = null;
+		StatementPrepper sprepper = sqlManager.getStatementGenerator();
+		if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_UPDATE_POP);
+		else pstat = sprepper.getPopUpdateStatement();
 		
 		pstat.setInt(StatementPrepper.POPUD_ACOUNT_TOT, dbv.getIndividualCount());
 		pstat.setInt(StatementPrepper.POPUD_HCOUNT_TOT, dbv.getHomozygoteCount());
@@ -545,7 +586,7 @@ public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Caching ----- */
 	
-	private class ReadCache
+	protected class ReadCache
 	{
 		public static final int CACHE_SIZE = 2048;
 		
@@ -555,12 +596,15 @@ public class SQLVariantTable implements VariantTable{
 		private ConcurrentLinkedQueue<Long> v_queue;
 		private ConcurrentLinkedQueue<Long> g_queue;
 		
-		public ReadCache()
+		private boolean thread_locked;
+		
+		public ReadCache(boolean threadlock)
 		{
 			v_map = new ConcurrentHashMap<Long, DBVariant>();
 			g_map = new ConcurrentHashMap<Long, VariantGenotype>();
 			v_queue = new ConcurrentLinkedQueue<Long>();
 			g_queue = new ConcurrentLinkedQueue<Long>();
+			thread_locked = threadlock;
 		}
 		
 		public DBVariant getVariant(long uid)
@@ -576,12 +620,22 @@ public class SQLVariantTable implements VariantTable{
 			//Cache miss
 			try 
 			{
-				PreparedStatement pstat = sprepper.getVarGetterStatement();
+				//PreparedStatement pstat = sprepper.getVarGetterStatement();
+				PreparedStatement pstat = null;
+				StatementPrepper sprepper = sqlManager.getStatementGenerator();
+				if(thread_locked) pstat = sqlManager.requestStatement(SQLManager.SKEY_GETVAR);
+				else pstat = sprepper.getVarGetterStatement();
+				
 				pstat.setLong(StatementPrepper.VARGET_VARUID, uid);
+				if(thread_locked) sqlManager.requestStatementExecution();
 				ResultSet rs = pstat.executeQuery();
 				if(!rs.next()) {rs.close(); return null;}
 				DBVariant var = readFromResultSet(rs);
 				rs.close();
+				if(thread_locked) {
+					sqlManager.acknowledgeStatementExecution();
+					sqlManager.releaseStatement(SQLManager.SKEY_GETVAR, pstat);
+				}
 				
 				//Cache
 				if(v_map.size() >= CACHE_SIZE)
@@ -625,13 +679,14 @@ public class SQLVariantTable implements VariantTable{
 				int len = misses.size();
 				try 
 				{
-					PreparedStatement pstat = sprepper.generateMultiVarGetterStatement(len);
+					PreparedStatement pstat = sqlManager.getStatementGenerator().generateMultiVarGetterStatement(len);
 					int i = 1;
 					for(Long vid : misses)
 					{
 						pstat.setLong(i, vid);
 						i++;
 					}
+					if(thread_locked) sqlManager.requestStatementExecution();
 					ResultSet rs = pstat.executeQuery();
 					while(rs.next())
 					{
@@ -648,6 +703,7 @@ public class SQLVariantTable implements VariantTable{
 						out.add(v);
 					}
 					rs.close();
+					if(thread_locked) sqlManager.acknowledgeStatementExecution();
 				} 
 				catch (Exception e) 
 				{
@@ -673,14 +729,25 @@ public class SQLVariantTable implements VariantTable{
 			//Cache miss
 			try 
 			{
-				PreparedStatement pstat = sprepper.getGenoGetterStatement();
+				//PreparedStatement pstat = sprepper.getGenoGetterStatement();
+				PreparedStatement pstat = null;
+				StatementPrepper sprepper = sqlManager.getStatementGenerator();
+				if(thread_locked) pstat = sqlManager.requestStatement(SQLManager.SKEY_GETGENO);
+				else pstat = sprepper.getGenoGetterStatement();
+				
 				pstat.setLong(StatementPrepper.GENOGET_VARUID, var_uid);
+				
+				if(thread_locked) sqlManager.requestStatementExecution();
 				ResultSet rs = pstat.executeQuery();
 				if(!rs.next()) {rs.close(); return null;}
 				Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
 				vg = new VariantGenotype(var_uid);
 				vg.readDataFromBLOB(genoblob);
 				rs.close();
+				if(thread_locked) {
+					sqlManager.acknowledgeStatementExecution();
+					sqlManager.releaseStatement(SQLManager.SKEY_GETGENO, pstat);
+				}
 				
 				//Cache
 				if(g_map.size() >= CACHE_SIZE)
@@ -723,13 +790,15 @@ public class SQLVariantTable implements VariantTable{
 				int len = misses.size();
 				try 
 				{
-					PreparedStatement pstat = sprepper.generateMultiGenoGetterStatement(len);
+					PreparedStatement pstat = sqlManager.getStatementGenerator().generateMultiGenoGetterStatement(len);
 					int i = 1;
 					for(Long vid : varUIDs)
 					{
 						pstat.setLong(i, vid);
 						i++;
 					}
+					
+					if(thread_locked) sqlManager.requestStatementExecution();
 					ResultSet rs = pstat.executeQuery();
 					while(rs.next())
 					{
@@ -750,6 +819,7 @@ public class SQLVariantTable implements VariantTable{
 						out.add(vg);
 					}
 					rs.close();
+					if(thread_locked) sqlManager.acknowledgeStatementExecution();
 				} 
 				catch (Exception e) 
 				{
@@ -768,15 +838,26 @@ public class SQLVariantTable implements VariantTable{
 			g_queue.clear();
 		}
 		
+		public void setThreadLocked(boolean threadlock)
+		{
+			thread_locked = threadlock;
+		}
+		
 	}
 	
-	private class RegionSearchCache
+	//TODO threadlock the SQL statements...
+	protected class RegionSearchCache
 	{
 		//public static final int MAX_REG_SIZE_HELD = 10000000;
+		
+		private boolean threadlock;
 		
 		private Contig lastq_contig;
 		private int lastq_start;
 		private int lastq_end;
+		
+		private boolean lastq_notra;
+		private SVType lastq_type;
 		
 		//private volatile Collection<Long> last_ids;
 		private Collection<DBVariant> last_vars;
@@ -788,21 +869,28 @@ public class SQLVariantTable implements VariantTable{
 			private int start;
 			private int end;
 			
+			private SVType type;
+			private boolean ignoreTRA;
+			
 			private Collection<DBVariant> output;
 			
-			public DiskGopher(Contig c, int s, int e, Collection<DBVariant> targ)
+			public DiskGopher(Contig c, int s, int e, boolean noTRA, SVType svtype, Collection<DBVariant> targ)
 			{
 				chr = c;
 				start = s;
 				end = e;
 				output = targ;
+				ignoreTRA = noTRA;
+				type = svtype;
 			}
 			
 			@Override
 			public void run() 
 			{
 				try{
-					Collection<DBVariant> col = getFromDisk(chr, start, end); 
+					Collection<DBVariant> col = null;
+					if(type == null) col = getFromDisk(chr, start, end, ignoreTRA); 
+					else col = getFromDisk(chr, start, end, type); 
 				output.addAll(col);
 				}
 				catch(Exception e)
@@ -859,7 +947,7 @@ public class SQLVariantTable implements VariantTable{
 			return out;
 		}
 		
-		private Collection<DBVariant> getFromDisk(Contig c, int start, int end)
+		private Collection<DBVariant> getFromDisk(Contig c, int start, int end, boolean ignoreTRA)
 		{
 			List<DBVariant> varlist = new LinkedList<DBVariant>();
 			if(c == null) return varlist;
@@ -869,15 +957,47 @@ public class SQLVariantTable implements VariantTable{
 			
 			try 
 			{
-				PreparedStatement pstat = sprepper.getRegionVarGetterStatement();
-				if(pstat == null) 
+				PreparedStatement pstat = null;
+				String skey = null;
+				if(ignoreTRA)
 				{
-					System.err.println("Statement prep failed.");
-					System.exit(1);
+					//pstat = sprepper.getRegionNoTRAVarGetterStatement();
+					if(threadlock)
+					{
+						skey = SQLManager.SKEY_GETVAR_REG_NOTRA;
+						pstat = sqlManager.requestStatement(skey);
+					}
+					else pstat = sqlManager.getStatementGenerator().getRegionNoTRAVarGetterStatement();
+					if(pstat == null) 
+					{
+						System.err.println("Statement prep failed.");
+						System.exit(1);
+					}
+					pstat.setInt(StatementPrepper.VARS_REG_NOTRA_CUID, cuid);
+					pstat.setInt(StatementPrepper.VARS_REG_NOTRA_START, start);
+					pstat.setInt(StatementPrepper.VARS_REG_NOTRA_END, end);
 				}
-				for(int i : StatementPrepper.VARS_REG_CUID) pstat.setInt(i, cuid);
-				for(int i : StatementPrepper.VARS_REG_START) pstat.setInt(i, start);
-				for(int i : StatementPrepper.VARS_REG_END) pstat.setInt(i, end);
+				else
+				{
+					//pstat = sprepper.getRegionVarGetterStatement();
+					if(threadlock)
+					{
+						skey = SQLManager.SKEY_GETVAR_REG;
+						pstat = sqlManager.requestStatement(skey);
+					}
+					else pstat = sqlManager.getStatementGenerator().getRegionVarGetterStatement();
+					if(pstat == null) 
+					{
+						System.err.println("Statement prep failed.");
+						System.exit(1);
+					}
+					for(int i : StatementPrepper.VARS_REG_CUID) pstat.setInt(i, cuid);
+					for(int i : StatementPrepper.VARS_REG_START) pstat.setInt(i, start);
+					for(int i : StatementPrepper.VARS_REG_END) pstat.setInt(i, end);
+					
+				}
+				
+				if(threadlock) sqlManager.requestStatementExecution();
 				ResultSet rs = pstat.executeQuery();
 				while(rs.next())
 				{
@@ -885,6 +1005,11 @@ public class SQLVariantTable implements VariantTable{
 					if(var != null) varlist.add(var);
 				}
 				rs.close();
+				if(threadlock)
+				{
+					sqlManager.acknowledgeStatementExecution();
+					sqlManager.releaseStatement(skey, pstat);
+				}
 			} 
 			catch (Exception e) 
 			{
@@ -894,10 +1019,60 @@ public class SQLVariantTable implements VariantTable{
 			return varlist;
 		}
 		
-		public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end)
+		private Collection<DBVariant> getFromDisk(Contig c, int start, int end, SVType type)
+		{
+			List<DBVariant> varlist = new LinkedList<DBVariant>();
+			if(c == null) return varlist;
+
+			int cuid = c.getUID();
+			
+			try 
+			{
+				PreparedStatement pstat = null;
+				String skey = null;
+				//pstat = sprepper.getRegionNoTRAVarGetterStatement_ofType();
+				if(threadlock)
+				{
+					skey = SQLManager.SKEY_GETVAR_REG_OFTYPE;
+					pstat = sqlManager.requestStatement(skey);
+				}
+				else pstat = sqlManager.getStatementGenerator().getRegionNoTRAVarGetterStatement_ofType();
+				if(pstat == null) 
+				{
+					System.err.println("Statement prep failed.");
+					System.exit(1);
+				}
+				pstat.setInt(StatementPrepper.VARS_REG_TYPE_TYPE, type.getID());
+				pstat.setInt(StatementPrepper.VARS_REG_TYPE_CUID, cuid);
+				pstat.setInt(StatementPrepper.VARS_REG_TYPE_START, start);
+				pstat.setInt(StatementPrepper.VARS_REG_TYPE_END, end);
+				
+				if(threadlock) sqlManager.requestStatementExecution();
+				ResultSet rs = pstat.executeQuery();
+				while(rs.next())
+				{
+					DBVariant var = readFromResultSet(rs);
+					if(var != null) varlist.add(var);
+				}
+				rs.close();
+				if(threadlock)
+				{
+					sqlManager.acknowledgeStatementExecution();
+					sqlManager.releaseStatement(skey, pstat);
+				}
+			} 
+			catch (Exception e) 
+			{
+				e.printStackTrace();
+			}
+			
+			return varlist;
+		}
+		
+		public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end, boolean ignoreTRA)
 		{
 			//System.err.println("-DEBUG- Searching region-- " + c.getUDPName() + ":" + start + "-" + end);
-			if(lastq_contig != null && lastq_contig.equals(c))
+			if(lastq_contig != null && lastq_contig.equals(c) && (lastq_notra == ignoreTRA) && (lastq_type == null))
 			{
 				//System.err.println("-DEBUG- Contig matches last search!");
 				//Check for overlap
@@ -924,9 +1099,9 @@ public class SQLVariantTable implements VariantTable{
 						out = new LinkedList<DBVariant>();
 						out.addAll(last_vars);
 						//Query front
-						if(start < lastq_start) out.addAll(getFromDisk(c, start, lastq_start));
+						if(start < lastq_start) out.addAll(getFromDisk(c, start, lastq_start, ignoreTRA));
 						//Query back
-						if(end > lastq_end) out.addAll(getFromDisk(c, lastq_end, end));
+						if(end > lastq_end) out.addAll(getFromDisk(c, lastq_end, end, ignoreTRA));
 					}
 					else
 					{
@@ -968,7 +1143,7 @@ public class SQLVariantTable implements VariantTable{
 				{
 					//Do the DB fetching and cache scan in a different threads
 					out = new ConcurrentLinkedQueue<DBVariant>();
-					DiskGopher runner = new DiskGopher(c, ex_s, ex_e, out);
+					DiskGopher runner = new DiskGopher(c, ex_s, ex_e, ignoreTRA, null, out);
 					Thread t = new Thread(runner);
 					t.start();
 					out.addAll(scanLastQuery(in_s, in_e));
@@ -986,23 +1161,141 @@ public class SQLVariantTable implements VariantTable{
 				}
 				else if (doex && !doin)
 				{
-					out = getFromDisk(c, ex_s, ex_e);
+					out = getFromDisk(c, ex_s, ex_e, ignoreTRA);
 				}
 				
 				lastq_start = start;
 				lastq_end = end;
 				last_vars = out;
+				lastq_type = null;
+				lastq_notra = ignoreTRA;
 				return out;
-				
 			}
 			
 			//System.err.println("-DEBUG- New search!");
 			//Completely new query
-			Collection<DBVariant> out = getFromDisk(c, start, end);
+			Collection<DBVariant> out = getFromDisk(c, start, end, ignoreTRA);
 			lastq_contig = c;
 			lastq_start = start;
 			lastq_end = end;
 			last_vars = out;
+			lastq_type = null;
+			lastq_notra = ignoreTRA;
+			return out;
+		}
+		
+		public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end, SVType svtype)
+		{
+			//System.err.println("-DEBUG- Searching region-- " + c.getUDPName() + ":" + start + "-" + end);
+			if(lastq_contig != null && lastq_contig.equals(c) && (lastq_type == svtype))
+			{
+				//System.err.println("-DEBUG- Contig matches last search!");
+				//Check for overlap
+				if(start == lastq_start && end == lastq_end)
+				{
+					//Exact same query
+					//if(lastq_end - lastq_start <= MAX_REG_SIZE_HELD) return last_vars;
+					//else return getVariants(last_ids);
+					return last_vars;
+				}
+				
+				int in_s = -1;
+				int in_e = -1;
+				int ex_s = -1;
+				int ex_e = -1;
+				
+				Collection<DBVariant> out = null;
+				
+				if(start <= lastq_start)
+				{
+					if(end >= lastq_end)
+					{
+						//Includes full last query
+						out = new LinkedList<DBVariant>();
+						out.addAll(last_vars);
+						//Query front
+						if(start < lastq_start) out.addAll(getFromDisk(c, start, lastq_start, svtype));
+						//Query back
+						if(end > lastq_end) out.addAll(getFromDisk(c, lastq_end, end, svtype));
+					}
+					else
+					{
+						//Includes first part
+						in_s = lastq_start;
+						in_e = end;
+						if(start < lastq_start)
+						{
+							ex_s = start;
+							ex_e = lastq_start;
+						}
+					}
+				}
+				else
+				{
+					if(start < lastq_end)
+					{
+						//Start is in between last query start and end
+						in_s = start;
+						in_e = lastq_end;
+						if(end > lastq_end)
+						{
+							ex_s = lastq_end;
+							ex_e = end;
+						}
+					}
+					else
+					{
+						//Completely outside
+						ex_s = start;
+						ex_e = end;
+					}
+				}
+				
+				boolean doin = (in_s > -1 && in_e > -1);
+				boolean doex = (ex_s > -1 && ex_e > -1);
+				
+				if(doin && doex)
+				{
+					//Do the DB fetching and cache scan in a different threads
+					out = new ConcurrentLinkedQueue<DBVariant>();
+					DiskGopher runner = new DiskGopher(c, ex_s, ex_e, false, svtype, out);
+					Thread t = new Thread(runner);
+					t.start();
+					out.addAll(scanLastQuery(in_s, in_e));
+					
+					try {t.join();} 
+					catch (InterruptedException e) 
+					{
+						//Shouldn't happen, maybe?
+						e.printStackTrace();
+					}
+				}
+				else if (doin && !doex)
+				{
+					out = scanLastQuery(in_s, in_e);
+				}
+				else if (doex && !doin)
+				{
+					out = getFromDisk(c, ex_s, ex_e, svtype);
+				}
+				
+				lastq_start = start;
+				lastq_end = end;
+				last_vars = out;
+				lastq_notra = false;
+				lastq_type = svtype;
+				return out;
+			}
+			
+			//System.err.println("-DEBUG- New search!");
+			//Completely new query
+			Collection<DBVariant> out = getFromDisk(c, start, end, svtype);
+			lastq_contig = c;
+			lastq_start = start;
+			lastq_end = end;
+			last_vars = out;
+			lastq_notra = false;
+			lastq_type = svtype;
 			return out;
 		}
 		
@@ -1012,6 +1305,207 @@ public class SQLVariantTable implements VariantTable{
 			lastq_start = -1;
 			lastq_end = -1;
 			last_vars = null;
+		}
+		
+		public void setThreadLock(boolean b)
+		{
+			threadlock = b;
+		}
+		
+	}
+	
+	/* ----- Multithreading ----- */
+	
+	private class VCFParseWrapper extends Arunnable
+	{
+		
+		private VCFReadStreamer stream;
+		private Iterator<StructuralVariant> itr;
+		
+		private ConcurrentLinkedQueue<StructuralVariant> preparsed;
+		private ConcurrentLinkedQueue<Thread> requests;
+		private volatile Thread ready;
+		
+		private boolean ignoreTRA;
+		
+		//private volatile boolean next;
+		//private volatile boolean busy;
+		
+		public VCFParseWrapper(String vcfpath, boolean noTRA) throws IOException
+		{
+			stream = new VCFReadStreamer(vcfpath, genome);
+			stream.open();
+			//next = true;
+			preparsed = new ConcurrentLinkedQueue<StructuralVariant>();
+			requests = new ConcurrentLinkedQueue<Thread>();
+			itr = stream.getSVIterator();
+			ignoreTRA = noTRA;
+			
+			super.setName("VCFParseRunner");
+			super.sleeps = true;
+			super.sleeptime = 1000; //1s
+			super.delay = 0;
+		}
+		
+		@Override
+		public void doSomething() 
+		{
+			if(ready != null) return;
+			if(stream == null) return;
+			if(requests.isEmpty()) return;
+			
+			//Prepare next request
+			Thread req = requests.poll();
+			
+			Contig c = null;
+			if(!preparsed.isEmpty()) c = preparsed.peek().getChromosome();
+			
+			while(itr.hasNext())
+			{
+				StructuralVariant sv = itr.next();
+				if(ignoreTRA)
+				{
+					if(sv.getType() == SVType.TRA || sv.getType() == SVType.BND) continue;
+				}
+				
+				preparsed.add(sv);
+				if(c == null) c = sv.getChromosome();
+				else
+				{
+					if(!c.equals(sv.getChromosome())) 
+					{
+						synchronized(this) {ready = req;}
+						synchronized(ready) {ready.interrupt();}
+						return;
+					}
+				}
+			}
+			
+			//If it gets here, there are no more variants and the stream needs to be closed
+			try 
+			{
+				synchronized(this)
+				{
+					stream.close();
+					stream = null;
+					itr = null;	
+					ready = req;
+				}
+			} 
+			catch (IOException e) 
+			{
+				e.printStackTrace();
+				synchronized(this) {ready = req;}
+			}
+			
+			synchronized(ready) {ready.interrupt();}
+			
+		}
+		
+		public int gimmeNextContig(Collection<StructuralVariant> targetQueue)
+		{
+			if(targetQueue == null) return 0;
+			if(stream == null) return 0; //Closed
+			Thread mythread = Thread.currentThread();
+			requests.add(mythread);
+			
+			int added = 0;
+			//Block until the request has been prepared
+			boolean cleared = false;
+			while(!cleared)
+			{
+				try 
+				{
+					Thread.sleep(1000);
+				} 
+				catch (InterruptedException e) 
+				{
+					//Interruption perhaps from parse thread.
+					cleared = (ready == mythread);
+				}
+			}
+			
+			//Release the parser's block by acknowledging that the
+			//	request is being processed.
+			synchronized(this) {ready = null;}
+			this.interruptThreads();
+			
+			//Grab variants and copy to target queue until either
+			//	none left or next variant is on a different chrom
+			Contig ctg = null;
+			while(!preparsed.isEmpty())
+			{
+				StructuralVariant sv = preparsed.peek();
+				if(ctg == null) ctg = sv.getChromosome();
+				else
+				{
+					if(!ctg.equals(sv.getChromosome()))
+					{
+						//Return
+						break;
+					}
+				}
+				targetQueue.add(sv);
+				preparsed.poll();
+				added++;
+			}
+			
+			//Return
+			return added;
+		}
+		
+		public synchronized boolean isClosed()
+		{
+			return (stream == null);
+		}
+		
+	}
+	
+	private class VCFAdder implements Runnable
+	{
+		
+		private boolean verbose;
+		
+		private RegionSearchCache rcache;
+		private VCFParseWrapper input;
+		
+		private int addedCount;
+		private int failCount;
+		
+		private Queue<StructuralVariant> inq;
+		
+		public VCFAdder(VCFParseWrapper src, boolean v)
+		{
+			verbose = v;
+			input = src;
+			
+			rcache = new RegionSearchCache();
+			addedCount = 0;
+			failCount = 0;
+			inq = new LinkedList<StructuralVariant>();
+			
+		}
+
+		@Override
+		public void run() 
+		{
+			// TODO Auto-generated method stub
+			//Check input for more variants to load into queue
+			while(!input.isClosed())
+			{
+				//Try to load
+				int loaded = input.gimmeNextContig(inq);
+				if(loaded < 1) 
+				{
+					if(verbose) System.err.println("ERROR: Stream is open, but variant load failed! Killing thread...");
+					return;
+				}
+				
+				Contig c = inq.peek().getChromosome();
+				if(verbose) System.err.println("Now processing variants from chromosome " + c.getUDPName());
+				
+				//TODO attempt add w/ custom region search cache
+			}
 		}
 		
 	}
@@ -1027,7 +1521,7 @@ public class SQLVariantTable implements VariantTable{
 		try
 		{
 			//int dbc = 0;
-			PreparedStatement s = sprepper.getGeneHitGetAllStatement();
+			PreparedStatement s = sqlManager.getStatementGenerator().getGeneHitGetAllStatement();
 			ResultSet rs = s.executeQuery();
 			while(rs.next())
 			{
@@ -1051,8 +1545,10 @@ public class SQLVariantTable implements VariantTable{
 	private GeneHitCounter readFromTableRecord(ResultSet rs) throws SQLException
 	{
 		GeneHitCounter ghc = new GeneHitCounter();
-		ghc.total_hits_var = rs.getInt(FIELDNAME_GH_HITS_T);
-		ghc.exon_hits_var = rs.getInt(FIELDNAME_GH_HITS_E);
+		//ghc.total_hits_var = rs.getInt(FIELDNAME_GH_HITS_T);
+		ghc.setTotalHits(rs.getInt(FIELDNAME_GH_HITS_T));
+		//ghc.exon_hits_var = rs.getInt(FIELDNAME_GH_HITS_E);
+		ghc.setExonHits(rs.getInt(FIELDNAME_GH_HITS_E));
 		
 		//Blobs
 		Blob b = rs.getBlob(FIELDNAME_GH_HITS_TI);
@@ -1062,7 +1558,8 @@ public class SQLVariantTable implements VariantTable{
 		{
 			int i = bb.getInt();
 			if(i == -1) break;
-			ghc.total_hits_indiv.add(i);
+			//ghc.total_hits_indiv.add(i);
+			ghc.addIndivTotal(i);
 		}
 		
 		b = rs.getBlob(FIELDNAME_GH_HITS_EI);
@@ -1072,7 +1569,8 @@ public class SQLVariantTable implements VariantTable{
 		{
 			int i = bb.getInt();
 			if(i == -1) break;
-			ghc.total_hits_indiv.add(i);
+			//ghc.total_hits_indiv.add(i);
+			ghc.addIndivExon(i);
 		}
 		
 		return ghc;
@@ -1090,7 +1588,7 @@ public class SQLVariantTable implements VariantTable{
 			//Wipe table
 			//It seems to be faster to just rewrite the table from scratch
 			//(That way it doesn't have to look up the records to edit...)
-			PreparedStatement delstatement = sprepper.getGeneHitTableWipeStatement();
+			PreparedStatement delstatement = sqlManager.getStatementGenerator().getGeneHitTableWipeStatement();
 			delstatement.executeUpdate();
 			
 			
@@ -1129,7 +1627,9 @@ public class SQLVariantTable implements VariantTable{
 	private boolean updateGeneHitRecord(int guid, GeneHitCounter ghc) throws SQLException
 	{
 		//Prepare blobs
-		int ti_count = ghc.total_hits_indiv.size();
+		StatementPrepper sprepper = sqlManager.getStatementGenerator();
+		//int ti_count = ghc.total_hits_indiv.size();
+		int ti_count = ghc.countIndivTotal();
 		Blob ti_blob = null;
 		if(ti_count < 1)
 		{
@@ -1139,11 +1639,14 @@ public class SQLVariantTable implements VariantTable{
 		else
 		{
 			FileBuffer buff = new FileBuffer(ti_count * 4, true);
-			for(Integer i : ghc.total_hits_indiv) buff.addToFile(i);
+			Set<Integer> total_hits_indiv = ghc.getTotalHitsIndiv_setref();
+			//for(Integer i : ghc.total_hits_indiv) buff.addToFile(i);
+			for(Integer i : total_hits_indiv) buff.addToFile(i);
 			ti_blob = sprepper.toBlob(buff.getBytes());
 		}
 		
-		int ei_count = ghc.exon_hits_indiv.size();
+		//int ei_count = ghc.exon_hits_indiv.size();
+		int ei_count = ghc.countIndivExon();
 		Blob ei_blob = null;
 		if(ei_count < 1)
 		{
@@ -1153,7 +1656,9 @@ public class SQLVariantTable implements VariantTable{
 		else
 		{
 			FileBuffer buff = new FileBuffer(ei_count * 4, true);
-			for(Integer i : ghc.exon_hits_indiv) buff.addToFile(i);
+			Set<Integer> exon_hits_indiv = ghc.getExonHitsIndiv_setref();
+			//for(Integer i : ghc.exon_hits_indiv) buff.addToFile(i);
+			for(Integer i : exon_hits_indiv) buff.addToFile(i);
 			ei_blob = sprepper.toBlob(buff.getBytes());
 		}
 		
@@ -1168,8 +1673,8 @@ public class SQLVariantTable implements VariantTable{
 		PreparedStatement ps = sprepper.getGeneHitInsertStatement();
 		
 		ps.setInt(StatementPrepper.GENEHIT_UID, guid);
-		ps.setInt(StatementPrepper.GENEHIT_TOT, ghc.total_hits_var);
-		ps.setInt(StatementPrepper.GENEHIT_EXON, ghc.exon_hits_var);
+		ps.setInt(StatementPrepper.GENEHIT_TOT, ghc.getTotalHitsVar());
+		ps.setInt(StatementPrepper.GENEHIT_EXON, ghc.getExonHitsVar());
 		ps.setBlob(StatementPrepper.GENEHIT_TOT_INDIV, ti_blob);
 		ps.setBlob(StatementPrepper.GENEHIT_EXON_INDIV, ei_blob);
 		
@@ -1194,17 +1699,38 @@ public class SQLVariantTable implements VariantTable{
 		return false;
 	}
 	
+	protected GeneHitCounter getGeneHitRecord(int guid)
+	{
+		return ghc_cache.get(guid);
+	}
+	
+	protected synchronized void tickGHCCDirty()
+	{
+		ghc_cache_dirty = true;
+	}
+	
 	/* ----- Getters ----- */
 	
 	public boolean variantExists(long varUID)
 	{
 		try 
 		{
-			PreparedStatement pstat = sprepper.getVarUIDCheckStatement();
+			//PreparedStatement pstat = sprepper.getVarUIDCheckStatement();
+			PreparedStatement pstat = null;
+			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_CHECKVARUID);
+			else pstat = sqlManager.getStatementGenerator().getVarUIDCheckStatement();
 			pstat.setLong(StatementPrepper.VARUIDCHECK_VARUID, varUID);
+			if(threadlock) sqlManager.requestStatementExecution();
 			ResultSet rs = pstat.executeQuery();
 			boolean b = rs.next();
 			rs.close();
+			
+			if(threadlock)
+			{
+				sqlManager.acknowledgeStatementExecution();
+				sqlManager.releaseStatement(SQLManager.SKEY_CHECKVARUID, pstat);
+			}
+			
 			return b;
 		} 
 		catch (SQLException e) 
@@ -1241,8 +1767,13 @@ public class SQLVariantTable implements VariantTable{
 	{
 		try 
 		{
-			PreparedStatement pstat = sprepper.getSampleVarGetterStatement();
+			//PreparedStatement pstat = sprepper.getSampleVarGetterStatement();
+			PreparedStatement pstat = null;
+			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_GETSAMPLEVAR);
+			else pstat = sqlManager.getStatementGenerator().getSampleVarGetterStatement();
+			
 			pstat.setInt(StatementPrepper.SVARGET_SAMPUID, sampleUID);
+			if(threadlock) sqlManager.requestStatementExecution();
 			ResultSet rs = pstat.executeQuery();
 			if(!rs.next()) {rs.close(); return null;}
 			
@@ -1255,6 +1786,13 @@ public class SQLVariantTable implements VariantTable{
 			list.addAll(vars);
 			Collections.sort(list);
 			rs.close();
+			
+			if(threadlock)
+			{
+				sqlManager.acknowledgeStatementExecution();
+				sqlManager.releaseStatement(SQLManager.SKEY_GETSAMPLEVAR, pstat);
+			}
+			
 			return list;
 		}
 		catch(SQLException e)
@@ -1310,7 +1848,17 @@ public class SQLVariantTable implements VariantTable{
 
 	public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end) 
 	{
-		return rs_cache.getVariantsInRegion(c, start, end);
+		return rs_cache.getVariantsInRegion(c, start, end, false);
+	}
+	
+	public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end, boolean ignoreTRA) 
+	{
+		return rs_cache.getVariantsInRegion(c, start, end, ignoreTRA);
+	}
+	
+	public Collection<DBVariant> getVariantsInRegion(Contig c, int start, int end, SVType type) 
+	{
+		return rs_cache.getVariantsInRegion(c, start, end, type);
 	}
 
 	public GeneHitCounter getGeneHitCounts(int transcriptUID)
@@ -1319,6 +1867,28 @@ public class SQLVariantTable implements VariantTable{
 		return ghc_cache.get(transcriptUID);
 	}
 
+	public GenomeBuild getGenomeBuild()
+	{
+		return this.genome;
+	}
+	
+	public GeneSet getTranscriptSet()
+	{
+		return this.genes;
+	}
+	
+	public double getPercentLeeway()
+	{
+		return percLeeway;
+	}
+	
+	/* ----- Setters ----- */
+	
+	public void setThreadlock(boolean b)
+	{
+		threadlock = b;
+	}
+	
 	/* ----- Analysis ----- */
 	
 	public boolean variantInRegion(DBVariant var, Contig c, int start, int end)
@@ -1423,7 +1993,8 @@ public class SQLVariantTable implements VariantTable{
 			
 			Collection<DBVariant> hits = getVariantsInRegion(g.getChromosome(), g.getTranscriptStart(), g.getTranscriptEnd());
 			if(hits == null) continue;
-			ghc.total_hits_var = hits.size();
+			//ghc.total_hits_var = hits.size();
+			ghc.setTotalHits(hits.size());
 			
 			List<DBVariant> exonhits = new LinkedList<DBVariant>();
 			for(DBVariant var : hits)
@@ -1433,13 +2004,15 @@ public class SQLVariantTable implements VariantTable{
 					exonhits.add(var);
 				}
 			}
-			ghc.exon_hits_var = exonhits.size();
+			//ghc.exon_hits_var = exonhits.size();
+			ghc.setExonHits(exonhits.size());
 			
 			Map<Long, VariantGenotype> vgmap = new HashMap<Long, VariantGenotype>();
 			for(DBVariant var : hits)
 			{
 				VariantGenotype vg = getGenotype(var.getLongID());
-				if(vg != null) ghc.total_hits_indiv.addAll(vg.getAllIndividuals());
+				//if(vg != null) ghc.total_hits_indiv.addAll(vg.getAllIndividuals());
+				if(vg != null) ghc.addIndividuals_Total(vg.getAllIndividuals());
 				vgmap.put(vg.getVariantUID(), vg);
 			}
 			
@@ -1447,7 +2020,8 @@ public class SQLVariantTable implements VariantTable{
 			{
 				//VariantGenotype vg = getGenotype(var.getLongID());
 				VariantGenotype vg = vgmap.get(var.getLongID());
-				if(vg != null) ghc.exon_hits_indiv.addAll(vg.getAllIndividuals());
+				//if(vg != null) ghc.exon_hits_indiv.addAll(vg.getAllIndividuals());
+				if(vg != null) ghc.addIndividuals_Exon(vg.getAllIndividuals());
 			}
 			debugctr++;
 			if(debugctr%1000 == 0) System.err.println(debugctr + " transcripts analyzed...");
@@ -1476,6 +2050,8 @@ public class SQLVariantTable implements VariantTable{
 	{
 		//TODO
 		//To see what's inside
+		
+		//Doesn't need to thread lock, doesn't check
 		String vtpath = directory + File.separator + "vartbl.csv";
 		String stpath = directory + File.separator + "sgenotbl.csv";
 		String gtpath = directory + File.separator + "genehittbl.csv";
@@ -1483,7 +2059,8 @@ public class SQLVariantTable implements VariantTable{
 		try
 		{
 			System.err.println("Dumping variants...");
-			PreparedStatement ps = sprepper.getVariantGetAllStatement();
+			//PreparedStatement ps = sprepper.getVariantGetAllStatement();
+			PreparedStatement ps = sqlManager.getStatementGenerator().getVariantGetAllStatement();
 			ResultSet rs = ps.executeQuery();
 			
 			BufferedWriter bw = new BufferedWriter(new FileWriter(vtpath));
@@ -1595,7 +2172,8 @@ public class SQLVariantTable implements VariantTable{
 			bw.close();
 			
 			System.err.println("Dumping sample genotype table...");
-			ps = sprepper.getSGenoGetAllStatement();
+			//ps = sprepper.getSGenoGetAllStatement();
+			ps = sqlManager.getStatementGenerator().getSGenoGetAllStatement();
 			rs = ps.executeQuery();
 			
 			bw = new BufferedWriter(new FileWriter(stpath));
@@ -1660,7 +2238,8 @@ public class SQLVariantTable implements VariantTable{
 			bw.close();
 			
 			System.err.println("Dumping gene hit table...");
-			ps = sprepper.getGeneHitGetAllStatement();
+			//ps = sprepper.getGeneHitGetAllStatement();
+			ps = sqlManager.getStatementGenerator().getGeneHitGetAllStatement();
 			rs = ps.executeQuery();
 			
 			bw = new BufferedWriter(new FileWriter(gtpath));
@@ -1684,14 +2263,22 @@ public class SQLVariantTable implements VariantTable{
 				//bw.write(rs.getInt(FIELDNAME_GH_HITS_T) + ",");
 				//bw.write(rs.getInt(FIELDNAME_GH_HITS_E) + ",");
 				GeneHitCounter ghc = this.readFromTableRecord(rs);
-				bw.write(ghc.total_hits_var + ",");
-				bw.write(ghc.exon_hits_var + ",");
+				//bw.write(ghc.total_hits_var + ",");
+				//bw.write(ghc.exon_hits_var + ",");
 				
-				if(ghc.total_hits_indiv == null || ghc.total_hits_indiv.isEmpty()) bw.write("[NONE],");
+				int total_hits_var = ghc.getTotalHitsVar();
+				int exon_hits_var = ghc.getExonHitsVar();
+				bw.write(total_hits_var + ",");
+				bw.write(exon_hits_var + ",");
+				
+				Set<Integer> total_hits_indiv = ghc.getTotalHitsIndiv_setref();
+				Set<Integer> exon_hits_indiv = ghc.getExonHitsIndiv_setref();
+				
+				if(total_hits_indiv == null || total_hits_indiv.isEmpty()) bw.write("[NONE],");
 				else
 				{
 					first = true;
-					for(Integer i : ghc.total_hits_indiv)
+					for(Integer i : total_hits_indiv)
 					{
 						if(!first) bw.write(";");
 						first = false;
@@ -1700,11 +2287,11 @@ public class SQLVariantTable implements VariantTable{
 					bw.write(",");
 				}
 				
-				if(ghc.exon_hits_indiv == null || ghc.exon_hits_indiv.isEmpty()) bw.write("[NONE],");
+				if(exon_hits_indiv == null || exon_hits_indiv.isEmpty()) bw.write("[NONE],");
 				else
 				{
 					first = true;
-					for(Integer i : ghc.exon_hits_indiv)
+					for(Integer i : exon_hits_indiv)
 					{
 						if(!first) bw.write(";");
 						first = false;
@@ -1731,7 +2318,7 @@ public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Variant Addition ----- */
 	
-	private long generateUID(Contig c, int pos)
+	protected long generateUID(Contig c, int pos)
 	{
 		long prefix = uidIndex.getVarIDPrefix(c, pos);
 		//Generate random suffixes until the ID is unique...
@@ -1747,20 +2334,29 @@ public class SQLVariantTable implements VariantTable{
 		return id;
 	}
 	
-	private boolean addOrUpdateVariant(DBVariant var, VariantGenotype vgeno, boolean isnew)
+	protected boolean addOrUpdateVariant(DBVariant var, VariantGenotype vgeno, boolean isnew)
 	{
 		try
 		{
 			PreparedStatement baseStatement = null;
-			if(isnew) baseStatement = generateFullVarInsertStatement(var, vgeno);
+			if(isnew) baseStatement = generateFullVarInsertStatement(var, vgeno, threadlock);
 			else {
 				var.noteGenes(genes);
-				baseStatement = generateAbridgedSetVarUpdateStatement(var, vgeno);
+				baseStatement = generateAbridgedSetVarUpdateStatement(var, vgeno, threadlock);
 			}
 			
 			//Statement cstat = connection.createStatement();
 			//int count = cstat.executeUpdate(baseStatement);
+			if(threadlock) sqlManager.requestStatementExecution();
 			int count = baseStatement.executeUpdate();
+			if(threadlock)
+			{
+				sqlManager.acknowledgeStatementExecution();
+				String skey = null;
+				if(isnew) skey = SQLManager.SKEY_VAR_INSERT;
+				else skey = SQLManager.SKEY_VAR_UPDATE_SHORT;
+				sqlManager.releaseStatement(skey, baseStatement);
+			}
 			if(count != 1) return false;
 		}
 		catch(Exception e)
@@ -1770,7 +2366,7 @@ public class SQLVariantTable implements VariantTable{
 		}
 		
 		//Update gene hit counts...
-		List<Gene> glist = var.getGeneListReference();
+		/*List<Gene> glist = var.getGeneListReference();
 		if(glist != null && !glist.isEmpty())
 		{
 			for(Gene g : glist)
@@ -1798,7 +2394,7 @@ public class SQLVariantTable implements VariantTable{
 				}
 				ghc_cache_dirty = true;
 			}
-		}
+		}*/
 		
 		return true;
 	}
@@ -1810,267 +2406,29 @@ public class SQLVariantTable implements VariantTable{
 		if(sampleMap == null) return false;
 		if (mergeFactor < 0) return false;
 		
-		Map<Integer, List<Long>> sgAdd = new TreeMap<Integer, List<Long>>();
-		Map<Integer, List<Long>> sgDel = new TreeMap<Integer, List<Long>>();
+		SQLVTVarAdder add_engine = new SQLVTVarAdder(this, sampleMap, true);
+		this.mergeFactor = mergeFactor;
+		this.percLeeway = (double)mergeFactor / 1000.0;
 		
-		List<String> samples = new ArrayList<String>(sampleMap.size() + 1);
-		samples.addAll(sampleMap.keySet());
-		
-		VCFReadStreamer vcfReader = new VCFReadStreamer(vcfpath, genome);
-		vcfReader.open();
-		
-		//int debugctr = 0;
-		
-		Iterator<StructuralVariant> sviter = vcfReader.getSVIterator();
-		Contig lastChrom = null; //For progress tracking
-		while(sviter.hasNext())
+		long time = 0;
+		try
 		{
-			//debugctr++;
-			StructuralVariant sv = sviter.next();
-			if(ignoreTRA && (sv.getType() == SVType.TRA || sv.getType() == SVType.BND)) continue;
-			
-			//Look for merge candidates...
-			long id = -1L;
-			//Calculate merge distance in bp...
-			double mfac = (double)mergeFactor / 1000.0;
-			int svsz = sv.getCIPosition(true, false, true) - sv.getCIPosition(false, false, false);
-			int bp = (int)Math.round(mfac * (double)svsz);
-			
-			//Grab variants in region to look up
-			int search_start = Math.max(0, sv.getCIPosition(false, false, false) - bp);
-			int search_end = -1;
-			Contig searchChrom = null;
-			if(sv instanceof Translocation) 
+			add_engine.start(vcfpath, ignoreTRA);
+			while(!add_engine.isDone())
 			{
-				searchChrom = ((Translocation)sv).getChromosome1();
-				search_end = sv.getCIPosition(false, false, true) + bp;
-				//System.err.println("-DEBUG- SV Chrom: " + searchChrom.getUDPName());
-				//System.err.println("-DEBUG- SV Pos: " + sv.getPosition());
-				//System.err.println("-DEBUG- SV Chrom2: " + sv.getEndChromosome().getUDPName());
-				//System.err.println("-DEBUG- SV End: " + sv.getEndPosition());
+				Thread.sleep(1000);
+				time++;
 			}
-			else 
-			{
-				searchChrom = sv.getChromosome();
-				search_end = sv.getCIPosition(true, false, true) + bp;
-			}
-			if(searchChrom != lastChrom)
-			{
-				lastChrom = searchChrom;
-				System.err.println("Now reading variants from chromosome " + searchChrom.getUDPName());
-			}
-			//System.err.println("-DEBUG- Region search: " + searchChrom.getUDPName() + ":" + search_start + "-" + search_end);
-			Collection<DBVariant> nearvars = getVariantsInRegion(searchChrom, search_start, search_end);
-			//if(nearvars != null) System.err.println("-DEBUG- Hits: " + nearvars.size());
-			if(nearvars != null && !nearvars.isEmpty())
-			{
-				//Look for matches
-				for(DBVariant dbv : nearvars)
-				{
-					if(dbv.svIsEquivalent(sv, mfac))
-					{
-						id = dbv.getLongID();
-						//System.err.println("Match found: 0x" + Long.toHexString(id));
-						//System.err.println("Match: " + sv.toString() + " ---> " + dbv.toString());
-						break;
-					}
-				}
-			}
-			//if(debugctr >= 5) System.exit(2);
-			
-			//If matched, need to update record.
-			//If not matched, need new record.
-			boolean newvar = (id == -1L);
-			if(!newvar)
-			{
-				//We merging!
-				
-				DBVariant dbv = this.getVariant(id);
-				//Update start/end
-				int npos = sv.getCIPosition(false, false, false);
-				int opos = dbv.getStartPosition().getStart();
-				if(npos < opos) dbv.getStartPosition().setStart(npos);
-				npos = sv.getCIPosition(false, false, true);
-				opos = dbv.getStartPosition().getEnd();
-				if(npos > opos) dbv.getStartPosition().setEnd(npos);
-				
-				npos = sv.getCIPosition(true, false, false);
-				opos = dbv.getEndPosition().getStart();
-				if(npos < opos) dbv.getEndPosition().setStart(npos);
-				npos = sv.getCIPosition(true, false, true);
-				opos = dbv.getEndPosition().getEnd();
-				if(npos > opos) dbv.getEndPosition().setEnd(npos);
-				
-				//Update genotype & allele counts
-				VariantGenotype vg = this.getGenotype(id);
-				for(String sample : samples)
-				{
-					//TODO
-					FamilyMember mem = sampleMap.get(sample);
-					if(mem == null) continue;
-					//See if already has genotype...
-					SVDBGenotype g = vg.getGenotype(mem.getUID());
-					Genotype geno = sv.getSampleGenotype(sample);
-					if(geno != null)
-					{
-						//See if homref.
-						//If so remove if there or continue
-									
-						if(geno.isGenotypeUnknown() || (geno.isHomozygous() && geno.hasAllele(0)))
-						{
-							if(g != null)
-							{
-								vg.removeGenotype(mem.getUID());
-								boolean homalt = g.isHomozygous();
-								Collection<Population> pflags = mem.getPopulationTags();
-								for(Population p : pflags)
-								{
-									dbv.decrementTotalCount(p);
-									if(homalt)dbv.decrementHomozygoteCount(p);
-								}
-								dbv.decrementTotalCount();
-								if(homalt)dbv.decrementHomozygoteCount();
-								List<Long> dlist = sgDel.get(mem.getUID());
-								if(dlist == null) {dlist = new LinkedList<Long>(); sgDel.put(mem.getUID(), dlist);}
-								dlist.add(id);
-							}
-						}
-						else
-						{
-							//Add/update
-							SVDBGenotype newgeno = SVDBGenotype.generateGenotype(mem.getUID(), geno, sv);
-							vg.addGenotype(newgeno);
-							if(g != null)
-							{
-								boolean homalt = newgeno.isHomozygous();
-								boolean washom = g.isHomozygous();
-								if(homalt && !washom)
-								{
-									//Increment hom count
-									Collection<Population> pflags = mem.getPopulationTags();
-									dbv.incrementHomozygoteCount();
-									for(Population p : pflags) dbv.incrementHomozygoteCount(p);
-									List<Long> alist = sgAdd.get(mem.getUID());
-									if(alist == null) {alist = new LinkedList<Long>(); sgAdd.put(mem.getUID(), alist);}
-									alist.add(id);
-								}
-								else if (!homalt && washom)
-								{
-									//Decrement hom count
-									Collection<Population> pflags = mem.getPopulationTags();
-									dbv.decrementHomozygoteCount();
-									for(Population p : pflags) dbv.decrementHomozygoteCount(p);
-									List<Long> dlist = sgDel.get(mem.getUID());
-									if(dlist == null) {dlist = new LinkedList<Long>(); sgDel.put(mem.getUID(), dlist);}
-									dlist.add(id);
-								}
-							}
-							else
-							{
-								boolean homalt = newgeno.isHomozygous();
-								Collection<Population> pflags = mem.getPopulationTags();
-								for(Population p : pflags)
-								{
-									dbv.incrementTotalCount(p);
-									if(homalt)dbv.incrementHomozygoteCount(p);
-								}
-								dbv.incrementTotalCount();
-								if(homalt)dbv.incrementHomozygoteCount();
-								List<Long> alist = sgAdd.get(mem.getUID());
-								if(alist == null) {alist = new LinkedList<Long>(); sgAdd.put(mem.getUID(), alist);}
-								alist.add(id);
-							}
-						}
-					}
-					else
-					{
-						//Remove if there.
-						//Otherwise do nothing
-						if(g != null)
-						{
-							vg.removeGenotype(mem.getUID());
-							boolean homalt = g.isHomozygous();
-							Collection<Population> pflags = mem.getPopulationTags();
-							for(Population p : pflags)
-							{
-								dbv.decrementTotalCount(p);
-								if(homalt)dbv.decrementHomozygoteCount(p);
-							}
-							dbv.decrementTotalCount();
-							if(homalt)dbv.decrementHomozygoteCount();
-							List<Long> dlist = sgDel.get(mem.getUID());
-							if(dlist == null) {dlist = new LinkedList<Long>(); sgDel.put(mem.getUID(), dlist);}
-							dlist.add(id);
-						}
-					}
-				}
-				this.addOrUpdateVariant(dbv, vg, false);
-				
-				//If the variant hits any genes, update those gene hit counts!
-				/*List<Gene> glist = dbv.getGeneListReference();
-				if(glist != null && !glist.isEmpty())
-				{
-					for(Gene g : glist)
-					{
-						GeneHitCounter ghc = this.getGeneHitCounts(g.getGUID());
-						if(ghc == null) continue;
-						ghc.total_hits_indiv.addAll(vg.getAllIndividuals());
-						//If exonic...
-						if(dbv.getPositionEffect() == GeneFunc.EXONIC) ghc.exon_hits_indiv.addAll(vg.getAllIndividuals());
-						ghc_cache_dirty = true;
-					}
-				}*/
-			}
-			else
-			{
-				//New variant!
-				
-				id = generateUID(searchChrom, sv.getPosition());
-				DBVariant dbv = DBVariant.getFromVariant(sv, sv.getVarID());
-				dbv.setLongUID(id);
-				dbv.noteGenes(genes);
-				VariantGenotype vg = new VariantGenotype(id);
-				
-				for(String sample : samples)
-				{
-					//TODO
-					FamilyMember mem = sampleMap.get(sample);
-					if(mem == null) continue;
-					//System.err.println("Family member found for sample " + sample + "! 0x" + Integer.toHexString(mem.getUID()));
-					//System.exit(2);
-					Genotype gt = sv.getSampleGenotype(sample);
-					if(gt == null) continue;
-					if(gt.isGenotypeUnknown()) continue;
-					if(gt.isHomozygous() && gt.hasAllele(0)) continue;
-					SVDBGenotype g = SVDBGenotype.generateGenotype(mem.getUID(), gt, sv);
-					vg.addGenotype(g);
-					//System.err.println("Genotype generated: " + g.isHomozygous() + " | " + Integer.toHexString(g.getIndividualUID()));
-					//System.exit(2);
-					
-					boolean homalt = g.isHomozygous();
-					Collection<Population> pflags = mem.getPopulationTags();
-					for(Population p : pflags)
-					{
-						dbv.incrementTotalCount(p);
-						if(homalt)dbv.incrementHomozygoteCount(p);
-					}
-					dbv.incrementTotalCount();
-					if(homalt)dbv.incrementHomozygoteCount();
-					
-					List<Long> alist = sgAdd.get(mem.getUID());
-					if(alist == null) {alist = new LinkedList<Long>(); sgAdd.put(mem.getUID(), alist);}
-					alist.add(id);
-				}
-				
-				addOrUpdateVariant(dbv, vg, true);
-			}
-			//System.exit(2);
-			//debugctr++;
-			//if(debugctr >= 2) System.exit(2);
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+			return false;
 		}
 		
-		vcfReader.close();
-		return this.updateSampleGenoTable(sgAdd, sgDel);
+		System.err.println("VCF Addition completed! App. time elapsed: " + time + " seconds");
+		
+		return true;
 	}
 	
 	/* ----- Variant Deletion ----- */
@@ -2080,9 +2438,19 @@ public class SQLVariantTable implements VariantTable{
 		try 
 		{
 			//Statement cstat = connection.createStatement();
-			PreparedStatement pstat = sprepper.getSampleGenoDeleteStatment();
+			//PreparedStatement pstat = sprepper.getSampleGenoDeleteStatment();
+			PreparedStatement pstat = null;
+			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_SGENO_DELETE);
+			else pstat = sqlManager.getStatementGenerator().getSampleGenoDeleteStatment();
+			
 			pstat.setInt(1, sampleID);
+			if(threadlock) sqlManager.requestStatementExecution();
 			int count = pstat.executeUpdate();
+			if(threadlock)
+			{
+				sqlManager.acknowledgeStatementExecution();
+				sqlManager.releaseStatement(SQLManager.SKEY_SGENO_DELETE, pstat);
+			}
 			return (count == 1);
 		} 
 		catch (SQLException e) 
@@ -2102,9 +2470,20 @@ public class SQLVariantTable implements VariantTable{
 		{
 			//Statement cstat = connection.createStatement();
 			//int count = cstat.executeUpdate(sqlQuery);
-			PreparedStatement pstat = sprepper.getVarDeleteStatment();
+			//PreparedStatement pstat = sprepper.getVarDeleteStatment();
+			PreparedStatement pstat = null;
+			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_DELETE);
+			else pstat = sqlManager.getStatementGenerator().getVarDeleteStatment();
+			
 			pstat.setLong(1, varUID);
+			
+			if(threadlock) sqlManager.requestStatementExecution();
 			int count = pstat.executeUpdate();
+			if(threadlock)
+			{
+				sqlManager.acknowledgeStatementExecution();
+				sqlManager.releaseStatement(SQLManager.SKEY_VAR_DELETE, pstat);
+			}
 			
 			//Update sample geno table...
 			if(vg != null)
@@ -2128,13 +2507,18 @@ public class SQLVariantTable implements VariantTable{
 					ghc_cache_dirty = true;
 					GeneHitCounter ghc = getGeneHitCounts(g.getGUID());
 					boolean exonic = variantExonic(var, g);
-					ghc.total_hits_var--;
-					if(exonic) ghc.exon_hits_var--;
+					//ghc.total_hits_var--;
+					//if(exonic) ghc.exon_hits_var--;
+					
+					ghc.decrementTotalHits();
+					if(exonic) ghc.decrementExonHits();
 					
 					for(Integer sid : vg.getAllIndividuals())
 					{
-						if(!this.sampleHasVariantInGene(sid, g)) ghc.total_hits_indiv.remove(sid);
-						if(exonic && !this.sampleHasExonicVariantInGene(sid, g)) ghc.exon_hits_indiv.remove(sid);
+						//if(!this.sampleHasVariantInGene(sid, g)) ghc.total_hits_indiv.remove(sid);
+						//if(exonic && !this.sampleHasExonicVariantInGene(sid, g)) ghc.exon_hits_indiv.remove(sid);
+						if(!this.sampleHasVariantInGene(sid, g)) ghc.removeIndividual_Total(sid);
+						if(exonic && !this.sampleHasExonicVariantInGene(sid, g)) ghc.removeIndividual_Exon(sid);
 					}
 				}
 			}
@@ -2160,14 +2544,17 @@ public class SQLVariantTable implements VariantTable{
 		
 		try 
 		{
-			PreparedStatement pstat = sprepper.generateMultiVarDeleteStatement(len);
+			//PreparedStatement pstat = sprepper.generateMultiVarDeleteStatement(len);
+			PreparedStatement pstat = sqlManager.getStatementGenerator().generateMultiVarDeleteStatement(len);
 			int i = 1;
 			for(Long vid : varUIDs) 
 			{
 				pstat.setLong(i, vid);
 				i++;
 			}
+			if(threadlock) sqlManager.requestStatementExecution();
 			int count = pstat.executeUpdate();
+			if(threadlock) sqlManager.acknowledgeStatementExecution();
 
 			//Update sample geno table...
 			if(vglist != null)
@@ -2206,13 +2593,18 @@ public class SQLVariantTable implements VariantTable{
 						ghc_cache_dirty = true;
 						GeneHitCounter ghc = getGeneHitCounts(g.getGUID());
 						boolean exonic = variantExonic(v, g);
-						ghc.total_hits_var--;
-						if(exonic) ghc.exon_hits_var--;
+						//ghc.total_hits_var--;
+						//if(exonic) ghc.exon_hits_var--;
+						
+						ghc.decrementTotalHits();
+						if(exonic) ghc.decrementExonHits();
 						
 						for(Integer sid : vg.getAllIndividuals())
 						{
-							if(!this.sampleHasVariantInGene(sid, g)) ghc.total_hits_indiv.remove(sid);
-							if(exonic && !this.sampleHasExonicVariantInGene(sid, g)) ghc.exon_hits_indiv.remove(sid);
+							//if(!this.sampleHasVariantInGene(sid, g)) ghc.total_hits_indiv.remove(sid);
+							//if(exonic && !this.sampleHasExonicVariantInGene(sid, g)) ghc.exon_hits_indiv.remove(sid);
+							if(!this.sampleHasVariantInGene(sid, g)) ghc.removeIndividual_Total(sid);
+							if(exonic && !this.sampleHasExonicVariantInGene(sid, g)) ghc.removeIndividual_Exon(sid);
 						}
 					}
 				}
@@ -2247,8 +2639,10 @@ public class SQLVariantTable implements VariantTable{
 		for(Gene g : glist)
 		{
 			GeneHitCounter ghc = getGeneHitCounts(g.getGUID());
-			ghc.exon_hits_indiv.remove(uid);
-			ghc.total_hits_indiv.remove(uid);
+			//ghc.exon_hits_indiv.remove(uid);
+			//ghc.total_hits_indiv.remove(uid);
+			ghc.removeIndividual_Total(uid);
+			ghc.removeIndividual_Exon(uid);
 		}
 		
 		//Remove variants or geno records
@@ -2334,6 +2728,7 @@ public class SQLVariantTable implements VariantTable{
 						
 						//Statement cstat = connection.createStatement();
 						//cstat.executeUpdate(sqlCmd);
+						StatementPrepper sprepper = sqlManager.getStatementGenerator();
 						PreparedStatement pstat = sprepper.getSGenoInsertStatement();
 						pstat.setInt(StatementPrepper.SGENOINS_SID, sid);
 						
@@ -2367,6 +2762,7 @@ public class SQLVariantTable implements VariantTable{
 					
 					//Statement cstat = connection.createStatement();
 					//cstat.executeUpdate(sqlCmd);
+					StatementPrepper sprepper = sqlManager.getStatementGenerator();
 					PreparedStatement pstat = sprepper.getSGenoUpdateStatement();
 					pstat.setInt(StatementPrepper.SGENOUD_SID, sid);
 					
@@ -2432,8 +2828,14 @@ public class SQLVariantTable implements VariantTable{
 		{
 			//Statement cstat = connection.createStatement();
 			//int count = cstat.executeUpdate(sqlcmd);
-			PreparedStatement pstat = generatePopulationSetVarUpdateStatement(dbv);
+			PreparedStatement pstat = generatePopulationSetVarUpdateStatement(dbv, threadlock);
+			if(threadlock) sqlManager.requestStatementExecution();
 			int count = pstat.executeUpdate();
+			if(threadlock)
+			{
+				sqlManager.acknowledgeStatementExecution();
+				sqlManager.releaseStatement(SQLManager.SKEY_VAR_UPDATE_POP, pstat);
+			}
 			allgood = allgood && (count == 1);
 		}
 		catch(Exception e)
@@ -2505,8 +2907,15 @@ public class SQLVariantTable implements VariantTable{
 			
 			try
 			{
-				PreparedStatement pstat = generatePopulationSetVarUpdateStatement(dbv);
+				PreparedStatement pstat = generatePopulationSetVarUpdateStatement(dbv, true);
+				
+				if(threadlock) sqlManager.requestStatementExecution();
 				int count = pstat.executeUpdate();
+				if(threadlock)
+				{
+					sqlManager.acknowledgeStatementExecution();
+					sqlManager.releaseStatement(SQLManager.SKEY_VAR_UPDATE_POP, pstat);
+				}
 				allgood = allgood && (count == 1);
 			}
 			catch(Exception e)
@@ -2541,6 +2950,7 @@ public class SQLVariantTable implements VariantTable{
 	{
 		try
 		{
+			StatementPrepper sprepper = sqlManager.getStatementGenerator();
 			System.err.println("Deleting variants...");
 			PreparedStatement ps = sprepper.getVarTableWipeStatement();
 			ps.executeUpdate();

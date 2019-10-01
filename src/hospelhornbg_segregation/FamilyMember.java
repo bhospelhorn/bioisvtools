@@ -213,7 +213,7 @@ public class FamilyMember extends Individual{
 		this.middleNames = null;
 	}
 	
-	public Collection<Population> getPopulationTags()
+	public synchronized Collection<Population> getPopulationTags()
 	{
 		List<Population> list = new ArrayList<Population>(population_tags.size() + 1);
 		list.addAll(population_tags);

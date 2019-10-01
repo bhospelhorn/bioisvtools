@@ -89,7 +89,7 @@ public class SVDatabase {
 			variantTable = new DBVariantTable(genome, genes, directory, indexLimiter);
 			break;
 		case VARTBL_TYPE_SQL:
-			variantTable = new SQLVariantTable(sqlURL, sqlUser, sqlPassword, genome, genes);
+			variantTable = new SQLVariantTable(sqlURL, sqlUser, sqlPassword, genome, genes, mergeFactor);
 			break;
 		}
 		
@@ -127,7 +127,7 @@ public class SVDatabase {
 		sqlPassword = "nopassword";
 		
 		sampleTable = new DBSampleTable(directory);
-		variantTable = new SQLVariantTable(sqlURL, sqlUser, sqlPassword, genome, genes);
+		variantTable = new SQLVariantTable(sqlURL, sqlUser, sqlPassword, genome, genes, mergeFactor);
 		varTableType = VARTBL_TYPE_SQL;
 		
 		saveDatabase();
@@ -667,10 +667,14 @@ public class SVDatabase {
 				GeneHitCounter ghc = geneHitMap.get(g.getID());
 				if(ghc != null)
 				{
-					sb.append(ghc.total_hits_var + "\t");
-					sb.append(ghc.total_hits_indiv.size() + "\t");
-					sb.append(ghc.exon_hits_var + "\t");
-					sb.append(ghc.exon_hits_indiv.size() + "\t");
+					//sb.append(ghc.total_hits_var + "\t");
+					//sb.append(ghc.total_hits_indiv.size() + "\t");
+					//sb.append(ghc.exon_hits_var + "\t");
+					//sb.append(ghc.exon_hits_indiv.size() + "\t");
+					sb.append(ghc.getTotalHitsVar() + "\t");
+					sb.append(ghc.countIndivTotal() + "\t");
+					sb.append(ghc.getExonHitsVar() + "\t");
+					sb.append(ghc.countIndivExon() + "\t");
 				}
 				else sb.append("0\t0\t0\t0\t");
 			}
