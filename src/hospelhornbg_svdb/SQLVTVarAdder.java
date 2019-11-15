@@ -60,6 +60,7 @@ public class SQLVTVarAdder {
 	private volatile StructuralVariant nextSV;
 	private volatile Collection<DBVariant> nextRegion;
 	
+	private volatile boolean error_kill;
 	private volatile boolean reader_done;
 	private volatile boolean getter_done;
 	private volatile boolean merger_done;
@@ -69,6 +70,12 @@ public class SQLVTVarAdder {
 	private VarMerger varMerger;
 	private NewVarAdder varAdder;
 	private VarUpdater varUpdater;
+	
+	private volatile long c_parsed;
+	private volatile long c_reg;
+	private volatile long c_merged;
+	private volatile long c_added;
+	private volatile long c_updated;
 	
 	/*--- Other Objects ---*/
 	
@@ -121,6 +128,7 @@ public class SQLVTVarAdder {
 		@Override
 		public void doSomething() 
 		{
+			try{
 			if(itr == null)
 			{
 				//Get the iterator
@@ -163,11 +171,17 @@ public class SQLVTVarAdder {
 				}
 				if(ignore_translocations && ((sv.getType() == SVType.BND) || (sv.getType() == SVType.TRA))) continue;
 				parsedQ.add(itr.next());
+				c_parsed++;
 			}
 			
-			if(regGetter.anyThreadsAlive()) regGetter.interruptThreads();
-		}
-
+			if(regGetter.anyThreadsAlive()){
+				//System.err.println(Thread.currentThread().getName() + " || Parser - Interrupting RegGetter");
+				regGetter.interruptThreads();
+			}
+			}
+			catch(Exception e){killAll(e);}
+	}
+		
 	}
 
 	public class RegGetter extends Arunnable
@@ -188,6 +202,9 @@ public class SQLVTVarAdder {
 		@Override
 		public void doSomething() 
 		{
+			try{
+			//System.err.println(Thread.currentThread().getName() + " || RegGetter - doSomething() called!");
+			super.disableInterrupts();
 			while(nextRegion == null && !parsedQ.isEmpty())
 			{
 				StructuralVariant sv = parsedQ.poll();
@@ -195,7 +212,9 @@ public class SQLVTVarAdder {
 				int st = sv.getCIPosition(false, false, false);
 				int ed = sv.getCIPosition(true, false, true);
 				SVType type = sv.getType();
+				//System.err.println(Thread.currentThread().getName() + " || RegGetter - looking for variants in region!");
 				Collection<DBVariant> results = table.getVariantsInRegion(c, st, ed, type);
+				//System.err.println(Thread.currentThread().getName() + " || RegGetter - variant search done!");
 				
 				//Note
 				if(verbose)
@@ -222,12 +241,22 @@ public class SQLVTVarAdder {
 					nextRegion = results;
 				}
 				
-				if(parseRunner.anyThreadsAlive()) parseRunner.interruptThreads();
-				if(varMerger.anyThreadsAlive()) varMerger.interruptThreads();
+				if(parseRunner.anyThreadsAlive()){
+					//System.err.println(Thread.currentThread().getName() + " || RegGetter - Interrupting Parser");
+					parseRunner.interruptThreads();
+				}
+				if(varMerger.anyThreadsAlive()){
+					//System.err.println(Thread.currentThread().getName() + " || RegGetter - Interrupting VarMerger");
+					varMerger.interruptThreads();
+				}
+				c_reg++;
 			}
 			if(reader_done) {getter_done = true; this.requestTermination();}
-		}
-		
+			super.enableInterrupts();
+			//System.err.println(Thread.currentThread().getName() + " || RegGetter - doSomething() returning!");
+			}
+			catch(Exception e){killAll(e);}
+			}
 	}
 	
 	public class VarMerger extends Arunnable
@@ -247,6 +276,7 @@ public class SQLVTVarAdder {
 		@Override
 		public void doSomething() 
 		{
+			try{
 			//Looks at the last region search and SV in queue to 
 			//determine if new SV can be merged to existing variant
 			
@@ -261,7 +291,10 @@ public class SQLVTVarAdder {
 					nextRegion = null;
 				}
 				//Let the reg getter have at the next variant
-				if(regGetter.anyThreadsAlive()) regGetter.interruptThreads();
+				if(regGetter.anyThreadsAlive()){
+					//System.err.println(Thread.currentThread().getName() + " || VarMerger - Interrupting RegGetter");
+					regGetter.interruptThreads();
+				}
 				
 				DBVariant match = null;
 				
@@ -277,17 +310,25 @@ public class SQLVTVarAdder {
 				if(match != null)
 				{
 					mergeQ.add(new MergePair(sv, match));
-					if(varUpdater.anyThreadsAlive()) varUpdater.interruptThreads();
+					if(varUpdater.anyThreadsAlive()){
+						//System.err.println(Thread.currentThread().getName() + " || VarMerger - Interrupting VarUpdater");
+						varUpdater.interruptThreads();
+					}
 				}
 				else
 				{
 					newQ.add(sv);
-					if(varAdder.anyThreadsAlive()) varAdder.interruptThreads();
+					if(varAdder.anyThreadsAlive()){
+						//System.err.println(Thread.currentThread().getName() + " || VarMerger - Interrupting NewVarAdder");
+						varAdder.interruptThreads();
+					}
 				}
-				
+				c_merged++;
 			}
 			
 			if(getter_done) {merger_done = true; this.requestTermination();}
+			}
+			catch(Exception e){killAll(e);}
 		}
 		
 	}
@@ -307,6 +348,7 @@ public class SQLVTVarAdder {
 		@Override
 		public void doSomething() 
 		{
+			try{
 			while(!newQ.isEmpty())
 			{
 				//Pop!
@@ -333,7 +375,11 @@ public class SQLVTVarAdder {
 				}
 				
 				//Generate a new UID
+				super.disableInterrupts();
+				//System.err.println(Thread.currentThread().getName() + " || NewVarAdder - getting new UID");
 				long vuid = table.generateUID(c, stpos);
+				//System.err.println(Thread.currentThread().getName() + " || NewVarAdder - getting new UID -- Done!");
+				super.enableInterrupts();
 				
 				//Convert to DBV
 				DBVariant dbv = DBVariant.getFromVariant(sv, sv.getVarID());
@@ -368,11 +414,14 @@ public class SQLVTVarAdder {
 
 				//Note gene hits
 				List<Gene> glist = dbv.getGeneListReference();
+				super.disableInterrupts();
 				if(glist != null)
 				{
 					for(Gene g : glist)
 					{
+						//System.err.println(Thread.currentThread().getName() + " || NewVarAdder - Getting gene hit record: " + g.getGUID());
 						GeneHitCounter ghc = table.getGeneHitRecord(g.getGUID());
+						//System.err.println(Thread.currentThread().getName() + " || NewVarAdder - Getting gene hit record -- Done! ");
 						boolean exonic = (g.getRelativeRegionLocationEffect(dbv.getStartPosition().getStart(), dbv.getEndPosition().getEnd()) == GeneFunc.EXONIC);
 						//ghc.total_hits_var++;
 						//ghc.total_hits_indiv.addAll(vg.getAllIndividuals());
@@ -391,9 +440,15 @@ public class SQLVTVarAdder {
 				}
 				
 				//Send to table to add	
-				table.addOrUpdateVariant(dbv, vg, true);
+				//System.err.println(Thread.currentThread().getName() + " || NewVarAdder - Adding variant... ");
+				if (!table.addOrUpdateVariant(dbv, vg, true)) {killAll(null); return;}
+				//System.err.println(Thread.currentThread().getName() + " || NewVarAdder - Adding variant -- Done!");
+				super.enableInterrupts();
+				c_added++;
 			}
 			if(merger_done) this.requestTermination();
+			}
+			catch(Exception e){killAll(e);}
 		}
 		
 	}
@@ -413,6 +468,7 @@ public class SQLVTVarAdder {
 		@Override
 		public void doSomething() 
 		{
+			try{
 			while(!mergeQ.isEmpty())
 			{
 				//Pop
@@ -483,7 +539,11 @@ public class SQLVTVarAdder {
 				}
 				
 				//Update genotypes & population counts
+				super.disableInterrupts();
+				//System.err.println(Thread.currentThread().getName() + " || VarUpdater - getting genotype");
 				VariantGenotype vg = table.getGenotype(mp.oldSV.getLongID());
+				//System.err.println(Thread.currentThread().getName() + " || VarUpdater - getting genotype -- Done!");
+				super.enableInterrupts();
 				List<String> samplelist = new ArrayList<String>(sampleMap.size()+1);
 				samplelist.addAll(sampleMap.keySet());
 				Set<Integer> removed = new TreeSet<Integer>();
@@ -537,10 +597,13 @@ public class SQLVTVarAdder {
 				
 				//Update gene hit counts
 				List<Gene> glist = mp.oldSV.getGeneListReference();
+				super.disableInterrupts();
 				for(Gene g : glist)
 				{
 					boolean isnew = newGenes.contains(g.getGUID());
+					//System.err.println(Thread.currentThread().getName() + " || VarUpdater - getting gene hit info");
 					GeneHitCounter ghc = table.getGeneHitRecord(g.getGUID());
+					//System.err.println(Thread.currentThread().getName() + " || VarUpdater - getting gene hit info -- Done!");
 					boolean exonic = (g.getRelativeRegionLocationEffect(mp.oldSV.getStartPosition().getStart(), mp.oldSV.getEndPosition().getEnd()) == GeneFunc.EXONIC);
 					//if(isnew) ghc.total_hits_var++;
 					//ghc.total_hits_indiv.addAll(vg.getAllIndividuals());
@@ -562,10 +625,15 @@ public class SQLVTVarAdder {
 				table.tickGHCCDirty();
 				
 				//Update in database table
-				table.addOrUpdateVariant(mp.oldSV, vg, false);
-				
+				//System.err.println(Thread.currentThread().getName() + " || VarUpdater - updating variant in db");
+				if (!table.addOrUpdateVariant(mp.oldSV, vg, false)){killAll(null); return;}
+				//System.err.println(Thread.currentThread().getName() + " || VarUpdater - updating variant in db -- Done!");
+				super.enableInterrupts();
+				c_updated++;
 			}
 			if(merger_done) this.requestTermination();
+			}
+			catch(Exception e){killAll(e);}
 		}
 		
 	}
@@ -586,7 +654,7 @@ public class SQLVTVarAdder {
 			sampleMap.put(s, samples.get(s));
 		}
 		
-		
+		error_kill = false;
 	}
 	
 	/*--- Running ---*/
@@ -597,6 +665,14 @@ public class SQLVTVarAdder {
 		reader_done = false;
 		getter_done = false;
 		merger_done = false;
+		
+		error_kill = false;
+		
+		c_parsed = 0;
+		c_merged = 0;
+		c_added = 0;
+		c_reg = 0;
+		c_updated = 0;
 		
 		parsedQ = new ConcurrentLinkedQueue<StructuralVariant>();
 		mergeQ = new ConcurrentLinkedQueue<MergePair>();
@@ -641,6 +717,8 @@ public class SQLVTVarAdder {
 	
 	public synchronized boolean isDone()
 	{
+		if(error_kill) return true;
+		if(!reader_done || !this.getter_done || !this.merger_done) return false;
 		if(parseRunner.anyThreadsAlive()) return false;
 		if(regGetter.anyThreadsAlive()) return false;
 		if(varMerger.anyThreadsAlive()) return false;
@@ -650,5 +728,21 @@ public class SQLVTVarAdder {
 		return true;
 	}
 	
+	private synchronized void killAll(Exception e)
+	{
+		System.err.println("An unhandled exception has been detected! Terminating variant addition...");
+		System.err.println("Parsed: " + c_parsed);
+		System.err.println("Region Searched: " + c_reg);
+		System.err.println("Merged: " + c_merged);
+		System.err.println("Added: " + c_added);
+		System.err.println("Updated: " + c_updated);
+		error_kill = true;
+		parseRunner.requestTermination();
+		regGetter.requestTermination();
+		varMerger.requestTermination();
+		varAdder.requestTermination();
+		varUpdater.requestTermination();
+		if(e != null) e.printStackTrace();
+	}
 
 }

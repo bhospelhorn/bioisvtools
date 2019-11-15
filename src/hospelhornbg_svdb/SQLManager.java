@@ -35,6 +35,13 @@ public class SQLManager {
 	public static final String SKEY_GENEHITS_INSERT = "insert_genehit_record";
 	public static final String SKEY_GENEHITS_UPDATE = "update_genehit_record";
 	
+	public static final String[] ALL_KEYS = {SKEY_CHECKVARUID, SKEY_GETVAR, SKEY_GETGENO, SKEY_GETSAMPLEVAR,
+											 SKEY_GETVAR_REG, SKEY_GETVAR_REG_NOTRA, SKEY_GETVAR_REG_OFTYPE,
+											 SKEY_VAR_INSERT, SKEY_VAR_UPDATE_SHORT, SKEY_VAR_UPDATE_POP,
+											 SKEY_VAR_DELETE, SKEY_SGENO_INSERT, SKEY_SGENO_UPDATE,
+											 SKEY_SGENO_DELETE, SKEY_GENEHITS_GET, SKEY_GENEHITS_INSERT,
+											 SKEY_GENEHITS_UPDATE};
+	
 	/*--- Instance Variables ---*/
 	
 	private StatementPrepper statement_prepper;
@@ -82,17 +89,28 @@ public class SQLManager {
 		psLib.put(SKEY_GENEHITS_GET, statement_prepper.getGeneHitGetterStatement());
 		psLib.put(SKEY_GENEHITS_INSERT, statement_prepper.getGeneHitInsertStatement());
 		psLib.put(SKEY_GENEHITS_UPDATE, statement_prepper.getGeneHitUpdateStatement());
+		
+		for(String k : ALL_KEYS)
+		{
+			psWaitList.put(k, new ConcurrentLinkedQueue<Thread>());
+		}
 	}
 	
 	/*--- Statement Access Concurrency ---*/
 	
-	public PreparedStatement requestStatement(String key)
+	public PreparedStatement requestStatement(String key, boolean ignoreExternal)
 	{
+		//System.err.println(Thread.currentThread().getName() + " requested " + key);
 		if(psCleared.get(key) == null)
 		{
 			//Free pickin'
+			//System.err.println("No threads ahead in queue. " + Thread.currentThread().getName() + " checking for " + key);
 			PreparedStatement ps = psLib.remove(key);
-			if(ps != null) return ps;	
+			if(ps != null)
+			{
+				//System.err.println(Thread.currentThread().getName() + " granted " + key);
+				return ps;	
+			}
 		}
 		
 		//Put on wait list and block until cleared
@@ -100,7 +118,7 @@ public class SQLManager {
 		if(waitlist == null) return null; //Key is invalid
 		Thread me = Thread.currentThread();
 		waitlist.add(me);
-		while(psCleared.get(key) != me)
+		while(psCleared.get(key) != me && (psLib.containsKey(key)))
 		{
 			try 
 			{
@@ -113,18 +131,24 @@ public class SQLManager {
 				if(psCleared.get(key) != me)
 				{
 					//We assume it was an external signal.
-					waitlist.remove(me);
-					return null;
+					if(!ignoreExternal)
+					{
+						//System.err.println(Thread.currentThread().getName() + " received interrupt. Request for " + key + " withdrawn.");
+						waitlist.remove(me);
+						return null;	
+					}
 				}
 			}
 		}
 		
+		//System.err.println(Thread.currentThread().getName() + " granted " + key);
 		psCleared.remove(key);
 		return psLib.remove(key);
 	}
 	
 	public void releaseStatement(String key, PreparedStatement ps)
 	{
+		//System.err.println(Thread.currentThread().getName() + " requesting release of " + key);
 		ConcurrentLinkedQueue<Thread> waitlist = psWaitList.get(key);
 		if(waitlist == null) return; //Key is invalid
 		Thread cleared = null;
@@ -132,27 +156,32 @@ public class SQLManager {
 		{
 			cleared = waitlist.poll();
 			psCleared.put(key, cleared);
+			//System.err.println(cleared.getName() + " queued next for " + key);
 		}
+		//If the waiting thread happens to check after its marked as cleared
+		// but before the statement is put back, it'll grab a null statement!
 		
 		psLib.put(key, ps);
 		if(cleared != null)
 		{
 			synchronized(cleared) {cleared.interrupt();}
 		}
-		
+		//System.err.println(Thread.currentThread().getName() + " released " + key);
 	}
 	
 	/*--- Database Access Concurrency ---*/
 	
-	public boolean requestStatementExecution()
+	public boolean requestStatementExecution(boolean ignoreExternalInterrupts)
 	{
 		//Blocks until cleared for statement execution
+		System.err.println(Thread.currentThread().getName() + " requesting statement execution!");
 		synchronized(this)
 		{
 			if(exeReady == null)
 			{
 				//Put me!
 				exeReady = Thread.currentThread();
+				System.err.println(Thread.currentThread().getName() + " granted statement execution!");
 				return true;
 			}
 		}
@@ -170,13 +199,18 @@ public class SQLManager {
 			{
 				if(exeReady != me)
 				{
-					exeQueue.remove(me);
-					return false;
+					if(!ignoreExternalInterrupts)
+					{
+						System.err.println(Thread.currentThread().getName() + " received external interrupt. Withdrawing execution request...");
+						exeQueue.remove(me);
+						return false;	
+					}
 				}
 				break;
 			}
 		}
 		
+		System.err.println(Thread.currentThread().getName() + " granted statement execution!");
 		return true;
 	}
 	
@@ -186,6 +220,7 @@ public class SQLManager {
 		//	allows queue to move forward
 		Thread me = Thread.currentThread();
 		if(exeReady != me) return false;
+		System.err.println(Thread.currentThread().getName() + " requesting acknowledgement of statement execution");
 		
 		if(!exeQueue.isEmpty())
 		{
@@ -194,6 +229,7 @@ public class SQLManager {
 		}
 		else exeReady = null;
 		
+		System.err.println(Thread.currentThread().getName() + " acknowledgement of execution received");
 		return true;
 	}
 

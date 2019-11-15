@@ -167,6 +167,7 @@ public class StatementPrepper {
 		{
 			String sqlQuery = "SELECT " + SQLVariantTable.FIELDNAME_VARUID + " FROM " + SQLVariantTable.TABLENAME_VARIANTS;
 			sqlQuery += " WHERE " + SQLVariantTable.FIELDNAME_VARUID + " = ?";
+			//System.err.println(sqlQuery);
 			varuid_check = connection.prepareStatement(sqlQuery);
 		}
 		return varuid_check;

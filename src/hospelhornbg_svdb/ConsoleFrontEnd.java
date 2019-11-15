@@ -107,7 +107,8 @@ public class ConsoleFrontEnd {
 	public static void addVCF(String dbDir, String vcfPath, boolean verbose, boolean ignoreTRA, int threads) throws IOException, SQLException
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
-		db.addVCF(vcfPath, verbose, ignoreTRA, threads);
+		boolean good = db.addVCF(vcfPath, verbose, ignoreTRA, threads);
+		if(!good) System.err.println("ERROR: VCF addition failed!");
 		db.saveDatabase();
 	}
 	

@@ -20,11 +20,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
@@ -34,8 +32,6 @@ import java.util.concurrent.ConcurrentMap;
 
 import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.SVType;
-import hospelhornbg_bioinformatics.StructuralVariant;
-import hospelhornbg_bioinformatics.VCFReadStreamer;
 import hospelhornbg_genomeBuild.Contig;
 import hospelhornbg_genomeBuild.Gene;
 import hospelhornbg_genomeBuild.Gene.Exon;
@@ -46,7 +42,6 @@ import hospelhornbg_segregation.Family;
 import hospelhornbg_segregation.FamilyMember;
 import hospelhornbg_segregation.Population;
 import hospelhornbg_svdb.DBVariantTable.GeneHitCounter;
-import waffleoRai_Utils.Arunnable;
 import waffleoRai_Utils.FileBuffer;
 
 public class SQLVariantTable implements VariantTable{
@@ -163,27 +158,28 @@ public class SQLVariantTable implements VariantTable{
 		uidIndex = new GenomeIndex(genome);
 		//Attempt to connect
 		dbURL = url;
-		username = user;
+		username = user.toUpperCase();
 		password = pw;
 		read_cache = new ReadCache(false);
 		rs_cache = new RegionSearchCache();
 		System.err.println("Now connecting...");
 		connect();
 		System.err.println("Connection successful!");
-		sqlManager = new SQLManager(connection);
-		//sprepper = new StatementPrepper(connection);
 		//Check for tables, create if not there
 		if(!varTableExists()) createVarTable();
 		if(!sampleGenoTableExists()) createSampleGenoTable();
 		if(!geneHitTableExists()) createGeneHitTable();
-		//tempBlobFiles = new LinkedList<String>();
+		
+		sqlManager = new SQLManager(connection);
 		mergeFactor = mf;
 		
 		percLeeway = (double)mergeFactor / 1000.0;
+		loadGeneHitTable();
 	}
 	
 	private void connect() throws SQLException
 	{
+		//System.err.println("URL: " + dbURL + " | Username: " + username + " | PW: " + password);
 		connection = DriverManager.getConnection(dbURL, username, password);
 		//cstat = connection.createStatement();
 	}
@@ -271,7 +267,7 @@ public class SQLVariantTable implements VariantTable{
 	
 	private void createGeneHitTable() throws SQLException
 	{
-		System.err.println("Gene hit not found. Creating table...");
+		System.err.println("Gene hit table not found. Creating table...");
 		String sqlcmd = "CREATE TABLE " + SQLVariantTable.TABLENAME_GENEHITS + "(";
 		boolean first = true;
 		for(String[] field : GENEHITS_COLUMNS)
@@ -299,7 +295,8 @@ public class SQLVariantTable implements VariantTable{
 	{
 		//
 		List<Gene> glist = genes.getAllGenes();
-		StatementPrepper sprepper = sqlManager.getStatementGenerator();
+		//StatementPrepper sprepper = sqlManager.getStatementGenerator();
+		StatementPrepper sprepper = new StatementPrepper(connection);
 		PreparedStatement gh_insert = sprepper.getGeneHitInsertStatement();
 		int dbc = 0;
 		Set<Integer> uidset = new TreeSet<Integer>();
@@ -434,7 +431,7 @@ public class SQLVariantTable implements VariantTable{
 	{
 		PreparedStatement pstat = null;
 		StatementPrepper sprepper = sqlManager.getStatementGenerator();
-		if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_INSERT);
+		if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_INSERT, true);
 		else pstat = sqlManager.getStatementGenerator().getFullInsertStatement();
 		
 		Contig ctg = var.getChrom();
@@ -471,6 +468,7 @@ public class SQLVariantTable implements VariantTable{
 		//Genelist blob
 		Blob blob = sprepper.toBlob(var.getGeneListAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.FULLINS_GENELIST, blob);
+		//System.err.println("Gene list blob is null: " + (blob == null));
 		
 		String valnotes = var.getValidationNotes();
 		if(valnotes == null) valnotes = "N/A";
@@ -485,10 +483,12 @@ public class SQLVariantTable implements VariantTable{
 		//pstat.setString(StatementPrepper.FULLINS_INSSEQ, insseq);
 		blob = sprepper.toBlob(var.getInsseqAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.FULLINS_INSSEQ, blob);
+		//System.err.println("Insseq blob is null: " + (blob == null));
 		
 		//Genotype blob
 		blob = sprepper.toBlob(vgeno.getGenotypesAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.FULLINS_GENOTYPES, blob);
+		//System.err.println("Geno blob is null: " + (blob == null));
 		
 		return pstat;
 	}
@@ -507,7 +507,7 @@ public class SQLVariantTable implements VariantTable{
 		
 		PreparedStatement pstat = null;
 		StatementPrepper sprepper = sqlManager.getStatementGenerator();
-		if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_UPDATE_SHORT);
+		if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_UPDATE_SHORT, true);
 		else pstat = sprepper.getShortUpdateStatement();
 		
 		pstat.setInt(StatementPrepper.SHORTUD_ST1, var.getStartPosition().getStart()); //System.err.println("Start1 = " + var.getStartPosition().getStart());
@@ -557,7 +557,7 @@ public class SQLVariantTable implements VariantTable{
 		
 		PreparedStatement pstat = null;
 		StatementPrepper sprepper = sqlManager.getStatementGenerator();
-		if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_UPDATE_POP);
+		if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_UPDATE_POP, true);
 		else pstat = sprepper.getPopUpdateStatement();
 		
 		pstat.setInt(StatementPrepper.POPUD_ACOUNT_TOT, dbv.getIndividualCount());
@@ -623,11 +623,11 @@ public class SQLVariantTable implements VariantTable{
 				//PreparedStatement pstat = sprepper.getVarGetterStatement();
 				PreparedStatement pstat = null;
 				StatementPrepper sprepper = sqlManager.getStatementGenerator();
-				if(thread_locked) pstat = sqlManager.requestStatement(SQLManager.SKEY_GETVAR);
+				if(thread_locked) pstat = sqlManager.requestStatement(SQLManager.SKEY_GETVAR, true);
 				else pstat = sprepper.getVarGetterStatement();
 				
 				pstat.setLong(StatementPrepper.VARGET_VARUID, uid);
-				if(thread_locked) sqlManager.requestStatementExecution();
+				if(thread_locked) sqlManager.requestStatementExecution(true);
 				ResultSet rs = pstat.executeQuery();
 				if(!rs.next()) {rs.close(); return null;}
 				DBVariant var = readFromResultSet(rs);
@@ -686,7 +686,7 @@ public class SQLVariantTable implements VariantTable{
 						pstat.setLong(i, vid);
 						i++;
 					}
-					if(thread_locked) sqlManager.requestStatementExecution();
+					if(thread_locked) sqlManager.requestStatementExecution(true);
 					ResultSet rs = pstat.executeQuery();
 					while(rs.next())
 					{
@@ -732,12 +732,12 @@ public class SQLVariantTable implements VariantTable{
 				//PreparedStatement pstat = sprepper.getGenoGetterStatement();
 				PreparedStatement pstat = null;
 				StatementPrepper sprepper = sqlManager.getStatementGenerator();
-				if(thread_locked) pstat = sqlManager.requestStatement(SQLManager.SKEY_GETGENO);
+				if(thread_locked) pstat = sqlManager.requestStatement(SQLManager.SKEY_GETGENO, true);
 				else pstat = sprepper.getGenoGetterStatement();
 				
 				pstat.setLong(StatementPrepper.GENOGET_VARUID, var_uid);
 				
-				if(thread_locked) sqlManager.requestStatementExecution();
+				if(thread_locked) sqlManager.requestStatementExecution(true);
 				ResultSet rs = pstat.executeQuery();
 				if(!rs.next()) {rs.close(); return null;}
 				Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
@@ -798,7 +798,7 @@ public class SQLVariantTable implements VariantTable{
 						i++;
 					}
 					
-					if(thread_locked) sqlManager.requestStatementExecution();
+					if(thread_locked) sqlManager.requestStatementExecution(true);
 					ResultSet rs = pstat.executeQuery();
 					while(rs.next())
 					{
@@ -965,7 +965,7 @@ public class SQLVariantTable implements VariantTable{
 					if(threadlock)
 					{
 						skey = SQLManager.SKEY_GETVAR_REG_NOTRA;
-						pstat = sqlManager.requestStatement(skey);
+						pstat = sqlManager.requestStatement(skey, true);
 					}
 					else pstat = sqlManager.getStatementGenerator().getRegionNoTRAVarGetterStatement();
 					if(pstat == null) 
@@ -983,7 +983,7 @@ public class SQLVariantTable implements VariantTable{
 					if(threadlock)
 					{
 						skey = SQLManager.SKEY_GETVAR_REG;
-						pstat = sqlManager.requestStatement(skey);
+						pstat = sqlManager.requestStatement(skey, true);
 					}
 					else pstat = sqlManager.getStatementGenerator().getRegionVarGetterStatement();
 					if(pstat == null) 
@@ -997,7 +997,7 @@ public class SQLVariantTable implements VariantTable{
 					
 				}
 				
-				if(threadlock) sqlManager.requestStatementExecution();
+				if(threadlock) sqlManager.requestStatementExecution(true);
 				ResultSet rs = pstat.executeQuery();
 				while(rs.next())
 				{
@@ -1034,7 +1034,7 @@ public class SQLVariantTable implements VariantTable{
 				if(threadlock)
 				{
 					skey = SQLManager.SKEY_GETVAR_REG_OFTYPE;
-					pstat = sqlManager.requestStatement(skey);
+					pstat = sqlManager.requestStatement(skey, true);
 				}
 				else pstat = sqlManager.getStatementGenerator().getRegionNoTRAVarGetterStatement_ofType();
 				if(pstat == null) 
@@ -1047,7 +1047,7 @@ public class SQLVariantTable implements VariantTable{
 				pstat.setInt(StatementPrepper.VARS_REG_TYPE_START, start);
 				pstat.setInt(StatementPrepper.VARS_REG_TYPE_END, end);
 				
-				if(threadlock) sqlManager.requestStatementExecution();
+				if(threadlock) sqlManager.requestStatementExecution(true);
 				ResultSet rs = pstat.executeQuery();
 				while(rs.next())
 				{
@@ -1316,200 +1316,6 @@ public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Multithreading ----- */
 	
-	private class VCFParseWrapper extends Arunnable
-	{
-		
-		private VCFReadStreamer stream;
-		private Iterator<StructuralVariant> itr;
-		
-		private ConcurrentLinkedQueue<StructuralVariant> preparsed;
-		private ConcurrentLinkedQueue<Thread> requests;
-		private volatile Thread ready;
-		
-		private boolean ignoreTRA;
-		
-		//private volatile boolean next;
-		//private volatile boolean busy;
-		
-		public VCFParseWrapper(String vcfpath, boolean noTRA) throws IOException
-		{
-			stream = new VCFReadStreamer(vcfpath, genome);
-			stream.open();
-			//next = true;
-			preparsed = new ConcurrentLinkedQueue<StructuralVariant>();
-			requests = new ConcurrentLinkedQueue<Thread>();
-			itr = stream.getSVIterator();
-			ignoreTRA = noTRA;
-			
-			super.setName("VCFParseRunner");
-			super.sleeps = true;
-			super.sleeptime = 1000; //1s
-			super.delay = 0;
-		}
-		
-		@Override
-		public void doSomething() 
-		{
-			if(ready != null) return;
-			if(stream == null) return;
-			if(requests.isEmpty()) return;
-			
-			//Prepare next request
-			Thread req = requests.poll();
-			
-			Contig c = null;
-			if(!preparsed.isEmpty()) c = preparsed.peek().getChromosome();
-			
-			while(itr.hasNext())
-			{
-				StructuralVariant sv = itr.next();
-				if(ignoreTRA)
-				{
-					if(sv.getType() == SVType.TRA || sv.getType() == SVType.BND) continue;
-				}
-				
-				preparsed.add(sv);
-				if(c == null) c = sv.getChromosome();
-				else
-				{
-					if(!c.equals(sv.getChromosome())) 
-					{
-						synchronized(this) {ready = req;}
-						synchronized(ready) {ready.interrupt();}
-						return;
-					}
-				}
-			}
-			
-			//If it gets here, there are no more variants and the stream needs to be closed
-			try 
-			{
-				synchronized(this)
-				{
-					stream.close();
-					stream = null;
-					itr = null;	
-					ready = req;
-				}
-			} 
-			catch (IOException e) 
-			{
-				e.printStackTrace();
-				synchronized(this) {ready = req;}
-			}
-			
-			synchronized(ready) {ready.interrupt();}
-			
-		}
-		
-		public int gimmeNextContig(Collection<StructuralVariant> targetQueue)
-		{
-			if(targetQueue == null) return 0;
-			if(stream == null) return 0; //Closed
-			Thread mythread = Thread.currentThread();
-			requests.add(mythread);
-			
-			int added = 0;
-			//Block until the request has been prepared
-			boolean cleared = false;
-			while(!cleared)
-			{
-				try 
-				{
-					Thread.sleep(1000);
-				} 
-				catch (InterruptedException e) 
-				{
-					//Interruption perhaps from parse thread.
-					cleared = (ready == mythread);
-				}
-			}
-			
-			//Release the parser's block by acknowledging that the
-			//	request is being processed.
-			synchronized(this) {ready = null;}
-			this.interruptThreads();
-			
-			//Grab variants and copy to target queue until either
-			//	none left or next variant is on a different chrom
-			Contig ctg = null;
-			while(!preparsed.isEmpty())
-			{
-				StructuralVariant sv = preparsed.peek();
-				if(ctg == null) ctg = sv.getChromosome();
-				else
-				{
-					if(!ctg.equals(sv.getChromosome()))
-					{
-						//Return
-						break;
-					}
-				}
-				targetQueue.add(sv);
-				preparsed.poll();
-				added++;
-			}
-			
-			//Return
-			return added;
-		}
-		
-		public synchronized boolean isClosed()
-		{
-			return (stream == null);
-		}
-		
-	}
-	
-	private class VCFAdder implements Runnable
-	{
-		
-		private boolean verbose;
-		
-		private RegionSearchCache rcache;
-		private VCFParseWrapper input;
-		
-		private int addedCount;
-		private int failCount;
-		
-		private Queue<StructuralVariant> inq;
-		
-		public VCFAdder(VCFParseWrapper src, boolean v)
-		{
-			verbose = v;
-			input = src;
-			
-			rcache = new RegionSearchCache();
-			addedCount = 0;
-			failCount = 0;
-			inq = new LinkedList<StructuralVariant>();
-			
-		}
-
-		@Override
-		public void run() 
-		{
-			// TODO Auto-generated method stub
-			//Check input for more variants to load into queue
-			while(!input.isClosed())
-			{
-				//Try to load
-				int loaded = input.gimmeNextContig(inq);
-				if(loaded < 1) 
-				{
-					if(verbose) System.err.println("ERROR: Stream is open, but variant load failed! Killing thread...");
-					return;
-				}
-				
-				Contig c = inq.peek().getChromosome();
-				if(verbose) System.err.println("Now processing variants from chromosome " + c.getUDPName());
-				
-				//TODO attempt add w/ custom region search cache
-			}
-		}
-		
-	}
-	
 	/* ----- Gene Hit Cache ----- */
 	
 	private Map<Integer, GeneHitCounter> ghc_cache;
@@ -1717,10 +1523,10 @@ public class SQLVariantTable implements VariantTable{
 		{
 			//PreparedStatement pstat = sprepper.getVarUIDCheckStatement();
 			PreparedStatement pstat = null;
-			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_CHECKVARUID);
+			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_CHECKVARUID, true);
 			else pstat = sqlManager.getStatementGenerator().getVarUIDCheckStatement();
 			pstat.setLong(StatementPrepper.VARUIDCHECK_VARUID, varUID);
-			if(threadlock) sqlManager.requestStatementExecution();
+			if(threadlock) sqlManager.requestStatementExecution(true);
 			ResultSet rs = pstat.executeQuery();
 			boolean b = rs.next();
 			rs.close();
@@ -1769,11 +1575,11 @@ public class SQLVariantTable implements VariantTable{
 		{
 			//PreparedStatement pstat = sprepper.getSampleVarGetterStatement();
 			PreparedStatement pstat = null;
-			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_GETSAMPLEVAR);
+			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_GETSAMPLEVAR, true);
 			else pstat = sqlManager.getStatementGenerator().getSampleVarGetterStatement();
 			
 			pstat.setInt(StatementPrepper.SVARGET_SAMPUID, sampleUID);
-			if(threadlock) sqlManager.requestStatementExecution();
+			if(threadlock) sqlManager.requestStatementExecution(true);
 			ResultSet rs = pstat.executeQuery();
 			if(!rs.next()) {rs.close(); return null;}
 			
@@ -1887,6 +1693,8 @@ public class SQLVariantTable implements VariantTable{
 	public void setThreadlock(boolean b)
 	{
 		threadlock = b;
+		read_cache.setThreadLocked(b);
+		rs_cache.setThreadLock(b);
 	}
 	
 	/* ----- Analysis ----- */
@@ -2347,7 +2155,7 @@ public class SQLVariantTable implements VariantTable{
 			
 			//Statement cstat = connection.createStatement();
 			//int count = cstat.executeUpdate(baseStatement);
-			if(threadlock) sqlManager.requestStatementExecution();
+			if(threadlock) sqlManager.requestStatementExecution(true);
 			int count = baseStatement.executeUpdate();
 			if(threadlock)
 			{
@@ -2440,11 +2248,11 @@ public class SQLVariantTable implements VariantTable{
 			//Statement cstat = connection.createStatement();
 			//PreparedStatement pstat = sprepper.getSampleGenoDeleteStatment();
 			PreparedStatement pstat = null;
-			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_SGENO_DELETE);
+			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_SGENO_DELETE, true);
 			else pstat = sqlManager.getStatementGenerator().getSampleGenoDeleteStatment();
 			
 			pstat.setInt(1, sampleID);
-			if(threadlock) sqlManager.requestStatementExecution();
+			if(threadlock) sqlManager.requestStatementExecution(true);
 			int count = pstat.executeUpdate();
 			if(threadlock)
 			{
@@ -2472,12 +2280,12 @@ public class SQLVariantTable implements VariantTable{
 			//int count = cstat.executeUpdate(sqlQuery);
 			//PreparedStatement pstat = sprepper.getVarDeleteStatment();
 			PreparedStatement pstat = null;
-			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_DELETE);
+			if(threadlock) pstat = sqlManager.requestStatement(SQLManager.SKEY_VAR_DELETE, true);
 			else pstat = sqlManager.getStatementGenerator().getVarDeleteStatment();
 			
 			pstat.setLong(1, varUID);
 			
-			if(threadlock) sqlManager.requestStatementExecution();
+			if(threadlock) sqlManager.requestStatementExecution(true);
 			int count = pstat.executeUpdate();
 			if(threadlock)
 			{
@@ -2552,7 +2360,7 @@ public class SQLVariantTable implements VariantTable{
 				pstat.setLong(i, vid);
 				i++;
 			}
-			if(threadlock) sqlManager.requestStatementExecution();
+			if(threadlock) sqlManager.requestStatementExecution(true);
 			int count = pstat.executeUpdate();
 			if(threadlock) sqlManager.acknowledgeStatementExecution();
 
@@ -2829,7 +2637,7 @@ public class SQLVariantTable implements VariantTable{
 			//Statement cstat = connection.createStatement();
 			//int count = cstat.executeUpdate(sqlcmd);
 			PreparedStatement pstat = generatePopulationSetVarUpdateStatement(dbv, threadlock);
-			if(threadlock) sqlManager.requestStatementExecution();
+			if(threadlock) sqlManager.requestStatementExecution(true);
 			int count = pstat.executeUpdate();
 			if(threadlock)
 			{
@@ -2909,7 +2717,7 @@ public class SQLVariantTable implements VariantTable{
 			{
 				PreparedStatement pstat = generatePopulationSetVarUpdateStatement(dbv, true);
 				
-				if(threadlock) sqlManager.requestStatementExecution();
+				if(threadlock) sqlManager.requestStatementExecution(true);
 				int count = pstat.executeUpdate();
 				if(threadlock)
 				{
