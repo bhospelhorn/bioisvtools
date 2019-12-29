@@ -1,5 +1,6 @@
 package hospelhornbg_svdb;
 
+import java.sql.Blob;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -174,19 +175,23 @@ public class SQLManager {
 	public boolean requestStatementExecution(boolean ignoreExternalInterrupts)
 	{
 		//Blocks until cleared for statement execution
-		System.err.println(Thread.currentThread().getName() + " requesting statement execution!");
+		//System.err.println(Thread.currentThread().getName() + " requesting statement execution!");
 		synchronized(this)
 		{
 			if(exeReady == null)
 			{
 				//Put me!
 				exeReady = Thread.currentThread();
-				System.err.println(Thread.currentThread().getName() + " granted statement execution!");
+				//System.err.println(Thread.currentThread().getName() + " granted statement execution!");
 				return true;
 			}
 		}
 		
 		Thread me = Thread.currentThread();
+		if(exeReady == me){
+			//System.err.println(Thread.currentThread().getName() + " already has execution permission!");
+			return true;
+		}
 		exeQueue.add(me);	
 		
 		while(exeReady != me)
@@ -201,7 +206,7 @@ public class SQLManager {
 				{
 					if(!ignoreExternalInterrupts)
 					{
-						System.err.println(Thread.currentThread().getName() + " received external interrupt. Withdrawing execution request...");
+						//System.err.println(Thread.currentThread().getName() + " received external interrupt. Withdrawing execution request...");
 						exeQueue.remove(me);
 						return false;	
 					}
@@ -210,7 +215,7 @@ public class SQLManager {
 			}
 		}
 		
-		System.err.println(Thread.currentThread().getName() + " granted statement execution!");
+		//System.err.println(Thread.currentThread().getName() + " granted statement execution!");
 		return true;
 	}
 	
@@ -220,7 +225,7 @@ public class SQLManager {
 		//	allows queue to move forward
 		Thread me = Thread.currentThread();
 		if(exeReady != me) return false;
-		System.err.println(Thread.currentThread().getName() + " requesting acknowledgement of statement execution");
+		//System.err.println(Thread.currentThread().getName() + " requesting acknowledgement of statement execution");
 		
 		if(!exeQueue.isEmpty())
 		{
@@ -229,10 +234,16 @@ public class SQLManager {
 		}
 		else exeReady = null;
 		
-		System.err.println(Thread.currentThread().getName() + " acknowledgement of execution received");
+		//System.err.println(Thread.currentThread().getName() + " acknowledgement of execution received");
 		return true;
 	}
 
+	public Blob requestAccessAndBlob(byte[] data, boolean ignoreExternalInterrupts) throws SQLException
+	{
+		if(!requestStatementExecution(ignoreExternalInterrupts)) return null;
+		return statement_prepper.wrapInBlob(data);
+	}
+	
 	/*--- Generated Statements ---*/
 	
 	public PreparedStatement generateMultiVarGetterStatement(int count) throws SQLException

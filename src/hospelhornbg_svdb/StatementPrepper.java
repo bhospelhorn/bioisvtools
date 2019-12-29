@@ -556,7 +556,7 @@ public class StatementPrepper {
 		return connection.prepareStatement(sqlQuery);
 	}
 	
-	public Blob toBlob(byte[] bytes) throws SQLException
+	public Blob wrapInBlob(byte[] bytes) throws SQLException
 	{
 		//System.err.println("Blob length: " + bytes.length);
 		Blob b = connection.createBlob();

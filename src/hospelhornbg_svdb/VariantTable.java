@@ -1,6 +1,7 @@
 package hospelhornbg_svdb;
 
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -84,9 +85,10 @@ public interface VariantTable {
 	public boolean updateSampleCounts(DBSampleTable sampleTable);
 	public boolean updateSamplePopulationFlags(FamilyMember sample, Collection<Population> oldFlags);
 	public void save() throws IOException;
+	public void close() throws SQLException;
 	
 	public void dumpTable(String directory);
 	public void clearVariantTable();
-
+	
 	
 }

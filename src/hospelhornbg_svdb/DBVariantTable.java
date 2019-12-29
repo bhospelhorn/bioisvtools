@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Paths;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -1966,6 +1967,11 @@ public class DBVariantTable implements VariantTable{
 	}
 	
 	public void dumpTable(String directory)
+	{
+		//TODO
+	}
+	
+	public void close()
 	{
 		//TODO
 	}

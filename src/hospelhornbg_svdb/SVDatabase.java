@@ -825,5 +825,11 @@ public class SVDatabase {
 		return db;
 	}
 
+	/* ----- Other ----- */
+	
+	public void close() throws SQLException
+	{
+		variantTable.close();
+	}
 	
 }

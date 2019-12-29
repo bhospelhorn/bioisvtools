@@ -1,6 +1,7 @@
 package hospelhornbg_svdb;
 
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -13,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 
+import hospelhornbg_bioinformatics.CompoundChrom;
 import hospelhornbg_bioinformatics.Genotype;
 import hospelhornbg_bioinformatics.SVType;
 import hospelhornbg_bioinformatics.StructuralVariant;
@@ -38,7 +40,10 @@ public class SQLVTVarAdder {
 	
 	/*--- Constants ---*/
 	
-	public static final int MAX_Q_SIZE_PARSED = 256;
+	public static final int MAX_Q_SIZE_PARSED = 4096;
+	public static final int DEFO_VARS_PER_COMMIT = 100;
+	
+	public static final int MAX_Q_SIZE_REGION = 128;
 	
 	public static final String INFO_MATCHED_UID_KEY = "svdb_uid";
 	
@@ -49,6 +54,7 @@ public class SQLVTVarAdder {
 	private GenomeBuild genome;
 	private GeneSet genes;
 	private SQLVariantTable table;
+	private int vars_per_commit;
 	
 	private ConcurrentMap<String, FamilyMember> sampleMap;
 	
@@ -56,26 +62,34 @@ public class SQLVTVarAdder {
 	private ConcurrentLinkedQueue<MergePair> mergeQ;
 	private ConcurrentLinkedQueue<StructuralVariant> newQ;
 	
-	private Object regGetLock;
-	private volatile StructuralVariant nextSV;
-	private volatile Collection<DBVariant> nextRegion;
+	//private Object regGetLock;
+	//private volatile StructuralVariant nextSV;
+	//private volatile Collection<DBVariant> nextRegion;
+	//private RegionResults regionResults;
+	private ConcurrentLinkedQueue<RegionResults> regQ;
 	
 	private volatile boolean error_kill;
 	private volatile boolean reader_done;
 	private volatile boolean getter_done;
 	private volatile boolean merger_done;
 	
+	private boolean use_autocommit;
+	private Object vCountLock;
+	private volatile int v_count; //Counts # vars since last commit
+	
 	private VCFReader parseRunner;
 	private RegGetter regGetter;
 	private VarMerger varMerger;
 	private NewVarAdder varAdder;
 	private VarUpdater varUpdater;
+	private Committer committer;
 	
 	private volatile long c_parsed;
 	private volatile long c_reg;
 	private volatile long c_merged;
 	private volatile long c_added;
 	private volatile long c_updated;
+	private volatile long c_committed;
 	
 	/*--- Other Objects ---*/
 	
@@ -91,6 +105,39 @@ public class SQLVTVarAdder {
 		}
 	}
 	
+	public static class RegionResults
+	{
+		private StructuralVariant nextSV;
+		private Collection<DBVariant> nextRegion;
+		
+		public RegionResults(StructuralVariant sv, Collection<DBVariant> reg)
+		{
+			nextSV = sv;
+			nextRegion = reg;
+		}
+		
+		public synchronized boolean nextReady(){return (nextSV != null);}
+		
+		public synchronized StructuralVariant getNextSV(){return nextSV;}
+		public synchronized Collection<DBVariant> getResults(){return nextRegion;}
+		
+		public synchronized void setNextSV(StructuralVariant sv){nextSV = sv;}
+		public synchronized void setNextRegion(Collection<DBVariant> reg){nextRegion = reg;}
+	
+		public synchronized void setResults(StructuralVariant sv, Collection<DBVariant> reg)
+		{
+			nextSV = sv;
+			nextRegion = reg;
+		}
+		
+		public synchronized void clearResults()
+		{
+			nextSV = null;
+			nextRegion = null;
+		}
+		
+	}
+	
 	/*--- Runner Objects ---*/
 	
 	public class VCFReader extends Arunnable
@@ -98,7 +145,10 @@ public class SQLVTVarAdder {
 		//Blocks when queue is full.
 		//Can be interrupted by the region checker
 		
+		private boolean debug_mode;
+		
 		private Contig lastChrom;
+		private boolean traparse;
 		
 		private boolean ignore_translocations;
 		private VCFReadStreamer reader;
@@ -111,12 +161,15 @@ public class SQLVTVarAdder {
 			super.delay = 0;
 			super.sleeptime = 10;
 			ignore_translocations = no_tra;
+			debug_mode = false;
 			
 			reader = new VCFReadStreamer(vcfPath, genome);
 		}
 		
 		public void open() throws IOException
 		{
+			traparse = false;
+			lastChrom = null;
 			reader.open();
 		}
 		
@@ -125,6 +178,11 @@ public class SQLVTVarAdder {
 			reader.close();
 		}
 
+		public void setDebugMode()
+		{
+			debug_mode = true;
+		}
+		
 		@Override
 		public void doSomething() 
 		{
@@ -145,12 +203,15 @@ public class SQLVTVarAdder {
 				}
 				
 				reader_done = true;
+				System.err.println("DEBUG -- Reader has read all variants. Closing!");
 				this.requestTermination();
+				return;
 			}
 			
 			//Read loop
-			while(itr.hasNext() && (parsedQ.size() <= MAX_Q_SIZE_PARSED))
+			while(itr.hasNext())
 			{
+				if(!debug_mode && (parsedQ.size() >= MAX_Q_SIZE_PARSED)) break;
 				StructuralVariant sv = itr.next();
 				if(verbose)
 				{
@@ -165,12 +226,22 @@ public class SQLVTVarAdder {
 						if(!lastChrom.equals(c))
 						{
 							lastChrom = c;
-							System.err.println("Now parsing variants on chrom " + c.getUDPName() + "...");
+							if(c instanceof CompoundChrom)
+							{
+								traparse = true;
+								//System.err.println("Now parsing translocations between " + c.toString() + "...");
+								System.err.println("Now parsing translocations...");
+							}
+							else if(!traparse)
+							{
+								System.err.println("Now parsing variants on chrom " + c.getUDPName() + "...");	
+							}
+							//System.err.println("(Variants Parsed: " + c_parsed + ")");
 						}
 					}
 				}
 				if(ignore_translocations && ((sv.getType() == SVType.BND) || (sv.getType() == SVType.TRA))) continue;
-				parsedQ.add(itr.next());
+				parsedQ.add(sv);
 				c_parsed++;
 			}
 			
@@ -185,9 +256,10 @@ public class SQLVTVarAdder {
 	}
 
 	public class RegGetter extends Arunnable
-	{
-		
+	{	
 		//private boolean ignore_translocations;
+		
+		private boolean debug_mode;
 		private Contig lastChrom;
 		
 		public RegGetter()
@@ -199,14 +271,21 @@ public class SQLVTVarAdder {
 			//ignore_translocations = no_tra;
 		}
 
+		public void setDebugMode(boolean b){debug_mode = b;}
+		
 		@Override
 		public void doSomething() 
 		{
+			//System.err.println("yo");
+			//tock();
 			try{
 			//System.err.println(Thread.currentThread().getName() + " || RegGetter - doSomething() called!");
 			super.disableInterrupts();
-			while(nextRegion == null && !parsedQ.isEmpty())
+			while(!parsedQ.isEmpty())
 			{
+				//if(!debug_mode && (nextRegion != null)) break;
+				//if(!debug_mode && (regionResults.nextReady())) break;
+				if(!debug_mode && (regQ.size() >= MAX_Q_SIZE_REGION)) break;
 				StructuralVariant sv = parsedQ.poll();
 				Contig c = sv.getChromosome();
 				int st = sv.getCIPosition(false, false, false);
@@ -235,33 +314,38 @@ public class SQLVTVarAdder {
 				}
 				
 				//Set
-				synchronized(regGetLock)
+				/*synchronized(regGetLock)
 				{
 					nextSV = sv;
 					nextRegion = results;
-				}
+				}*/
+				//regionResults.setResults(sv, results);
+				regQ.add(new RegionResults(sv, results));
 				
-				if(parseRunner.anyThreadsAlive()){
-					//System.err.println(Thread.currentThread().getName() + " || RegGetter - Interrupting Parser");
-					parseRunner.interruptThreads();
-				}
-				if(varMerger.anyThreadsAlive()){
-					//System.err.println(Thread.currentThread().getName() + " || RegGetter - Interrupting VarMerger");
-					varMerger.interruptThreads();
-				}
 				c_reg++;
 			}
-			if(reader_done) {getter_done = true; this.requestTermination();}
+			
+			if(parseRunner.anyThreadsAlive()){
+				//System.err.println(Thread.currentThread().getName() + " || RegGetter - Interrupting Parser");
+				parseRunner.interruptThreads();
+			}
+			if(varMerger.anyThreadsAlive()){
+				//System.err.println(Thread.currentThread().getName() + " || RegGetter - Interrupting VarMerger");
+				varMerger.interruptThreads();
+			}
+			
+			if(reader_done && parsedQ.isEmpty()) {getter_done = true; this.requestTermination();}
 			super.enableInterrupts();
 			//System.err.println(Thread.currentThread().getName() + " || RegGetter - doSomething() returning!");
 			}
 			catch(Exception e){killAll(e);}
 			}
+
 	}
 	
 	public class VarMerger extends Arunnable
 	{
-		
+		private Contig lastChrom;
 		private double leeway;
 
 		public VarMerger(double percentLeeway)
@@ -280,24 +364,56 @@ public class SQLVTVarAdder {
 			//Looks at the last region search and SV in queue to 
 			//determine if new SV can be merged to existing variant
 			
-			while(nextRegion != null)
+			while(!regQ.isEmpty())
 			{
-				StructuralVariant sv = nextSV;
+				//System.err.println("hi");
+				/*StructuralVariant sv = nextSV;
 				Collection<DBVariant> regvars = nextRegion;
 				
 				synchronized(regGetLock)
 				{
 					nextSV = null;
 					nextRegion = null;
-				}
+				}*/
+				
+				//tick();
+				//StructuralVariant sv = regionResults.getNextSV();
+				//Collection<DBVariant> regvars = regionResults.getResults();
+				//regionResults.clearResults();
+				//tock();
+				RegionResults res = regQ.poll();
+				StructuralVariant sv = res.nextSV;
+				Collection<DBVariant> regvars = res.nextRegion;
+				
 				//Let the reg getter have at the next variant
 				if(regGetter.anyThreadsAlive()){
 					//System.err.println(Thread.currentThread().getName() + " || VarMerger - Interrupting RegGetter");
 					regGetter.interruptThreads();
+					//tick();
 				}
+				
+				if(verbose)
+				{
+					Contig c = sv.getChromosome();
+					if(lastChrom == null)
+					{
+						lastChrom = c;
+						System.err.println("Now merging variants on chrom " + c.getUDPName() + "...");
+					}
+					else
+					{
+						if(!lastChrom.equals(c))
+						{
+							lastChrom = c;
+							System.err.println("Now merging variants on chrom " + c.getUDPName() + "...");
+						}
+					}
+				}
+				//tock();
 				
 				DBVariant match = null;
 				
+				//tick();
 				for(DBVariant dbv : regvars)
 				{
 					if(dbv.svIsEquivalent(sv, leeway))
@@ -306,7 +422,9 @@ public class SQLVTVarAdder {
 						break; //Hopefully won't match to more than one!
 					}
 				}
+				//tock();
 				
+				//tick();
 				if(match != null)
 				{
 					mergeQ.add(new MergePair(sv, match));
@@ -324,9 +442,10 @@ public class SQLVTVarAdder {
 					}
 				}
 				c_merged++;
+				//tock();
 			}
 			
-			if(getter_done) {merger_done = true; this.requestTermination();}
+			if(getter_done && regQ.isEmpty()) {merger_done = true; this.requestTermination();}
 			}
 			catch(Exception e){killAll(e);}
 		}
@@ -445,6 +564,7 @@ public class SQLVTVarAdder {
 				//System.err.println(Thread.currentThread().getName() + " || NewVarAdder - Adding variant -- Done!");
 				super.enableInterrupts();
 				c_added++;
+				incrementVariantCount();
 			}
 			if(merger_done) this.requestTermination();
 			}
@@ -630,10 +750,49 @@ public class SQLVTVarAdder {
 				//System.err.println(Thread.currentThread().getName() + " || VarUpdater - updating variant in db -- Done!");
 				super.enableInterrupts();
 				c_updated++;
+				incrementVariantCount();
 			}
 			if(merger_done) this.requestTermination();
 			}
 			catch(Exception e){killAll(e);}
+		}
+		
+	}
+	
+	public class Committer extends Arunnable
+	{
+		
+		public Committer()
+		{
+			super.setName("Committer");
+			super.sleeps = true;
+			super.sleeptime = 1000;
+		}
+
+		@Override
+		public void doSomething() 
+		{
+			if(v_count >= vars_per_commit)
+			{
+				synchronized(vCountLock)
+				{
+					System.err.println(Thread.currentThread().getName() + " || Uncommitted variants: " + v_count);
+					try 
+					{
+						table.commitUpdates();
+					} 
+					catch (SQLException e) 
+					{
+						killAll(e);
+						//e.printStackTrace();
+						return;
+					}
+					System.err.println(Thread.currentThread().getName() + " || Variant commit complete!");
+					c_committed += v_count;
+					v_count = 0;
+				}
+				
+			}
 		}
 		
 	}
@@ -647,6 +806,9 @@ public class SQLVTVarAdder {
 		genome = table.getGenomeBuild();
 		genes = table.getTranscriptSet();
 		
+		use_autocommit = false;
+		vars_per_commit = DEFO_VARS_PER_COMMIT;
+		
 		sampleMap = new ConcurrentHashMap<String, FamilyMember>();
 		Set<String> keys = samples.keySet();
 		for(String s : keys)
@@ -655,6 +817,21 @@ public class SQLVTVarAdder {
 		}
 		
 		error_kill = false;
+	}
+	
+	/*--- Other ---*/
+	
+	private void incrementVariantCount()
+	{
+		synchronized(vCountLock)
+		{
+			v_count++;
+		}
+		if(committer != null && v_count >= this.vars_per_commit)
+		{
+			//System.err.println(Thread.currentThread().getName() + " || Interrupting Committer!");
+			committer.interruptThreads();
+		}
 	}
 	
 	/*--- Running ---*/
@@ -673,27 +850,34 @@ public class SQLVTVarAdder {
 		c_added = 0;
 		c_reg = 0;
 		c_updated = 0;
+		c_committed = 0;
 		
 		parsedQ = new ConcurrentLinkedQueue<StructuralVariant>();
 		mergeQ = new ConcurrentLinkedQueue<MergePair>();
 		newQ = new ConcurrentLinkedQueue<StructuralVariant>();
 		
-		regGetLock = new Boolean(false);
+		//regGetLock = new Boolean(false);
+		//regionResults = new RegionResults();
+		regQ = new ConcurrentLinkedQueue<RegionResults>();
+		vCountLock = new Boolean(false);
 		
 		parseRunner = new VCFReader(vcfpath, noTRA);
 		regGetter = new RegGetter();
 		varMerger = new VarMerger(table.getPercentLeeway());
 		varAdder = new NewVarAdder();
 		varUpdater = new VarUpdater();
+		if(use_autocommit) committer = new Committer();
 		
 		Thread t_parser = new Thread(parseRunner);
 		parseRunner.open();
 		t_parser.setName("VCFParserThread");
 		t_parser.setDaemon(true);
+		//parseRunner.setDebugMode();
 		
 		Thread t_regGetter = new Thread(regGetter);
 		t_regGetter.setName("RegionVariantGetterThread");
 		t_regGetter.setDaemon(true);
+		//regGetter.setDebugMode(true);
 		
 		Thread t_varMerger = new Thread(varMerger);
 		t_varMerger.setName("VariantMergerThread");
@@ -707,11 +891,20 @@ public class SQLVTVarAdder {
 		t_varUpdater.setName("UpdateVariantThread");
 		t_varUpdater.setDaemon(true);
 		
-		t_varUpdater.start();
-		t_varAdder.start();
+		//t_varUpdater.start();
+		//t_varAdder.start();
 		t_varMerger.start();
 		t_regGetter.start();
 		t_parser.start();
+		
+		
+		if(use_autocommit)
+		{
+			Thread t_committer = new Thread(committer);
+			t_committer.setName("SQLCommitThread");
+			t_committer.setDaemon(true);
+			t_committer.start();
+		}
 		
 	}
 	
@@ -719,11 +912,13 @@ public class SQLVTVarAdder {
 	{
 		if(error_kill) return true;
 		if(!reader_done || !this.getter_done || !this.merger_done) return false;
+		//if(!reader_done) return false;
 		if(parseRunner.anyThreadsAlive()) return false;
 		if(regGetter.anyThreadsAlive()) return false;
 		if(varMerger.anyThreadsAlive()) return false;
-		if(varAdder.anyThreadsAlive()) return false;
-		if(varUpdater.anyThreadsAlive()) return false;
+		//if(varAdder.anyThreadsAlive()) return false;
+		//if(varUpdater.anyThreadsAlive()) return false;
+		//if(committer != null && committer.anyThreadsAlive()) return false;
 		
 		return true;
 	}
@@ -736,13 +931,44 @@ public class SQLVTVarAdder {
 		System.err.println("Merged: " + c_merged);
 		System.err.println("Added: " + c_added);
 		System.err.println("Updated: " + c_updated);
+		System.err.println("Committed: " + c_committed);
 		error_kill = true;
 		parseRunner.requestTermination();
 		regGetter.requestTermination();
 		varMerger.requestTermination();
 		varAdder.requestTermination();
 		varUpdater.requestTermination();
+		if(committer != null) committer.requestTermination();
 		if(e != null) e.printStackTrace();
+	}
+
+	/*--- Debug ---*/
+	
+	private long time;
+	
+	protected void tick()
+	{
+		time = System.nanoTime();
+	}
+	
+	protected void tock()
+	{
+		long ntime = System.nanoTime();
+		long elapsed = ntime - time;
+		double micros = ((double)elapsed)/ 1000.0;
+		System.err.println("Time elapsed: " + micros + " us");
+	}
+	
+	/*--- Setters ---*/
+	
+	public void setVarsPerCommit(int i)
+	{
+		this.vars_per_commit = i;
+	}
+	
+	public void setAutocommit(boolean b)
+	{
+		use_autocommit = b;
 	}
 
 }

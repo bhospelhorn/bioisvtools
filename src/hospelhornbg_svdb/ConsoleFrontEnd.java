@@ -46,6 +46,7 @@ public class ConsoleFrontEnd {
 	
 	public static final String OP_THREADS = "-t";
 	public static final String OP_OUTPUTPATH = "-o";
+	public static final String OP_VARSBEFORECOMMIT = "-c";
 	
 	public static final String OP_LEEWAY = "-l";
 	
@@ -68,11 +69,12 @@ public class ConsoleFrontEnd {
 	
 	/* ----- Program Primary Methods ----- */
 	
-	public static void newDB(String dbName, String dbDir, GenomeBuild gb, int leeway, String omimpath) throws IOException
+	public static void newDB(String dbName, String dbDir, GenomeBuild gb, int leeway, String omimpath) throws IOException, SQLException
 	{
 		SVDatabase db = SVDatabase.newDatabase(dbDir, dbName, leeway, gb);
 		if(omimpath != null) db.setOMIMTablePath(omimpath);
 		db.saveDatabase();
+		db.close();
 	}
 	
 	public static void newSQLDB(String dbName, String dbDir, GenomeBuild gb, int leeway, String omimpath, String sqlurl) throws IOException, SQLException
@@ -80,6 +82,7 @@ public class ConsoleFrontEnd {
 		SVDatabase db = SVDatabase.newDatabase(dbDir, dbName, leeway, gb, sqlurl);
 		if(omimpath != null) db.setOMIMTablePath(omimpath);
 		db.saveDatabase();
+		db.close();
 	}
 	
 	public static void addOrUpdateFam(String dbDir, String famiPath) throws IOException, UnsupportedFileTypeException, SQLException
@@ -88,12 +91,14 @@ public class ConsoleFrontEnd {
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		db.addFamily(fam);
 		db.saveDatabase();
+		db.close();
 	}
 	
 	public static void removeFam(String dbDir, String famName) throws IOException, SQLException
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		db.removeFamily(famName);
+		db.close();
 	}
 	
 	public static void dumpFam(String dbDir, String famName, String outpath, boolean verbose) throws IOException, SQLException
@@ -102,6 +107,7 @@ public class ConsoleFrontEnd {
 		Family fam = db.getFamily(famName);
 		if(fam == null) return;
 		db.dumpFamily(fam, outpath, verbose);
+		db.close();
 	}
 	
 	public static void addVCF(String dbDir, String vcfPath, boolean verbose, boolean ignoreTRA, int threads) throws IOException, SQLException
@@ -110,6 +116,7 @@ public class ConsoleFrontEnd {
 		boolean good = db.addVCF(vcfPath, verbose, ignoreTRA, threads);
 		if(!good) System.err.println("ERROR: VCF addition failed!");
 		db.saveDatabase();
+		db.close();
 	}
 	
 	public static void addVCFBatch(String dbDir, String vcfListPath, boolean verbose, boolean ignoreTRA, int threads) throws IOException, SQLException
@@ -140,18 +147,21 @@ public class ConsoleFrontEnd {
 			if(counter % 10 == 0) db.saveDatabase();
 		}
 		if(counter % 10 != 0) db.saveDatabase();
+		db.close();
 	}
 	
 	public static void clearVariants(String dbDir) throws IOException, SQLException
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		db.clearVariantTable();
+		db.close();
 	}
 	
 	public static void dumpVars(String dbDir, String outDir) throws IOException, SQLException
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		db.dumpVariantTable(outDir);
+		db.close();
 	}
 	
 	/* ----- Main Method ----- */
@@ -355,6 +365,12 @@ public class ConsoleFrontEnd {
 				newDB(dbname, dbdir, gb, mFactor, omimPath);
 			} 
 			catch (IOException e) 
+			{
+				System.err.println(PROG_NEWDB + " ERROR | Database creation failed!");
+				e.printStackTrace();
+				System.exit(1);
+			} 
+			catch (SQLException e) 
 			{
 				System.err.println(PROG_NEWDB + " ERROR | Database creation failed!");
 				e.printStackTrace();

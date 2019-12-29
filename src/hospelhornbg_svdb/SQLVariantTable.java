@@ -182,6 +182,7 @@ public class SQLVariantTable implements VariantTable{
 		//System.err.println("URL: " + dbURL + " | Username: " + username + " | PW: " + password);
 		connection = DriverManager.getConnection(dbURL, username, password);
 		//cstat = connection.createStatement();
+		connection.setAutoCommit(false);
 	}
 	
 	/* ----- SQL Table Management ----- */
@@ -307,9 +308,9 @@ public class SQLVariantTable implements VariantTable{
 			gh_insert.setInt(StatementPrepper.GENEHIT_EXON, 0);
 			
 			byte[] neg1 = {-1, -1, -1, -1};
-			Blob b1 = sprepper.toBlob(neg1);
+			Blob b1 = sprepper.wrapInBlob(neg1);
 			gh_insert.setBlob(StatementPrepper.GENEHIT_TOT_INDIV, b1);
-			Blob b2 = sprepper.toBlob(neg1);
+			Blob b2 = sprepper.wrapInBlob(neg1);
 			gh_insert.setBlob(StatementPrepper.GENEHIT_EXON_INDIV, b2);
 			
 			gh_insert.executeUpdate();
@@ -466,7 +467,8 @@ public class SQLVariantTable implements VariantTable{
 		pstat.setInt(StatementPrepper.FULLINS_HCOUNT_OTH, var.getHomozygoteCount(Population.OTH));
 		
 		//Genelist blob
-		Blob blob = sprepper.toBlob(var.getGeneListAsBLOBBytes());
+		if(threadlock) sqlManager.requestStatementExecution(true);
+		Blob blob = sprepper.wrapInBlob(var.getGeneListAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.FULLINS_GENELIST, blob);
 		//System.err.println("Gene list blob is null: " + (blob == null));
 		
@@ -481,12 +483,12 @@ public class SQLVariantTable implements VariantTable{
 		//String insseq = var.getAltAlleleString();
 		//if(insseq == null) insseq = "N/A";
 		//pstat.setString(StatementPrepper.FULLINS_INSSEQ, insseq);
-		blob = sprepper.toBlob(var.getInsseqAsBLOBBytes());
+		blob = sprepper.wrapInBlob(var.getInsseqAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.FULLINS_INSSEQ, blob);
 		//System.err.println("Insseq blob is null: " + (blob == null));
 		
 		//Genotype blob
-		blob = sprepper.toBlob(vgeno.getGenotypesAsBLOBBytes());
+		blob = sprepper.wrapInBlob(vgeno.getGenotypesAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.FULLINS_GENOTYPES, blob);
 		//System.err.println("Geno blob is null: " + (blob == null));
 		
@@ -535,7 +537,8 @@ public class SQLVariantTable implements VariantTable{
 		pstat.setInt(StatementPrepper.SHORTUD_ACOUNT_OTH, var.getIndividualCount(Population.OTH)); //System.err.println("OTH Count = " + var.getIndividualCount(Population.OTH));
 		pstat.setInt(StatementPrepper.SHORTUD_HCOUNT_OTH, var.getHomozygoteCount(Population.OTH)); //System.err.println("OTH Hom = " + var.getHomozygoteCount(Population.OTH));
 		
-		Blob blob = sprepper.toBlob(var.getGeneListAsBLOBBytes());
+		if(threadlock) sqlManager.requestStatementExecution(true);
+		Blob blob = sprepper.wrapInBlob(var.getGeneListAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.SHORTUD_GENELIST, blob);
 		
 		String valnotes = var.getValidationNotes();
@@ -543,7 +546,7 @@ public class SQLVariantTable implements VariantTable{
 		//System.err.println("ValNotes = " + valnotes);
 		pstat.setString(StatementPrepper.SHORTUD_VALNOTES, valnotes);
 		
-		blob = sprepper.toBlob(vgeno.getGenotypesAsBLOBBytes());
+		blob = sprepper.wrapInBlob(vgeno.getGenotypesAsBLOBBytes());
 		pstat.setBlob(StatementPrepper.SHORTUD_GENOTYPES, blob);
 		
 		pstat.setLong(StatementPrepper.SHORTUD_QUERYID, var.getLongID()); //System.err.println("VarUID = " + Long.toHexString(var.getLongID()));
@@ -1440,7 +1443,7 @@ public class SQLVariantTable implements VariantTable{
 		if(ti_count < 1)
 		{
 			byte[] neg1 = {-1, -1, -1, -1};
-			ti_blob = sprepper.toBlob(neg1);
+			ti_blob = sprepper.wrapInBlob(neg1);
 		}
 		else
 		{
@@ -1448,7 +1451,7 @@ public class SQLVariantTable implements VariantTable{
 			Set<Integer> total_hits_indiv = ghc.getTotalHitsIndiv_setref();
 			//for(Integer i : ghc.total_hits_indiv) buff.addToFile(i);
 			for(Integer i : total_hits_indiv) buff.addToFile(i);
-			ti_blob = sprepper.toBlob(buff.getBytes());
+			ti_blob = sprepper.wrapInBlob(buff.getBytes());
 		}
 		
 		//int ei_count = ghc.exon_hits_indiv.size();
@@ -1457,7 +1460,7 @@ public class SQLVariantTable implements VariantTable{
 		if(ei_count < 1)
 		{
 			byte[] neg1 = {-1, -1, -1, -1};
-			ei_blob = sprepper.toBlob(neg1);
+			ei_blob = sprepper.wrapInBlob(neg1);
 		}
 		else
 		{
@@ -1465,7 +1468,7 @@ public class SQLVariantTable implements VariantTable{
 			Set<Integer> exon_hits_indiv = ghc.getExonHitsIndiv_setref();
 			//for(Integer i : ghc.exon_hits_indiv) buff.addToFile(i);
 			for(Integer i : exon_hits_indiv) buff.addToFile(i);
-			ei_blob = sprepper.toBlob(buff.getBytes());
+			ei_blob = sprepper.wrapInBlob(buff.getBytes());
 		}
 		
 		/*PreparedStatement ps = sprepper.getGeneHitUpdateStatement();
@@ -2155,7 +2158,7 @@ public class SQLVariantTable implements VariantTable{
 			
 			//Statement cstat = connection.createStatement();
 			//int count = cstat.executeUpdate(baseStatement);
-			if(threadlock) sqlManager.requestStatementExecution(true);
+			//if(threadlock) sqlManager.requestStatementExecution(true);
 			int count = baseStatement.executeUpdate();
 			if(threadlock)
 			{
@@ -2540,13 +2543,13 @@ public class SQLVariantTable implements VariantTable{
 						PreparedStatement pstat = sprepper.getSGenoInsertStatement();
 						pstat.setInt(StatementPrepper.SGENOINS_SID, sid);
 						
-						Blob b = sprepper.toBlob(homblob.getBytes());
+						Blob b = sprepper.wrapInBlob(homblob.getBytes());
 						pstat.setBlob(StatementPrepper.SGENOINS_HOM, b);
 						
-						b = sprepper.toBlob(hetblob.getBytes());
+						b = sprepper.wrapInBlob(hetblob.getBytes());
 						pstat.setBlob(StatementPrepper.SGENOINS_HET, b);
 						
-						b = sprepper.toBlob(othblob.getBytes());
+						b = sprepper.wrapInBlob(othblob.getBytes());
 						pstat.setBlob(StatementPrepper.SGENOINS_OTH, b);
 						
 						pstat.executeUpdate();
@@ -2574,13 +2577,13 @@ public class SQLVariantTable implements VariantTable{
 					PreparedStatement pstat = sprepper.getSGenoUpdateStatement();
 					pstat.setInt(StatementPrepper.SGENOUD_SID, sid);
 					
-					Blob b = sprepper.toBlob(homblob.getBytes());
+					Blob b = sprepper.wrapInBlob(homblob.getBytes());
 					pstat.setBlob(StatementPrepper.SGENOUD_HOM, b);
 					
-					b = sprepper.toBlob(hetblob.getBytes());
+					b = sprepper.wrapInBlob(hetblob.getBytes());
 					pstat.setBlob(StatementPrepper.SGENOUD_HET, b);
 					
-					b = sprepper.toBlob(othblob.getBytes());
+					b = sprepper.wrapInBlob(othblob.getBytes());
 					pstat.setBlob(StatementPrepper.SGENOUD_OTH, b);
 					
 					pstat.executeUpdate();
@@ -2738,6 +2741,13 @@ public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Cleanup ----- */
 	
+	public void commitUpdates() throws SQLException
+	{
+		if(threadlock) sqlManager.requestStatementExecution(true);
+		connection.commit();
+		if(threadlock) sqlManager.acknowledgeStatementExecution();
+	}
+	
 	public void flushCache()
 	{
 		read_cache.clear();
@@ -2750,6 +2760,12 @@ public class SQLVariantTable implements VariantTable{
 		if(ghc_cache_dirty && ghc_cache != null)
 		{
 			System.err.println("Saving database updates...");
+			try {
+				commitUpdates();
+			} catch (SQLException e) {
+				e.printStackTrace();
+				throw new IOException();
+			}
 			saveGeneHitTable();
 		}
 	}
@@ -2783,6 +2799,11 @@ public class SQLVariantTable implements VariantTable{
 		}
 		
 		
+	}
+	
+	public void close() throws SQLException
+	{
+		//connection.close();
 	}
 	
 }

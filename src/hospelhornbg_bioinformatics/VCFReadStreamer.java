@@ -103,6 +103,7 @@ private String vcf_path;
 	
 	private boolean bufferHasNext()
 	{
+		if(readBuffer == null) return false;
 		if(lineBuffer.isEmpty())
 		{
 			String line = null;
