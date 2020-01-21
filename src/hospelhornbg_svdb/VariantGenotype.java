@@ -40,6 +40,8 @@ public class VariantGenotype {
 		//		Start [4]
 		//		End [4]
 	
+	private boolean corrupted_flag;
+	
 	private long varUID;
 	private ConcurrentMap<Integer, SVDBGenotype> gMap;
 	
@@ -105,24 +107,35 @@ public class VariantGenotype {
 		long fsz = data.getFileSize();
 		while(cpos < fsz)
 		{
-			int sid = data.intFromFile(cpos); cpos += 4;
-			int acount = Short.toUnsignedInt(data.shortFromFile(cpos)); cpos += 2;
+			int sid = -1;
+			try{
+				sid = data.intFromFile(cpos); cpos += 4;
+				int acount = Short.toUnsignedInt(data.shortFromFile(cpos)); cpos += 2;
 			
-			SVDBGenotype sgeno = new SVDBGenotype(sid, acount);
-			for(int i = 0; i < acount; i++)
-			{
-				int acopies = Short.toUnsignedInt(data.shortFromFile(cpos)); cpos += 2;
-				int astart = data.intFromFile(cpos); cpos += 4;
-				int aend = data.intFromFile(cpos); cpos += 4;
-				sgeno.addAllele(acopies, astart, aend);
+				SVDBGenotype sgeno = new SVDBGenotype(sid, acount);
+				for(int i = 0; i < acount; i++)
+				{
+					int acopies = Short.toUnsignedInt(data.shortFromFile(cpos)); cpos += 2;
+					int astart = data.intFromFile(cpos); cpos += 4;
+					int aend = data.intFromFile(cpos); cpos += 4;
+					sgeno.addAllele(acopies, astart, aend);
+				}
+				gMap.put(sid, sgeno);
 			}
-			gMap.put(sid, sgeno);
+			catch(IndexOutOfBoundsException x)
+			{
+				System.err.println("Corrupted genotype record: cpos = 0x" + Long.toHexString(cpos));
+				System.err.println("sampleID = 0x" + Integer.toHexString(sid));
+				//x.printStackTrace();
+				corrupted_flag = true;
+			}
 		}
 	}
 	
-	public int calculateSerializedSize()
+	public int calculateSerializedSize(boolean include_vid)
 	{
-		int sz = 12;
+		int sz = 4;
+		if(include_vid) sz += 8;
 		for(SVDBGenotype gt : gMap.values())
 		{
 			sz += 6 + (10 * gt.getUniqueAlleleCount());
@@ -131,14 +144,14 @@ public class VariantGenotype {
 		return sz;
 	}
 	
-	public FileBuffer serializeForGENOT()
+	public FileBuffer serializeForGENOT(boolean include_vid)
 	{
-		int sz = calculateSerializedSize();
+		int sz = calculateSerializedSize(include_vid);
 		FileBuffer outbuff = new FileBuffer(sz, true);
 		
 		//Header
 		int icount = gMap.size();
-		outbuff.addToFile(varUID);
+		if(include_vid) outbuff.addToFile(varUID);
 		outbuff.addToFile(icount);
 		
 		//Genotypes
@@ -167,14 +180,14 @@ public class VariantGenotype {
 	public byte[] getGenotypesAsBLOBBytes()
 	{
 		if(gMap.isEmpty()) {byte[] barr = {-1}; return barr;}
-		FileBuffer me = serializeForGENOT();
+		FileBuffer me = serializeForGENOT(true); //...For now. Just for backward compatibility
 		//Knock off the first 12 bytes...
 		return me.getBytes(12, me.getFileSize());
 	}
 	
 	public FileBuffer getGenotypesAsBLOB()
 	{
-		FileBuffer me = serializeForGENOT();
+		FileBuffer me = serializeForGENOT(true);
 		try {return me.createReadOnlyCopy(12, me.getFileSize());} 
 		catch (IOException e) {e.printStackTrace();}
 		return null;
@@ -286,5 +299,7 @@ public class VariantGenotype {
 		
 		return g;
 	}
+	
+	public boolean isCorrupted(){return this.corrupted_flag;}
 	
 }

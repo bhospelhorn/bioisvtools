@@ -550,6 +550,12 @@ public class StatementPrepper {
 		return connection.prepareStatement(sqlQuery);
 	}
 	
+	public PreparedStatement getVariantGetAllIDsStatement() throws SQLException
+	{
+		String sqlQuery = "SELECT " + SQLVariantTable.FIELDNAME_VARUID + " FROM " + SQLVariantTable.TABLENAME_VARIANTS;
+		return connection.prepareStatement(sqlQuery);
+	}
+	
 	public PreparedStatement getSGenoGetAllStatement() throws SQLException
 	{
 		String sqlQuery = "SELECT * FROM " + SQLVariantTable.TABLENAME_SAMPLEGENO;

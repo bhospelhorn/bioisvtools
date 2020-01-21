@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentSkipListSet;
 import hospelhornbg_segregation.Family;
 import hospelhornbg_segregation.FamilyMember;
 import hospelhornbg_segregation.Population;
+import hospelhornbg_segregation.Relationship;
 import waffleoRai_Utils.CompositeBuffer;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -694,6 +695,12 @@ public class DBSampleTable implements Iterable<Family>{
 			for(Family f : fCache)
 			{
 				Collection<FamilyMember> members = f.getAllFamilyMembers();
+				if(f.getProband() == null)
+				{
+					System.err.println("ERROR: Family " + f.getFamilyName() + " has no proband!");
+					//Look for PB candidate
+					//TODO
+				}
 				for(FamilyMember m : members)
 				{
 					bw.write(Integer.toHexString(m.getUID()) + ",");
@@ -702,7 +709,9 @@ public class DBSampleTable implements Iterable<Family>{
 					bw.write(f.getFamilyName() + ",");
 					bw.write(m.getSex().name() + ",");
 					bw.write(m.getAffectedStatus().name() + ",");
-					bw.write(f.getProband().getRelationship(m).toString_English() + ",");
+					Relationship r = f.getProband().getRelationship(m);
+					if(r != null) bw.write(r.toString_English() + ",");
+					else bw.write("Unrelated,");
 					Collection<Population> plist = m.getPopulationTags();
 					if(plist == null || plist.isEmpty()) bw.write("[NONE]");
 					else

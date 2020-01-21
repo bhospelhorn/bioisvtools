@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -47,6 +48,8 @@ import waffleoRai_Utils.FileBuffer;
 public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Constants ----- */
+	
+	public static final int MAX_VARS_INQUERY = 256;
 	
 	public static final String TABLENAME_VARIANTS = "VARIANTS";
 	public static final String TABLENAME_SAMPLEGENO = "SAMPLEGENO";
@@ -98,6 +101,7 @@ public class SQLVariantTable implements VariantTable{
 	public static final String FIELDNAME_GH_HITS_TI = "TOTAL_INDIVS"; //blob
 	public static final String FIELDNAME_GH_HITS_EI = "EXON_INDIVS"; //blob
 	
+	public static final String REGIDX_FILESTEM = "regidx_";
 	
 	public static final String[][] VAR_COLUMNS = {
 			{FIELDNAME_VARUID, "BIGINT"},{FIELDNAME_CTG1, "INTEGER"},{FIELDNAME_START1, "INTEGER"},
@@ -128,6 +132,7 @@ public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Instance Variables ----- */
 	
+	private String dbDir;
 	private String dbURL;
 	private String username;
 	private String password;
@@ -146,13 +151,15 @@ public class SQLVariantTable implements VariantTable{
 	private boolean threadlock;
 	private ReadCache read_cache;
 	private RegionSearchCache rs_cache;
+	private RegionIndex regidx;
 	
 	//private List<String> tempBlobFiles;
 	
 	/* ----- Construction ----- */
 	
-	public SQLVariantTable(String url, String user, String pw, GenomeBuild gb, GeneSet gs, int mf) throws SQLException
+	public SQLVariantTable(String dbdir, String url, String user, String pw, GenomeBuild gb, GeneSet gs, int mf) throws SQLException
 	{
+		dbDir = dbdir;
 		genome = gb;
 		genes = gs;
 		uidIndex = new GenomeIndex(genome);
@@ -589,6 +596,18 @@ public class SQLVariantTable implements VariantTable{
 	
 	/* ----- Caching ----- */
 	
+	private void loadRegionIndex() throws IOException
+	{
+		String pathstem = dbDir + File.separator + REGIDX_FILESTEM;
+		regidx = RegionIndex.loadIndex(pathstem, genome, true);
+	}
+	
+	private void saveRegionIndex() throws IOException
+	{
+		String pathstem = dbDir + File.separator + REGIDX_FILESTEM;
+		regidx.saveIndex(pathstem);
+	}
+	
 	protected class ReadCache
 	{
 		public static final int CACHE_SIZE = 2048;
@@ -680,33 +699,50 @@ public class SQLVariantTable implements VariantTable{
 			if(!misses.isEmpty())
 			{
 				int len = misses.size();
+				//Reorder into queue
+				LinkedList<Long> q = new LinkedList<Long>();
+				for(Long vid : misses) q.add(vid);
 				try 
 				{
-					PreparedStatement pstat = sqlManager.getStatementGenerator().generateMultiVarGetterStatement(len);
-					int i = 1;
-					for(Long vid : misses)
+					//I'm also gonna try doing chunks at a time in case there are too many...
+					int remaining = len;
+					while(remaining > 0)
 					{
-						pstat.setLong(i, vid);
-						i++;
-					}
-					if(thread_locked) sqlManager.requestStatementExecution(true);
-					ResultSet rs = pstat.executeQuery();
-					while(rs.next())
-					{
-						DBVariant v = readFromResultSet(rs);
+						int grab = MAX_VARS_INQUERY;
+						if(MAX_VARS_INQUERY > remaining) grab = remaining;
 						
-						if(v_map.size() >= CACHE_SIZE)
+						if(thread_locked) sqlManager.requestStatementExecution(true);
+						PreparedStatement pstat = sqlManager.getStatementGenerator().generateMultiVarGetterStatement(grab);
+						//int i = 1;
+						/*for(Long vid : misses)
 						{
-							long id = v_queue.poll();
-							v_map.remove(id);
+							pstat.setLong(i, vid);
+							i++;
+						}*/
+						for(int i = 1; i <= grab; i++)
+						{
+							long pop = q.pop();
+							pstat.setLong(i, pop);
 						}
-						
-						v_map.put(v.getLongID(), v);
-						v_queue.add(v.getLongID());
-						out.add(v);
+						ResultSet rs = pstat.executeQuery();
+						while(rs.next())
+						{
+							DBVariant v = readFromResultSet(rs);
+							
+							if(v_map.size() >= CACHE_SIZE)
+							{
+								long id = v_queue.poll();
+								v_map.remove(id);
+							}
+							
+							v_map.put(v.getLongID(), v);
+							v_queue.add(v.getLongID());
+							out.add(v);
+						}
+						rs.close();
+						if(thread_locked) sqlManager.acknowledgeStatementExecution();
+						remaining -= grab;
 					}
-					rs.close();
-					if(thread_locked) sqlManager.acknowledgeStatementExecution();
 				} 
 				catch (Exception e) 
 				{
@@ -848,12 +884,11 @@ public class SQLVariantTable implements VariantTable{
 		
 	}
 	
-	//TODO threadlock the SQL statements...
 	protected class RegionSearchCache
 	{
 		//public static final int MAX_REG_SIZE_HELD = 10000000;
 		
-		private boolean threadlock;
+		//private boolean threadlock;
 		
 		private Contig lastq_contig;
 		private int lastq_start;
@@ -955,63 +990,45 @@ public class SQLVariantTable implements VariantTable{
 			List<DBVariant> varlist = new LinkedList<DBVariant>();
 			if(c == null) return varlist;
 			//System.err.println("-DEBUG- Disk Query-- " + c.getUDPName() + ":" + start + "-" + end);
-			
-			int cuid = c.getUID();
-			
+
 			try 
 			{
-				PreparedStatement pstat = null;
-				String skey = null;
-				if(ignoreTRA)
-				{
-					//pstat = sprepper.getRegionNoTRAVarGetterStatement();
-					if(threadlock)
-					{
-						skey = SQLManager.SKEY_GETVAR_REG_NOTRA;
-						pstat = sqlManager.requestStatement(skey, true);
-					}
-					else pstat = sqlManager.getStatementGenerator().getRegionNoTRAVarGetterStatement();
-					if(pstat == null) 
-					{
-						System.err.println("Statement prep failed.");
-						System.exit(1);
-					}
-					pstat.setInt(StatementPrepper.VARS_REG_NOTRA_CUID, cuid);
-					pstat.setInt(StatementPrepper.VARS_REG_NOTRA_START, start);
-					pstat.setInt(StatementPrepper.VARS_REG_NOTRA_END, end);
-				}
-				else
-				{
-					//pstat = sprepper.getRegionVarGetterStatement();
-					if(threadlock)
-					{
-						skey = SQLManager.SKEY_GETVAR_REG;
-						pstat = sqlManager.requestStatement(skey, true);
-					}
-					else pstat = sqlManager.getStatementGenerator().getRegionVarGetterStatement();
-					if(pstat == null) 
-					{
-						System.err.println("Statement prep failed.");
-						System.exit(1);
-					}
-					for(int i : StatementPrepper.VARS_REG_CUID) pstat.setInt(i, cuid);
-					for(int i : StatementPrepper.VARS_REG_START) pstat.setInt(i, start);
-					for(int i : StatementPrepper.VARS_REG_END) pstat.setInt(i, end);
-					
-				}
+				//Index!
+				if(regidx == null) loadRegionIndex();
 				
-				if(threadlock) sqlManager.requestStatementExecution(true);
-				ResultSet rs = pstat.executeQuery();
-				while(rs.next())
+				//Get variant UIDs from index...
+				Collection<Long> vuids = regidx.getVariantIDsInApproximateRegion(c, start, end, ignoreTRA);
+				
+				//Load variants from SQL DB
+				Collection<DBVariant> vars = getVariants(vuids);
+				for(DBVariant v : vars)
 				{
-					DBVariant var = readFromResultSet(rs);
-					if(var != null) varlist.add(var);
-				}
-				rs.close();
-				if(threadlock)
-				{
-					sqlManager.acknowledgeStatementExecution();
-					sqlManager.releaseStatement(skey, pstat);
+					//Double check to see if it's really in the requested region...
+					if(!ignoreTRA && (v.getType() == SVType.TRA || v.getType() == SVType.BND))
+					{
+						if(v.getChrom().equals(c))
+						{
+							if(!((v.getStartPosition().getStart() >= end)&&(v.getStartPosition().getEnd() < start)))
+							{
+								varlist.add(v);
+								continue;
+							}
+						}
+						if (v.getEndChrom().equals(c))
+						{
+							if(!((v.getEndPosition().getStart() >= end)&&(v.getEndPosition().getEnd() < start)))
+							{
+								varlist.add(v);
+								continue;
+							}
+						}
+					}
+					else
+					{
+						if(v.getStartPosition().getStart() >= end) continue;
+						if(v.getEndPosition().getEnd() < start) continue;
+						varlist.add(v);
+					}
 				}
 			} 
 			catch (Exception e) 
@@ -1027,41 +1044,44 @@ public class SQLVariantTable implements VariantTable{
 			List<DBVariant> varlist = new LinkedList<DBVariant>();
 			if(c == null) return varlist;
 
-			int cuid = c.getUID();
-			
 			try 
 			{
-				PreparedStatement pstat = null;
-				String skey = null;
-				//pstat = sprepper.getRegionNoTRAVarGetterStatement_ofType();
-				if(threadlock)
-				{
-					skey = SQLManager.SKEY_GETVAR_REG_OFTYPE;
-					pstat = sqlManager.requestStatement(skey, true);
-				}
-				else pstat = sqlManager.getStatementGenerator().getRegionNoTRAVarGetterStatement_ofType();
-				if(pstat == null) 
-				{
-					System.err.println("Statement prep failed.");
-					System.exit(1);
-				}
-				pstat.setInt(StatementPrepper.VARS_REG_TYPE_TYPE, type.getID());
-				pstat.setInt(StatementPrepper.VARS_REG_TYPE_CUID, cuid);
-				pstat.setInt(StatementPrepper.VARS_REG_TYPE_START, start);
-				pstat.setInt(StatementPrepper.VARS_REG_TYPE_END, end);
+				if(regidx == null) loadRegionIndex();
 				
-				if(threadlock) sqlManager.requestStatementExecution(true);
-				ResultSet rs = pstat.executeQuery();
-				while(rs.next())
+				//Get variant UIDs from index...
+				Collection<Long> vuids = regidx.getVariantIDsInApproximateRegion(type, c, start, end);
+				
+				//Load variants from SQL DB
+				Collection<DBVariant> vars = getVariants(vuids);
+				boolean typetra = type == SVType.TRA || type == SVType.BND;
+				for(DBVariant v : vars)
 				{
-					DBVariant var = readFromResultSet(rs);
-					if(var != null) varlist.add(var);
-				}
-				rs.close();
-				if(threadlock)
-				{
-					sqlManager.acknowledgeStatementExecution();
-					sqlManager.releaseStatement(skey, pstat);
+					//Double check to see if it's really in the requested region...
+					if(typetra)
+					{
+						if(v.getChrom().equals(c))
+						{
+							if(!((v.getStartPosition().getStart() >= end)&&(v.getStartPosition().getEnd() < start)))
+							{
+								varlist.add(v);
+								continue;
+							}
+						}
+						if (v.getEndChrom().equals(c))
+						{
+							if(!((v.getEndPosition().getStart() >= end)&&(v.getEndPosition().getEnd() < start)))
+							{
+								varlist.add(v);
+								continue;
+							}
+						}
+					}
+					else
+					{
+						if(v.getStartPosition().getStart() >= end) continue;
+						if(v.getEndPosition().getEnd() < start) continue;
+						varlist.add(v);
+					}
 				}
 			} 
 			catch (Exception e) 
@@ -1317,6 +1337,30 @@ public class SQLVariantTable implements VariantTable{
 		
 	}
 	
+	public void indexByRegion() throws IOException
+	{
+		regidx = new RegionIndex(true);
+		
+		//Go through all variants...
+		try
+		{
+			PreparedStatement statement = sqlManager.getStatementGenerator().getVariantGetAllStatement();
+			ResultSet rs = statement.executeQuery();
+			while(rs.next())
+			{
+				DBVariant var = readFromResultSet(rs);
+				regidx.indexVariant(var);
+			}
+		}
+		catch(SQLException x)
+		{
+			x.printStackTrace();
+			throw new IOException();
+		}
+		
+		saveRegionIndex();
+	}
+	
 	/* ----- Multithreading ----- */
 	
 	/* ----- Gene Hit Cache ----- */
@@ -1556,7 +1600,7 @@ public class SQLVariantTable implements VariantTable{
 
 	public List<DBVariant> getVariants(Collection<Long> varUIDs)
 	{
-		if(varUIDs == null || varUIDs.isEmpty()) return null;
+		if(varUIDs == null || varUIDs.isEmpty()) return new LinkedList<DBVariant>();
 		return read_cache.getVariants(varUIDs);
 	}
 	
@@ -1967,6 +2011,7 @@ public class SQLVariantTable implements VariantTable{
 				
 				//Genotypes
 				VariantGenotype vg = getGenotype(v.getLongID());
+				if(vg.isCorrupted()) bw.write("CORRUPTED|");
 				Collection<Integer> sids = vg.getAllIndividuals();
 				first = true;
 				for(Integer sid : sids)
@@ -2169,6 +2214,9 @@ public class SQLVariantTable implements VariantTable{
 				sqlManager.releaseStatement(skey, baseStatement);
 			}
 			if(count != 1) return false;
+			
+			if(regidx == null) this.loadRegionIndex();
+			regidx.indexVariant(var);
 		}
 		catch(Exception e)
 		{
@@ -2229,6 +2277,8 @@ public class SQLVariantTable implements VariantTable{
 			{
 				Thread.sleep(1000);
 				time++;
+				//add_engine.printQueueLoads();
+				//add_engine.printCounts();
 			}
 		}
 		catch(Exception e)
@@ -2739,6 +2789,75 @@ public class SQLVariantTable implements VariantTable{
 		return allgood;
 	}
 	
+	public boolean updateSampleGenotypeTable() throws SQLException
+	{
+		Map<Integer, List<Long>> map = new TreeMap<Integer, List<Long>>();
+		PreparedStatement statement = sqlManager.getStatementGenerator().getVariantGetAllStatement();
+		
+		ResultSet rs = statement.executeQuery();
+		while(rs.next())
+		{
+			long vuid = rs.getLong(FIELDNAME_VARUID);
+			Blob genoblob = rs.getBlob(FIELDNAME_GENOTYPES);
+			VariantGenotype vg = new VariantGenotype(vuid);
+			try {vg.readDataFromBLOB(genoblob);} 
+			catch (IOException e) {e.printStackTrace(); return false;}
+			if(vg.isCorrupted())continue;
+			Set<Integer> indivs = vg.getAllIndividuals();
+			for(int sid : indivs)
+			{
+				List<Long> list = map.get(sid);
+				if(list == null)
+				{
+					list = new LinkedList<Long>();
+					map.put(sid, list);
+				}
+				list.add(vuid);
+			}
+		}
+		
+		//Rewrite sample geno table...
+		statement = sqlManager.getStatementGenerator().getSampleGenoTableWipeStatement();
+		statement.executeUpdate();
+		Set<Integer> indivs = map.keySet();
+		for(int sid : indivs)
+		{
+			Set<Long> vidset = new TreeSet<Long>();
+			List<Long> list = map.get(sid);
+			if(list != null && !list.isEmpty())
+			{
+				vidset.addAll(list);
+				//Create record and add all to blob!
+				FileBuffer hetblob = new FileBuffer(8, true);
+				FileBuffer homblob = new FileBuffer(8, true);
+				FileBuffer othblob = new FileBuffer(vidset.size()*8, true);
+				
+				hetblob.addToFile(-1L);
+				homblob.addToFile(-1L);
+				for(Long l : vidset) othblob.addToFile(l);
+				
+				//Statement cstat = connection.createStatement();
+				//cstat.executeUpdate(sqlCmd);
+				StatementPrepper sprepper = sqlManager.getStatementGenerator();
+				PreparedStatement pstat = sprepper.getSGenoInsertStatement();
+				pstat.setInt(StatementPrepper.SGENOINS_SID, sid);
+				
+				Blob b = sprepper.wrapInBlob(homblob.getBytes());
+				pstat.setBlob(StatementPrepper.SGENOINS_HOM, b);
+				
+				b = sprepper.wrapInBlob(hetblob.getBytes());
+				pstat.setBlob(StatementPrepper.SGENOINS_HET, b);
+				
+				b = sprepper.wrapInBlob(othblob.getBytes());
+				pstat.setBlob(StatementPrepper.SGENOINS_OTH, b);
+				
+				pstat.executeUpdate();
+			}
+		}
+		
+		return true;
+	}
+	
 	/* ----- Cleanup ----- */
 	
 	public void commitUpdates() throws SQLException
@@ -2757,16 +2876,17 @@ public class SQLVariantTable implements VariantTable{
 	@Override
 	public void save() throws IOException 
 	{
+		System.err.println("Saving database updates...");
 		if(ghc_cache_dirty && ghc_cache != null)
 		{
-			System.err.println("Saving database updates...");
-			try {
-				commitUpdates();
-			} catch (SQLException e) {
-				e.printStackTrace();
-				throw new IOException();
-			}
 			saveGeneHitTable();
+		}
+		if(regidx != null) saveRegionIndex();
+		try {
+			commitUpdates();
+		} catch (SQLException e) {
+			e.printStackTrace();
+			throw new IOException();
 		}
 	}
 

@@ -9,6 +9,7 @@ import java.util.List;
 
 import hospelhornbg_genomeBuild.GenomeBuild;
 import hospelhornbg_segregation.Family;
+import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 public class ConsoleFrontEnd {
@@ -30,6 +31,7 @@ public class ConsoleFrontEnd {
 	public static final String PROG_ADDVARBATCH = "addvarbatch";
 	public static final String PROG_CLEARVARS = "clearvars";
 	public static final String PROG_SEEVARS = "seevars";
+	public static final String PROG_REGIDX = "regidx";
 	
 	public static final String PROG_VARINFO = "varinfo"; //Dumps all info on a single variant, including all genotypes!
 	
@@ -115,6 +117,7 @@ public class ConsoleFrontEnd {
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		boolean good = db.addVCF(vcfPath, verbose, ignoreTRA, threads);
 		if(!good) System.err.println("ERROR: VCF addition failed!");
+		db.regenerateSampleGenoTable();
 		db.saveDatabase();
 		db.close();
 	}
@@ -124,7 +127,15 @@ public class ConsoleFrontEnd {
 		List<String> filelist = new LinkedList<String>();
 		BufferedReader br = new BufferedReader(new FileReader(vcfListPath));
 		String line = null;
-		while((line = br.readLine()) != null) filelist.add(line);
+		while((line = br.readLine()) != null){
+			if(line.isEmpty()) continue;
+			if(!FileBuffer.fileExists(line))
+			{
+				if(verbose) System.err.println("BATCH VCF ADD: \"" + line + "\" is not a file! Skipping...");
+				continue;
+			}
+			filelist.add(line);
+		}
 		br.close();
 		
 		if(filelist.isEmpty())
@@ -141,12 +152,14 @@ public class ConsoleFrontEnd {
 		int counter = 0;
 		for(String p : filelist)
 		{
-			if(verbose) System.err.println("BATCH VCF ADD: Now adding " + p + " (" + (counter+1) + "/" + total + ")");
+			if(verbose) System.err.println("BATCH VCF ADD: Now adding " + p + " (" + (++counter) + "/" + total + ")");
 			db.addVCF(p, verbose, ignoreTRA, threads);
-			counter++;
-			if(counter % 10 == 0) db.saveDatabase();
+			//if(counter % 10 == 0) db.saveDatabase();	
+			db.saveDatabase(); //Save after every person
 		}
-		if(counter % 10 != 0) db.saveDatabase();
+		db.regenerateSampleGenoTable();
+		db.saveDatabase();
+		//if(counter % 10 != 0) db.saveDatabase();
 		db.close();
 	}
 	
@@ -161,6 +174,13 @@ public class ConsoleFrontEnd {
 	{
 		SVDatabase db = SVDatabase.loadDatabase(dbDir);
 		db.dumpVariantTable(outDir);
+		db.close();
+	}
+	
+	public static void indexVariants(String dbDir) throws IOException, SQLException
+	{
+		SVDatabase db = SVDatabase.loadDatabase(dbDir);
+		db.createVariantLocationIndex();
 		db.close();
 	}
 	
@@ -626,6 +646,25 @@ public class ConsoleFrontEnd {
 			catch (SQLException e) 
 			{
 				System.err.println(PROG_SEEVARS + " ERROR | Variant table could not be dumped! (Could not connect to SQL database!)");
+				e.printStackTrace();
+				System.exit(1);
+			}
+		}
+		else if(mode.equals(PROG_REGIDX))
+		{
+			try 
+			{
+				indexVariants(dbdir);
+			} 
+			catch (IOException e) 
+			{
+				System.err.println(PROG_REGIDX + " ERROR | Variant table could not be indexed!!");
+				e.printStackTrace();
+				System.exit(1);
+			} 
+			catch (SQLException e) 
+			{
+				System.err.println(PROG_SEEVARS + " ERROR | Variant table could not be indexed! (Could not connect to SQL database!)");
 				e.printStackTrace();
 				System.exit(1);
 			}

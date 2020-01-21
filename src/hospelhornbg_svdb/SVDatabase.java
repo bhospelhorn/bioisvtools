@@ -89,7 +89,7 @@ public class SVDatabase {
 			variantTable = new DBVariantTable(genome, genes, directory, indexLimiter);
 			break;
 		case VARTBL_TYPE_SQL:
-			variantTable = new SQLVariantTable(sqlURL, sqlUser, sqlPassword, genome, genes, mergeFactor);
+			variantTable = new SQLVariantTable(dir, sqlURL, sqlUser, sqlPassword, genome, genes, mergeFactor);
 			break;
 		}
 		
@@ -127,7 +127,7 @@ public class SVDatabase {
 		sqlPassword = "nopassword";
 		
 		sampleTable = new DBSampleTable(directory);
-		variantTable = new SQLVariantTable(sqlURL, sqlUser, sqlPassword, genome, genes, mergeFactor);
+		variantTable = new SQLVariantTable(dir, sqlURL, sqlUser, sqlPassword, genome, genes, mergeFactor);
 		varTableType = VARTBL_TYPE_SQL;
 		
 		saveDatabase();
@@ -360,6 +360,11 @@ public class SVDatabase {
 	{
 		variantTable.clearVariantTable();
 		//TODO sampleTable.unmarkSample(sampleID);
+	}
+	
+	public void createVariantLocationIndex() throws IOException
+	{
+		variantTable.indexByRegion();
 	}
 	
 	/* ----- Family Data Dumping ----- */
@@ -793,6 +798,11 @@ public class SVDatabase {
 			}
 			bed.close();
 		}
+	}
+	
+	public boolean regenerateSampleGenoTable() throws SQLException
+	{
+		return variantTable.updateSampleGenotypeTable();
 	}
 	
 	/* ----- Database Loaders ----- */

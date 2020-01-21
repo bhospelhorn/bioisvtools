@@ -322,7 +322,7 @@ public class DBVariantTable implements VariantTable{
 			{
 				VariantGenotype vg = VariantGenotype.readFromGENOT(openFile, cpos);
 				if (vg == null) return vg;
-				cpos += vg.calculateSerializedSize();
+				cpos += vg.calculateSerializedSize(true);
 				return vg;
 			}
 			
@@ -369,7 +369,7 @@ public class DBVariantTable implements VariantTable{
 			while(cpos < fsz)
 			{
 				VariantGenotype vg = VariantGenotype.readFromGENOT(openFile, cpos);
-				int sz = vg.calculateSerializedSize();
+				int sz = vg.calculateSerializedSize(true);
 				LookupRecord lr = new LookupRecord();
 				lr.genoOffset = cpos;
 				lr.genoRecSize = sz;
@@ -456,13 +456,13 @@ public class DBVariantTable implements VariantTable{
 			while(cpos < fsz)
 			{
 				VariantGenotype vg = VariantGenotype.readFromGENOT(openFile, cpos);
-				cpos += vg.calculateSerializedSize();
+				cpos += vg.calculateSerializedSize(true);
 				//See if clean...
 				long vid = vg.getVariantUID();
 				if(!dirtyQueue.containsKey(vid))
 				{
 					//Just copy back
-					bw.write(vg.serializeForGENOT().getBytes());
+					bw.write(vg.serializeForGENOT(true).getBytes());
 				}
 				//Otherwise, eat.
 			}
@@ -473,7 +473,7 @@ public class DBVariantTable implements VariantTable{
 			for(Long vid : dirtyList)
 			{
 				VariantGenotype vg = dirtyQueue.get(vid);
-				bw.write(vg.serializeForGENOT().getBytes());
+				bw.write(vg.serializeForGENOT(true).getBytes());
 			}
 			
 			bw.close();
@@ -516,7 +516,7 @@ public class DBVariantTable implements VariantTable{
 			while(cpos < fsz)
 			{
 				VariantGenotype vg = VariantGenotype.readFromGENOT(openFile, cpos);
-				cpos += vg.calculateSerializedSize();
+				cpos += vg.calculateSerializedSize(true);
 				
 				//Check to see if we need to delete a genotype record
 				//	or the whole variant record...
@@ -524,7 +524,7 @@ public class DBVariantTable implements VariantTable{
 				if(vg.genotypeRecords() > 0)
 				{
 					//Write back out
-					bw.write(vg.serializeForGENOT().getBytes());
+					bw.write(vg.serializeForGENOT(true).getBytes());
 				}
 				else deleteVars.add(vg.getVariantUID());
 				
@@ -1974,6 +1974,16 @@ public class DBVariantTable implements VariantTable{
 	public void close()
 	{
 		//TODO
+	}
+	
+	public void indexByRegion() throws IOException
+	{
+		//TODO
+	}
+	
+	public boolean updateSampleGenotypeTable()
+	{
+		return false;
 	}
 	
 }

@@ -82,6 +82,7 @@ public interface VariantTable {
 	public boolean addVCF(String vcfpath, Map<String, FamilyMember> sampleMap, int mergeFactor, boolean ignoreTRA, int threads) throws IOException;
 	public boolean removeSample(FamilyMember sample);
 	public boolean removeFamily(Family fam);
+	public boolean updateSampleGenotypeTable() throws SQLException;
 	public boolean updateSampleCounts(DBSampleTable sampleTable);
 	public boolean updateSamplePopulationFlags(FamilyMember sample, Collection<Population> oldFlags);
 	public void save() throws IOException;
@@ -90,5 +91,6 @@ public interface VariantTable {
 	public void dumpTable(String directory);
 	public void clearVariantTable();
 	
+	public void indexByRegion() throws IOException;
 	
 }
